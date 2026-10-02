@@ -1,26 +1,245 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
+/* Theme switching is class-based (next-themes); light is the default. */
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Semantic design tokens. Components only ever use these, never raw colours,
+ * so the dark theme (and store branding later, which overrides primary/accent
+ * on the customer layout root) needs no component changes.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6f8f7;
+  --foreground: #10201b;
+  --card: #ffffff;
+  --card-foreground: #10201b;
+  --popover: #ffffff;
+  --popover-foreground: #10201b;
+  --muted: #eef2f0;
+  --muted-foreground: #5b6b66;
+  --border: #e2e8e5;
+  --input: #d5ddd9;
+  --ring: #2e7a62;
+
+  /* Fluta forest green */
+  --primary: #173c32;
+  --primary-foreground: #ffffff;
+  --secondary: #e4f1ea;
+  --secondary-foreground: #173c32;
+  --accent: #e4f1ea;
+  --accent-foreground: #173c32;
+
+  --success: #146c45;
+  --warning: #8a5100;
+  --error: #b3261e;
+  --info: #1a56b0;
+  --destructive: var(--error);
+
+  --radius: 0.75rem;
+  --shadow-color: 160 30% 10%;
+
+  /* Responsive spacing, mobile-first (small mobile is the base) */
+  --space-page: 1rem;
+  --space-section: 2rem;
+  --space-card: 1rem;
+  --space-form: 1rem;
+  --space-grid: 1rem;
+  --space-component: 0.5rem;
+}
+
+.dark {
+  --background: #0d1412;
+  --foreground: #e6edea;
+  --card: #141d1a;
+  --card-foreground: #e6edea;
+  --popover: #18221f;
+  --popover-foreground: #e6edea;
+  --muted: #1c2723;
+  --muted-foreground: #9aa9a3;
+  --border: #26332e;
+  --input: #34433d;
+  --ring: #7cc4a6;
+
+  /* Forest green is too dark to read on a dark surface, so primary lightens. */
+  --primary: #7cc4a6;
+  --primary-foreground: #0b211b;
+  --secondary: #1a3a30;
+  --secondary-foreground: #bfe5d3;
+  --accent: #1a3a30;
+  --accent-foreground: #bfe5d3;
+
+  --success: #5cc98e;
+  --warning: #e9b158;
+  --error: #f2837a;
+  --info: #7fb0f5;
+
+  --shadow-color: 0 0% 0%;
+}
+
+@media (width >= 48rem) {
+  :root {
+    --space-page: 1.5rem;
+    --space-section: 2.5rem;
+    --space-card: 1.25rem;
+    --space-grid: 1.25rem;
+  }
+}
+
+@media (width >= 64rem) {
+  :root {
+    --space-page: 2rem;
+    --space-section: 3rem;
+    --space-grid: 1.5rem;
+  }
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-error: var(--error);
+  --color-info: var(--info);
+  --color-destructive: var(--destructive);
+
+  --font-sans: var(--font-inter);
+  --font-heading: var(--font-inter);
   --font-mono: var(--font-geist-mono);
+
+  /* p-page, py-section, p-card, gap-form, gap-grid, gap-component, … */
+  --spacing-page: var(--space-page);
+  --spacing-section: var(--space-section);
+  --spacing-card: var(--space-card);
+  --spacing-form: var(--space-form);
+  --spacing-grid: var(--space-grid);
+  --spacing-component: var(--space-component);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@theme {
+  /* small mobile = base · large mobile = xs · tablet = md · desktop = lg */
+  --breakpoint-xs: 25rem;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 2rem;
+  --radius-full: 9999px;
+
+  /*
+   * Borders separate surfaces; shadows are reserved for elevated layers
+   * (dropdowns, dialogs, sheets, toasts) and stay soft.
+   */
+  --shadow-xs: 0 1px 2px hsl(var(--shadow-color) / 0.04);
+  --shadow-sm: 0 1px 3px hsl(var(--shadow-color) / 0.06);
+  --shadow-md: 0 4px 12px -2px hsl(var(--shadow-color) / 0.08);
+  --shadow-lg: 0 12px 32px -8px hsl(var(--shadow-color) / 0.14);
+}
+
+/* Typography scale: one utility sets size, line height, weight and tracking. */
+@utility type-display {
+  font-size: 2rem;
+  line-height: 2.5rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  @media (width >= 48rem) {
+    font-size: 2.5rem;
+    line-height: 3rem;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@utility type-h1 {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  @media (width >= 48rem) {
+    font-size: 1.875rem;
+    line-height: 2.375rem;
+  }
+}
+
+@utility type-h2 {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+@utility type-h3 {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+@utility type-body {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 400;
+}
+
+@utility type-body-sm {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 400;
+}
+
+@utility type-label {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 500;
+}
+
+@utility type-caption {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 400;
+}
+
+/* Page width + gutter for every top-level page body. */
+@utility page-container {
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: var(--space-page);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* Sonner reads these from the toaster root; kept here instead of an inline style. */
+[data-sonner-toaster] {
+  --normal-bg: var(--popover);
+  --normal-text: var(--popover-foreground);
+  --normal-border: var(--border);
+  --border-radius: var(--radius-lg);
 }
