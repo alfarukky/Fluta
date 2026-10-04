@@ -47,3 +47,5 @@ next-env.d.ts
 # Prisma generated client
 /src/generated/prisma
 .mcp.json
+# Playwright MCP snapshots, screenshots, and console logs
+/.playwright-mcp
