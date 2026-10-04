@@ -44,3 +44,7 @@ If a script above does not exist yet in package.json, say so and ask before addi
   - **Development-only:** the page calls `notFound()` unless `isDevelopment()` (`src/lib/env.ts`, the only module that reads `process.env`) is true, so production serves a 404. Keep the guard in the page itself, not a layout: Next renders layouts and pages in parallel, so a layout-level `notFound()` still serializes the page into the 404 response. Showcase client components take their sample text as props from the server page so none of it ends up in client bundles.
 - **Home page:** `src/app/page.tsx` is a placeholder (logo, tagline, and a development-only link to `/design-system`). No product screens yet.
 - Static assets go in `public/`.
+
+## Note
+
+Ensure you do not reference Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com> or any reference to claude in my git commit messages.
