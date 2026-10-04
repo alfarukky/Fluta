@@ -1,0 +1,515 @@
+// Prisma 7: the connection URL lives in prisma7.config.ts, not here.
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────── Enums ─────────────
+
+enum StoreRole {
+  OWNER
+  STAFF
+}
+
+// Operational status, set only by Fluta admins. Independent of billing.
+enum StoreStatus {
+  ACTIVE
+  PAUSED
+  DEACTIVATED
+}
+
+enum PricingType {
+  PER_ITEM
+  PER_KG
+  PER_PACKAGE
+}
+
+enum AreaChargeType {
+  FIXED
+  QUOTE_REQUIRED
+}
+
+enum OrderChannel {
+  ONLINE
+  COUNTER
+  PHONE
+  WHATSAPP
+}
+
+enum FulfilmentType {
+  DROP_OFF
+  PICKUP_DELIVERY
+}
+
+enum OrderStage {
+  BOOKED
+  PICKUP_SCHEDULED
+  PICKED_UP
+  RECEIVED_BY_STORE
+  QUOTE_AWAITING_APPROVAL
+  IN_PROGRESS
+  READY
+  OUT_FOR_DELIVERY
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderLineType {
+  SERVICE // catalogue service with quantity and unit price
+  ADJUSTMENT // "Others": signed amount (+ extra charge, − discount) with a description
+}
+
+enum PickupWindowStatus {
+  REQUESTED
+  PROPOSED_BY_STORE
+  CONFIRMED
+}
+
+enum QuoteStatus {
+  PENDING
+  APPROVED
+  DECLINED // customer declined or asked for clarification
+  SUPERSEDED
+}
+
+enum PaymentSource {
+  ONLINE
+  STORE_COLLECTED
+}
+
+enum PaymentMethod {
+  PAYSTACK
+  CASH
+  BANK_TRANSFER
+  POS
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  VOIDED // owner-voided store-collected payment; never counts in totals
+}
+
+enum ActorType {
+  STAFF
+  CUSTOMER
+  SYSTEM
+  FLUTA_ADMIN
+}
+
+enum MessageChannel {
+  SMS
+  EMAIL
+  WHATSAPP_MANUAL
+}
+
+enum MessageStatus {
+  QUEUED
+  SENDING
+  SENT // accepted by the provider; not proof of delivery
+  FAILED
+  OPENED // manual WhatsApp: staff opened the chat
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+  VOID
+}
+
+// ───────────── Identity & access ─────────────
+
+// Better Auth's User/Session/Account/Verification, PlatformRole, and Membership
+// are added in Feature 03 (authentication).
+
+model StoreInvitation {
+  id              String    @id @default(cuid())
+  storeId         String
+  email           String
+  role            StoreRole
+  tokenHash       String    @unique
+  invitedByUserId String
+  expiresAt       DateTime // 7 days after creation
+  acceptedAt      DateTime? // single-use: set once, link then invalid
+  revokedAt       DateTime? // revoked by inviter or replaced by a newer invite
+  createdAt       DateTime  @default(now())
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@index([storeId])
+}
+
+// ───────────── Store configuration ─────────────
+
+model Store {
+  id                     String      @id @default(cuid())
+  name                   String
+  slug                   String      @unique // booking link on Fluta's domain: /s/{slug}
+  description            String? // plain text only, rendered escaped
+  addressText            String? // shown on receipts; plain text
+  phone                  String?
+  email                  String?
+  logoUrl                String? // set by Fluta after upload (R2, Fluta-generated key); never user-entered
+  brandPrimaryColor      String? // strictly #RRGGBB
+  brandAccentColor       String? // strictly #RRGGBB
+  timeZone               String      @default("Africa/Lagos")
+  currency               String      @default("NGN")
+  status                 StoreStatus @default(ACTIVE)
+  orderPrefix            String // 2–4 capital letters, display-only, e.g. "FF"
+  nextOrderNumber        Int         @default(1001) // incremented atomically when an order is created
+  dropOffEnabled         Boolean     @default(true)
+  pickupDeliveryEnabled  Boolean     @default(false)
+  payLaterEnabled        Boolean     @default(false)
+  activeDays             Int[] // 0 = Sunday … 6 = Saturday
+  openTime               String? // "08:00", store local time
+  closeTime              String? // "18:00", store local time
+  paystackSubaccountCode String? // null = not connected; online payment unavailable
+  settlementBankName     String?
+  settlementAccountName  String? // as resolved by Paystack and confirmed by the owner
+  settlementAccountLast4 String? // never store the full account number
+  paystackConnectedAt    DateTime?
+  smsEnabled             Boolean     @default(true)
+  dailyBookingSmsCap     Int         @default(100) // "your order link" SMS after online bookings
+  emailCopiesEnabled     Boolean     @default(true)
+  whatsappContactEnabled Boolean     @default(true)
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+
+  invitations   StoreInvitation[]
+  serviceAreas  ServiceArea[]
+  closedDates   ClosedDate[]
+  services      Service[]
+  customers     Customer[]
+  orders        Order[]
+  payments      Payment[]
+  refunds       Refund[]
+  statusEvents  StatusEvent[]
+  messageEvents MessageEvent[]
+  auditEvents   AuditEvent[]
+  subscription  Subscription?
+}
+
+model ServiceArea {
+  id          String         @id @default(cuid())
+  storeId     String
+  name        String
+  chargeType  AreaChargeType
+  fixedCharge Int? // minor units (kobo); required when chargeType = FIXED
+  isActive    Boolean        @default(true)
+
+  store  Store   @relation(fields: [storeId], references: [id])
+  orders Order[]
+
+  @@unique([storeId, id]) // target for tenant-safe composite FKs
+  @@index([storeId])
+}
+
+model ClosedDate {
+  id      String   @id @default(cuid())
+  storeId String
+  date    DateTime @db.Date
+  note    String?
+
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@unique([storeId, date])
+}
+
+model Service {
+  id            String      @id @default(cuid())
+  storeId       String
+  name          String
+  category      String?
+  pricingType   PricingType
+  price         Int // minor units per item / kg / package; a "from" price when requiresQuote
+  requiresQuote Boolean     @default(false) // always true when pricingType = PER_KG (enforced in app)
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  store      Store       @relation(fields: [storeId], references: [id])
+  orderLines OrderLine[]
+
+  @@unique([storeId, id]) // target for tenant-safe composite FKs
+  @@index([storeId])
+}
+
+// ───────────── Customers & orders ─────────────
+
+model Customer {
+  id        String   @id @default(cuid())
+  storeId   String
+  name      String
+  phone     String // E.164
+  email     String?
+  createdAt DateTime @default(now())
+
+  store  Store   @relation(fields: [storeId], references: [id])
+  orders Order[]
+
+  @@unique([storeId, phone])
+  @@unique([storeId, id]) // target for tenant-safe composite FKs
+}
+
+model Order {
+  id               String         @id @default(cuid())
+  storeId          String
+  orderNumber      Int // allocated from Store.nextOrderNumber in the same transaction
+  customerId       String
+  channel          OrderChannel
+  fulfilmentType   FulfilmentType
+  stage            OrderStage     @default(BOOKED)
+  stageBeforeQuote OrderStage? // where the order returns after quote approval
+
+  serviceAreaId    String?
+  addressText      String? // used for BOTH pickup and delivery in the MVP
+  isOutOfArea      Boolean @default(false)
+  fulfilmentCharge Int? // null = quote pending or not applicable
+
+  requestedPickupDate  DateTime?           @db.Date
+  requestedWindowStart String? // "10:00"
+  requestedWindowEnd   String? // "12:00"
+  scheduledPickupDate  DateTime?           @db.Date
+  scheduledWindowStart String?
+  scheduledWindowEnd   String?
+  pickupWindowStatus   PickupWindowStatus?
+
+  approvedQuoteId String? // the currently approved QuoteRevision; the ONLY source of the order total
+  payLater        Boolean @default(false)
+
+  trackingTokenHash     String   @unique // raw token only ever lives in the link
+  trackingTokenIssuedAt DateTime
+
+  internalNote    String?
+  completedAt     DateTime? // with cancelledAt, drives tracking-link expiry
+  cancelledAt     DateTime?
+  cancelNote      String?
+  createdByUserId String? // null for online guest bookings
+  bookingIpHash   String? // online bookings only; used for booking rate limits
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  store          Store           @relation(fields: [storeId], references: [id])
+  customer       Customer        @relation(fields: [storeId, customerId], references: [storeId, id])
+  serviceArea    ServiceArea?    @relation(fields: [storeId, serviceAreaId], references: [storeId, id])
+  lines          OrderLine[]
+  quoteRevisions QuoteRevision[] @relation("OrderQuotes")
+  approvedQuote  QuoteRevision?  @relation("ApprovedQuote", fields: [storeId, approvedQuoteId], references: [storeId, id])
+  payments       Payment[]
+  refunds        Refund[]
+  statusEvents   StatusEvent[]
+  messageEvents  MessageEvent[]
+
+  @@unique([storeId, orderNumber])
+  @@unique([storeId, id]) // target for tenant-safe composite FKs
+  @@unique([storeId, approvedQuoteId])
+  @@index([storeId, stage])
+  @@index([storeId, createdAt])
+  @@index([bookingIpHash, createdAt])
+}
+
+// Migration adds a CHECK constraint (Prisma cannot express it):
+//   SERVICE:    serviceId, pricingType, unitPrice >= 0 all set; quantity > 0 and lineTotal >= 0
+//               both set, or both NULL only while requiresQuote (not yet weighed/inspected)
+//   ADJUSTMENT: serviceId, pricingType, unitPrice, quantity, estimatedQuantity all NULL; lineTotal set
+// App rule: every line needs quantity and lineTotal before a priced quote is issued.
+model OrderLine {
+  id                String        @id @default(cuid())
+  storeId           String
+  orderId           String
+  lineType          OrderLineType
+  serviceId         String? // SERVICE only
+  description       String // SERVICE: service name snapshot; ADJUSTMENT: required note
+  pricingType       PricingType? // SERVICE only (snapshot)
+  requiresQuote     Boolean       @default(false) // SERVICE only (snapshot)
+  unitPrice         Int? // SERVICE only; price snapshot, never negative
+  estimatedQuantity Decimal?      @db.Decimal(10, 3) // SERVICE only; customer's estimate, never billed
+  quantity          Decimal?      @db.Decimal(10, 3) // SERVICE only; BILLED items, packages, or measured kg
+  lineTotal         Int? // SERVICE: unitPrice × quantity, rounded to the nearest kobo (NULL until priced); ADJUSTMENT: the signed amount
+
+  order   Order    @relation(fields: [storeId, orderId], references: [storeId, id], onDelete: Cascade)
+  service Service? @relation(fields: [storeId, serviceId], references: [storeId, id])
+
+  @@index([storeId, orderId])
+}
+
+model QuoteRevision {
+  id               String      @id @default(cuid())
+  storeId          String
+  orderId          String
+  version          Int
+  linesSnapshot    Json
+  itemsSubtotal    Int
+  fulfilmentCharge Int         @default(0)
+  total            Int
+  reason           String?
+  status           QuoteStatus @default(PENDING)
+  createdByUserId  String
+  createdAt        DateTime    @default(now())
+  approvedAt       DateTime?
+  approvedByActor  ActorType? // CUSTOMER via link/booking, or STAFF for in-person/phone agreement on v1
+  declinedAt       DateTime?
+  customerMessage  String? // clarification request from the customer
+
+  order       Order  @relation("OrderQuotes", fields: [storeId, orderId], references: [storeId, id])
+  approvedFor Order? @relation("ApprovedQuote")
+
+  @@unique([orderId, version])
+  @@unique([storeId, id])
+}
+
+// ───────────── Money ─────────────
+
+model Payment {
+  id                String        @id @default(cuid())
+  storeId           String
+  orderId           String
+  amount            Int
+  source            PaymentSource
+  method            PaymentMethod
+  status            PaymentStatus @default(PENDING)
+  paystackReference String?       @unique
+  payerEmail        String?
+  recordedByUserId  String? // staff who recorded a store-collected payment
+  note              String?
+  confirmedAt       DateTime?
+  voidedAt          DateTime?
+  voidedByUserId    String?
+  voidReason        String?
+  replacesPaymentId String? // the voided payment this one corrects
+  createdAt         DateTime      @default(now())
+
+  store Store @relation(fields: [storeId], references: [id])
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id])
+
+  @@index([storeId, confirmedAt])
+  @@index([orderId])
+}
+
+// A refund the store has actually paid. "Refund owed" is derived from the balance.
+model Refund {
+  id               String    @id @default(cuid())
+  storeId          String
+  orderId          String
+  amount           Int
+  note             String
+  recordedByUserId String
+  paidAt           DateTime
+  voidedAt         DateTime?
+  voidedByUserId   String?
+  voidReason       String?
+  replacesRefundId String? // the voided refund this one corrects
+  createdAt        DateTime  @default(now())
+
+  store Store @relation(fields: [storeId], references: [id])
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id])
+
+  @@index([storeId, orderId])
+}
+
+// ───────────── History & messaging ─────────────
+
+model StatusEvent {
+  id          String      @id @default(cuid())
+  storeId     String
+  orderId     String
+  fromStage   OrderStage?
+  toStage     OrderStage
+  actorType   ActorType
+  actorUserId String?
+  note        String?
+  createdAt   DateTime    @default(now())
+
+  store Store @relation(fields: [storeId], references: [id])
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id])
+
+  @@index([orderId, createdAt])
+}
+
+model MessageEvent {
+  id                String         @id @default(cuid())
+  storeId           String
+  orderId           String
+  channel           MessageChannel
+  template          String // e.g. LINK_CREATED, QUOTE_NEEDS_APPROVAL, READY, OUT_FOR_DELIVERY
+  providerMessageId String?
+  status            MessageStatus  @default(QUEUED)
+  body              String? // rendered message; cleared once SENT or finally FAILED (holds raw token)
+  attempts          Int            @default(0)
+  lastError         String?
+  sentAt            DateTime?
+  createdByUserId   String?
+  createdAt         DateTime       @default(now())
+
+  store Store @relation(fields: [storeId], references: [id])
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id])
+
+  @@index([orderId])
+  @@index([status, createdAt]) // retry job scans QUEUED / FAILED
+}
+
+model AuditEvent {
+  id          String    @id @default(cuid())
+  storeId     String?
+  actorType   ActorType
+  actorUserId String?
+  action      String // e.g. PAYMENT_CORRECTED, SUPPORT_LOOKUP, STAFF_DEACTIVATED
+  targetType  String
+  targetId    String?
+  reason      String? // required for support lookups
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+
+  store Store? @relation(fields: [storeId], references: [id])
+
+  @@index([storeId, createdAt])
+}
+
+// ───────────── Fluta subscriptions ─────────────
+
+model Subscription {
+  id               String    @id @default(cuid())
+  storeId          String    @unique
+  planName         String
+  priceAmount      Int
+  billingInterval  String    @default("MONTHLY")
+  graceDays        Int       @default(7)
+  currentPeriodEnd DateTime?
+  // OVERDUE / SUSPENDED are derived from invoices + graceDays, never stored.
+  cancelledAt      DateTime?
+  cancelReason     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  store    Store                 @relation(fields: [storeId], references: [id])
+  invoices SubscriptionInvoice[]
+}
+
+model SubscriptionInvoice {
+  id               String        @id @default(cuid())
+  invoiceNumber    Int           @unique @default(autoincrement()) // Postgres sequence; shown as INV-000123
+  subscriptionId   String
+  amount           Int
+  periodStart      DateTime      @db.Date
+  periodEnd        DateTime      @db.Date
+  dueDate          DateTime      @db.Date
+  status           InvoiceStatus @default(OPEN)
+  amountPaid       Int?
+  paymentMethod    String? // e.g. bank transfer, recorded manually in the pilot
+  paymentReference String?
+  paidAt           DateTime?
+  paymentNote      String?
+  recordedByUserId String?
+  createdAt        DateTime      @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@unique([subscriptionId, periodStart]) // never two invoices for the same period
+  @@index([subscriptionId, status])
+}

@@ -10,9 +10,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build`: production build; also runs the TypeScript check
 - `npm run lint`: ESLint over the whole repo (flat config in `eslint.config.mjs`); lint one file with `npx eslint <path>`
 - `npm run typecheck`: type-check without building (`tsc --noEmit`)
-- `npm test`: run the Vitest suite once; `npm run test:watch` for watch mode; run one file with `npx vitest run <path>`
+- `npm test`: run both Vitest projects once (`npm run test:unit`, `npm run test:integration` for one); `npm run test:watch` for watch mode; run one file with `npx vitest run <path>`
 
-Tests use Vitest + React Testing Library in jsdom (`vitest.config.mts`). Test files are colocated as `src/**/*.test.{ts,tsx}`, and `@/*` imports resolve through `resolve.tsconfigPaths`. Vitest can't render `async` Server Components, so test those end-to-end instead.
+Vitest has two projects (`vitest.config.mts`). **unit**: React Testing Library in jsdom, colocated `src/**/*.test.{ts,tsx}` and `prisma/**/*.test.ts`. **integration**: `*.integration.test.ts` against real PostgreSQL on the Neon `test` branch. Its global setup (`src/test/integration/`) loads `.env.test` only, refuses unless `DATABASE_BRANCH="test"` and the host differs from `.env.local`, then runs `prisma migrate deploy` and the seed. Integration tests get a client from `createTestPrisma()` (the app client is `server-only`). `@/*` imports resolve through `resolve.tsconfigPaths`. Vitest can't render `async` Server Components, so test those end-to-end instead.
+
+Database (Prisma 7.10+, never Prisma 8; installed with @^7.10.0 pinned; config in prisma7.config.ts, not prisma.config.ts):
+
+npx prisma migrate dev --name <name> — create and apply a migration (never db push)
+npx prisma migrate dev --create-only --name <name> — create a migration to hand-edit (for CHECK constraints)
+npx prisma migrate status — confirm migrations are in sync before committing
+npx prisma generate — regenerate the client after schema changes (not automatic in Prisma 7)
+npx prisma db seed — run the seed (not automatic in Prisma 7; npm run db:seed calls this)
+
+If a script above does not exist yet in package.json, say so and ask before adding it.
+
+- **Env:** `.env.local` (development branch) and `.env.test` (test branch) hold `DATABASE_URL` (pooled, `-pooler` host, `sslmode=verify-full`), `DIRECT_URL` (direct host, CLI only), and `DATABASE_BRANCH` (`development|test|production`; the seed refuses `production`). See `.env.example`. `getServerEnv()` in `src/lib/env.ts` validates them with Zod. At server start (`next dev` and `next start`, Node.js runtime only), `src/instrumentation.ts` validates them and exits with status 1 after printing the problem. It skips `next build` (`isNodeServerStartup()`), so builds need no secrets.
+- **Client:** `prisma` from `src/server/data/client.ts` (generated client imported from `@/generated/prisma/client`, gitignored). Every `PrismaPg` adapter takes `pgPoolConfig(url)` from `src/lib/database-url.ts`, which applies `connect_timeout` (pg ignores it in the URL) and lengthens Node's per-address connect attempt (the 250 ms default fails on slow links to Neon).
+- **Seed:** `prisma/seed.ts` → `prisma/seed/` (one spec per store, `order-builder.ts` mirrors the order-creation transaction). It deletes and recreates only the FreshFold and CleanWave stores. Placeholder user IDs (`seed-user-*-owner`) stand in until Feature 03 seeds real users. The seed data and the clear step use long transaction timeouts, because Neon round trips are slow from here.
 
 ## Stack and architecture
 
