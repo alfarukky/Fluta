@@ -67,7 +67,7 @@ export interface SeedStoreContext {
   now: Date;
   storeId: string;
   orderPrefix: string;
-  // Placeholder for the store's owner until Feature 03 seeds real users.
+  // The seeded user recorded as the staff actor on this store's orders.
   staffUserId: string;
   customerIds: Map<string, string>;
   services: Map<string, Service>;

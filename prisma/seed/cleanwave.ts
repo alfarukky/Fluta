@@ -7,7 +7,6 @@ const BLESSING = "+2348090000202";
 const CHINEDU = "+2348030000101";
 
 export const CLEANWAVE_SLUG = "cleanwave-laundry";
-export const CLEANWAVE_OWNER_ID = "seed-user-cleanwave-owner";
 
 // A second, smaller store for tenant-isolation tests. Not connected to
 // Paystack, and its current invoice is past due (subscription Overdue).
@@ -28,7 +27,6 @@ export function cleanWaveSpec(): SeedStoreSpec {
       openTime: "09:00",
       closeTime: "17:00",
     },
-    staffUserId: CLEANWAVE_OWNER_ID,
     areas: [{ name: "Wuse 2", chargeType: "FIXED", fixedCharge: 80_000 }],
     services: [
       { name: "Shirt", category: "Laundry", pricingType: "PER_ITEM", price: 70_000 },

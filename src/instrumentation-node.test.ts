@@ -31,6 +31,8 @@ describe("validateEnvOrExit", () => {
   it("does nothing when the environment is valid", async () => {
     vi.stubEnv("DATABASE_URL", "postgresql://u:p@ep-x-pooler.example.neon.tech/neondb");
     vi.stubEnv("DATABASE_BRANCH", "development");
+    vi.stubEnv("BETTER_AUTH_SECRET", "a-test-secret-that-is-at-least-32-characters");
+    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3000");
     const validateEnvOrExit = await loadValidateEnvOrExit();
 
     validateEnvOrExit();

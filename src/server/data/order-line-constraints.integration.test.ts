@@ -1,32 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import { createTestPrisma } from "@/test/integration/db";
+import type { PrismaClient } from "@/generated/prisma/client";
+import { createTestPrisma, insertThenRollBack } from "@/test/integration/db";
 
 let prisma: PrismaClient;
 let freshFold: { storeId: string; orderId: string; plainServiceId: string; perKgServiceId: string };
 let cleanWaveOrderId: string;
-
-class Rollback extends Error {}
-
-// Runs `write` in a transaction that is always rolled back, so accepted inserts
-// leave nothing behind for other tests.
-async function insertThenRollBack(write: (tx: Prisma.TransactionClient) => Promise<unknown>) {
-  try {
-    await prisma.$transaction(
-      async (tx) => {
-        await write(tx);
-        throw new Rollback();
-      },
-      { maxWait: 15_000, timeout: 20_000 },
-    );
-  } catch (error) {
-    // Anything but our own rollback (a constraint error, say) fails the test as-is.
-    if (!(error instanceof Rollback)) throw error;
-    return;
-  }
-  expect.unreachable("the transaction should have been rolled back");
-}
 
 beforeAll(async () => {
   prisma = createTestPrisma();
@@ -79,7 +58,7 @@ describe("OrderLine type CHECK constraint", () => {
   });
 
   it("accepts a plain adjustment line", async () => {
-    await insertThenRollBack((tx) => tx.orderLine.create({ data: adjustment() }));
+    await insertThenRollBack(prisma, (tx) => tx.orderLine.create({ data: adjustment() }));
   });
 
   const serviceLine = (serviceId: string, requiresQuote: boolean) => ({
@@ -100,7 +79,7 @@ describe("OrderLine type CHECK constraint", () => {
   });
 
   it("accepts an unweighed quote-required line with no quantity or total", async () => {
-    await insertThenRollBack((tx) =>
+    await insertThenRollBack(prisma, (tx) =>
       tx.orderLine.create({ data: { ...serviceLine(freshFold.perKgServiceId, true), estimatedQuantity: "5" } }),
     );
   });

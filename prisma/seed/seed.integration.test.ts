@@ -82,4 +82,38 @@ describe("seed data", () => {
     const customers = await prisma.customer.findMany({ where: { phone: "+2348030000101" } });
     expect(new Set(customers.map((customer) => customer.storeId)).size).toBe(2);
   });
+
+  it("seeds real users: two FreshFold members, one CleanWave owner, and a Fluta admin with no store", async () => {
+    const users = await prisma.user.findMany({ include: { memberships: { include: { store: true } } } });
+    const byEmail = new Map(users.map((user) => [user.email, user]));
+    const memberships = (email: string) =>
+      byEmail.get(email)?.memberships.map((membership) => [membership.store.slug, membership.role, membership.isActive]);
+
+    expect(byEmail.get("ada@freshfold.example")?.name).toBe("Ada Okafor");
+    expect(memberships("ada@freshfold.example")).toEqual([["freshfold-laundry", "OWNER", true]]);
+    expect(memberships("kemi@freshfold.example")).toEqual([["freshfold-laundry", "STAFF", true]]);
+    expect(memberships("musa@cleanwave.example")).toEqual([["cleanwave-laundry", "OWNER", true]]);
+    expect(byEmail.get("admin@fluta.example")).toMatchObject({ platformRole: "FLUTA_ADMIN", memberships: [] });
+  });
+
+  it("leaves no Feature 02 placeholder user IDs", async () => {
+    const placeholders = ["seed-user-freshfold-owner", "seed-user-cleanwave-owner", "online-booking"];
+    const where = { in: placeholders };
+    const counts = await Promise.all([
+      prisma.order.count({ where: { createdByUserId: where } }),
+      prisma.quoteRevision.count({ where: { createdByUserId: where } }),
+      prisma.payment.count({ where: { recordedByUserId: where } }),
+      prisma.statusEvent.count({ where: { actorUserId: where } }),
+      prisma.messageEvent.count({ where: { createdByUserId: where } }),
+    ]);
+    expect(counts).toEqual([0, 0, 0, 0, 0]);
+  });
+
+  it("records online bookings' first revision as the customer's, with no user", async () => {
+    const revisions = await prisma.quoteRevision.findMany({ where: { version: 1, order: { channel: "ONLINE" } } });
+    expect(revisions.length).toBeGreaterThan(0);
+    for (const revision of revisions) {
+      expect(revision).toMatchObject({ createdByActor: "CUSTOMER", createdByUserId: null });
+    }
+  });
 });

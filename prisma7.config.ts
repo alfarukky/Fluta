@@ -15,7 +15,9 @@ export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
-    seed: "tsx prisma/seed.ts",
+    // react-server: the seed creates users through src/server/data, whose
+    // modules import `server-only` (empty under this condition).
+    seed: "tsx --conditions=react-server prisma/seed.ts",
   },
   ...(directUrl ? { datasource: { url: directUrl } } : {}),
 });

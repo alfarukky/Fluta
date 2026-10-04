@@ -17,8 +17,12 @@ function createPrismaClient(): PrismaClient {
 // open a new connection pool.
 const globalForPrisma = globalThis as typeof globalThis & { prisma?: PrismaClient };
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+let client: PrismaClient | undefined;
 
-if (isDevelopment()) {
-  globalForPrisma.prisma = prisma;
+// Created on first use, not at import: `next build` imports route modules to
+// collect page data, and builds must work without database secrets.
+export function getPrisma(): PrismaClient {
+  client ??= globalForPrisma.prisma ?? createPrismaClient();
+  if (isDevelopment()) globalForPrisma.prisma = client;
+  return client;
 }

@@ -1,13 +1,14 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 
-// Deletes the seeded stores and everything they own, so the seed can run
-// repeatedly. Only the stores with these slugs are touched.
-export async function clearSeedStores(prisma: PrismaClient, slugs: string[]): Promise<void> {
+// Deletes the seeded stores and everything they own, and the seeded users
+// (their sessions and accounts cascade), so the seed can run repeatedly. Only
+// the stores with these slugs and the users with these emails are touched.
+export async function clearSeedData(prisma: PrismaClient, slugs: string[], userEmails: string[]): Promise<void> {
   const stores = await prisma.store.findMany({ where: { slug: { in: slugs } }, select: { id: true } });
-  if (stores.length === 0) return;
   const storeId = { in: stores.map((store) => store.id) };
+  const seededUser = { email: { in: userEmails } };
 
-  // About 17 round trips; the 5 s default timeout is too tight on a slow link to Neon.
+  // About 20 round trips; the 5 s default timeout is too tight on a slow link to Neon.
   await prisma.$transaction(
     [
       prisma.subscriptionInvoice.deleteMany({ where: { subscription: { storeId } } }),
@@ -27,8 +28,10 @@ export async function clearSeedStores(prisma: PrismaClient, slugs: string[]): Pr
       prisma.serviceArea.deleteMany({ where: { storeId } }),
       prisma.closedDate.deleteMany({ where: { storeId } }),
       prisma.storeInvitation.deleteMany({ where: { storeId } }),
+      prisma.membership.deleteMany({ where: { OR: [{ storeId }, { user: seededUser }] } }),
       prisma.auditEvent.deleteMany({ where: { storeId } }),
       prisma.store.deleteMany({ where: { id: storeId } }),
+      prisma.user.deleteMany({ where: seededUser }),
     ],
     { maxWait: 15_000, timeout: 60_000 },
   );

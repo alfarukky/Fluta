@@ -18,10 +18,6 @@ import type { SeedLine, SeedOrder, SeedRevision, SeedStoreContext } from "./type
 
 type Tx = Prisma.TransactionClient;
 
-// QuoteRevision.createdByUserId is required, but a guest's online booking has
-// no user; version 1 of those orders records this marker instead.
-export const ONLINE_BOOKING_ACTOR_ID = "online-booking";
-
 interface ResolvedLine {
   lineType: OrderLineType;
   serviceId: string | null;
@@ -238,8 +234,10 @@ async function createRevisions(
         total,
         reason: revision.reason ?? null,
         status: revision.status,
-        createdByUserId:
-          index === 0 && spec.channel === OrderChannel.ONLINE ? ONLINE_BOOKING_ACTOR_ID : ctx.staffUserId,
+        // Version 1 of an online booking is the customer's own; staff create the rest.
+        ...(index === 0 && spec.channel === OrderChannel.ONLINE
+          ? { createdByActor: ActorType.CUSTOMER, createdByUserId: null }
+          : { createdByActor: ActorType.STAFF, createdByUserId: ctx.staffUserId }),
         createdAt,
         approvedAt: revision.approvedBy ? approvedAt : null,
         approvedByActor: revision.approvedBy ?? null,

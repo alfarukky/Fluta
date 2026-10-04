@@ -16,7 +16,6 @@ const LEKKI = "Lekki Phase 1";
 const AJAH = "Ajah";
 
 export const FRESHFOLD_SLUG = "freshfold-laundry";
-export const FRESHFOLD_OWNER_ID = "seed-user-freshfold-owner";
 
 function nextChristmas(now: Date): Date {
   const year = now.getUTCMonth() === 11 && now.getUTCDate() > 25 ? now.getUTCFullYear() + 1 : now.getUTCFullYear();
@@ -46,7 +45,6 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
       settlementAccountLast4: "4821",
       paystackConnectedAt: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000),
     },
-    staffUserId: FRESHFOLD_OWNER_ID,
     areas: [
       { name: LEKKI, chargeType: "FIXED", fixedCharge: 100_000 },
       { name: AJAH, chargeType: "QUOTE_REQUIRED" },

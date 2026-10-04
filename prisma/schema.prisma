@@ -10,6 +10,11 @@ datasource db {
 
 // ───────────── Enums ─────────────
 
+enum PlatformRole {
+  USER
+  FLUTA_ADMIN
+}
+
 enum StoreRole {
   OWNER
   STAFF
@@ -125,8 +130,97 @@ enum InvoiceStatus {
 
 // ───────────── Identity & access ─────────────
 
-// Better Auth's User/Session/Account/Verification, PlatformRole, and Membership
-// are added in Feature 03 (authentication).
+// User, Session, Account, Verification, and RateLimit are Better Auth's models,
+// generated with its CLI and merged here by hand. Relations live only in
+// Prisma, never in Better Auth's config. Users are created only by
+// src/server/data/users.ts (every Better Auth sign-up path is disabled).
+
+model User {
+  id            String       @id
+  name          String
+  email         String       @unique
+  emailVerified Boolean      @default(false)
+  image         String?
+  // Read from the database on every admin request, never from the session.
+  // Not a Better Auth additionalField, so no auth endpoint can set it.
+  platformRole  PlatformRole @default(USER)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  memberships Membership[]
+  sessions    Session[]
+  accounts    Account[]
+}
+
+model Membership {
+  id            String    @id @default(cuid())
+  userId        String
+  storeId       String
+  role          StoreRole
+  isActive      Boolean   @default(true)
+  deactivatedAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  user  User  @relation(fields: [userId], references: [id])
+  store Store @relation(fields: [storeId], references: [id])
+
+  @@unique([userId, storeId])
+  @@index([storeId])
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String // "credential" for email and password
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String? // Better Auth's password hash, never the password
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+// Better Auth's rate-limit counters (storage: "database"), keyed by IP and path.
+model RateLimit {
+  id          String @id
+  key         String @unique
+  count       Int
+  lastRequest BigInt // epoch milliseconds
+}
 
 model StoreInvitation {
   id              String    @id @default(cuid())
@@ -181,6 +275,7 @@ model Store {
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
 
+  memberships   Membership[]
   invitations   StoreInvitation[]
   serviceAreas  ServiceArea[]
   closedDates   ClosedDate[]
@@ -350,7 +445,8 @@ model QuoteRevision {
   total            Int
   reason           String?
   status           QuoteStatus @default(PENDING)
-  createdByUserId  String
+  createdByUserId  String? // null when the customer created it (online booking v1)
+  createdByActor   ActorType // CUSTOMER for online bookings, STAFF for staff-created revisions
   createdAt        DateTime    @default(now())
   approvedAt       DateTime?
   approvedByActor  ActorType? // CUSTOMER via link/booking, or STAFF for in-person/phone agreement on v1

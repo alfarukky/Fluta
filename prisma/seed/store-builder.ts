@@ -1,10 +1,13 @@
 import {
   InvoiceStatus,
   PricingType,
+  StoreRole,
   type AreaChargeType,
   type Prisma,
   type PrismaClient,
 } from "@/generated/prisma/client";
+
+import { createMembership } from "@/server/data/memberships";
 
 import { lagosDate } from "./helpers";
 import { createSeedOrder } from "./order-builder";
@@ -14,7 +17,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface SeedStoreSpec {
   store: Omit<Prisma.StoreCreateInput, "id">;
-  staffUserId: string;
   areas: { name: string; chargeType: AreaChargeType; fixedCharge?: number }[];
   services: { name: string; category: string; pricingType: PricingType; price: number; requiresQuote?: boolean }[];
   customers: { name: string; phone: string; email?: string }[];
@@ -35,13 +37,21 @@ export interface SeedStoreResult {
   orderNumbers: number[];
 }
 
+// The store's seeded users. The owner is recorded as the staff actor on orders.
+export interface SeedStoreMembers {
+  ownerUserId: string;
+  staffUserIds: string[];
+}
+
 export async function seedStore(
   prisma: PrismaClient,
   now: Date,
   spec: SeedStoreSpec,
+  members: SeedStoreMembers,
 ): Promise<SeedStoreResult> {
   const store = await prisma.store.create({ data: spec.store, select: { id: true, orderPrefix: true } });
   const storeId = store.id;
+  await seedMemberships(prisma, storeId, members);
 
   const areas = await Promise.all(
     spec.areas.map((area) => prisma.serviceArea.create({ data: { ...area, storeId } })),
@@ -68,7 +78,7 @@ export async function seedStore(
     now,
     storeId,
     orderPrefix: store.orderPrefix,
-    staffUserId: spec.staffUserId,
+    staffUserId: members.ownerUserId,
     customerIds: new Map(customers.map((customer) => [customer.phone, customer.id])),
     services: new Map(services.map((service) => [service.name, service])),
     areas: new Map(areas.map((area) => [area.name, area])),
@@ -80,6 +90,17 @@ export async function seedStore(
     orderNumbers.push(await createSeedOrder(prisma, ctx, order));
   }
   return { storeId, name: spec.store.name, orderNumbers };
+}
+
+async function seedMemberships(prisma: PrismaClient, storeId: string, members: SeedStoreMembers): Promise<void> {
+  const roles = [
+    { userId: members.ownerUserId, role: StoreRole.OWNER },
+    ...members.staffUserIds.map((userId) => ({ userId, role: StoreRole.STAFF })),
+  ];
+  for (const member of roles) {
+    const result = await createMembership(storeId, member, prisma);
+    if (!result.success) throw new Error(`Seed data: user ${member.userId} already has an active membership.`);
+  }
 }
 
 function addMonths(date: Date, months: number): Date {

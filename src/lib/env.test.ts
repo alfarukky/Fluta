@@ -5,6 +5,8 @@ import { isNodeServerStartup, parseServerEnv } from "./env";
 const VALID = {
   DATABASE_URL: "postgresql://user:secret@ep-x-pooler.example.neon.tech/neondb?sslmode=verify-full",
   DATABASE_BRANCH: "development",
+  BETTER_AUTH_SECRET: "a-test-secret-that-is-at-least-32-characters",
+  BETTER_AUTH_URL: "http://localhost:3000",
 };
 
 describe("parseServerEnv", () => {
@@ -24,6 +26,12 @@ describe("parseServerEnv", () => {
 
   it("rejects an unknown branch", () => {
     expect(() => parseServerEnv({ ...VALID, DATABASE_BRANCH: "staging" })).toThrow(/DATABASE_BRANCH/);
+  });
+
+  it("rejects a short auth secret and a non-http auth URL", () => {
+    expect(() => parseServerEnv({ ...VALID, BETTER_AUTH_SECRET: "short", BETTER_AUTH_URL: "ftp://x" })).toThrow(
+      /BETTER_AUTH_SECRET: must be at least 32 characters[\s\S]*BETTER_AUTH_URL: must be an http\(s\) URL/,
+    );
   });
 
   it("never echoes the connection string in the error", () => {

@@ -13,6 +13,10 @@ const serverEnvSchema = z.object({
   // Which Neon branch DATABASE_URL points at. The seed refuses `production`;
   // integration tests require `test`.
   DATABASE_BRANCH: z.enum(["development", "test", "production"]),
+  // Signs Better Auth's session cookies. Generate with `openssl rand -base64 32`.
+  BETTER_AUTH_SECRET: z.string().min(32, "must be at least 32 characters"),
+  // The app's public origin, e.g. http://localhost:3000.
+  BETTER_AUTH_URL: z.url({ protocol: /^https?$/, error: "must be an http(s) URL" }),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
