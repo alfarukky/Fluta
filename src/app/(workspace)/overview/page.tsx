@@ -101,7 +101,7 @@ function DetailCard({ label, hint, children }: { label: string; hint: string; ch
   );
 }
 
-// "https://app.example/s/freshfold" → "app.example/s/freshfold"
+// "https://app.example/store/freshfold" → "app.example/store/freshfold"
 function displayUrl(url: string): string {
   const { host, pathname } = new URL(url);
   return `${host}${pathname}`;

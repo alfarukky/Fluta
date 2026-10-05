@@ -244,7 +244,7 @@ model StoreInvitation {
 model Store {
   id                     String      @id @default(cuid())
   name                   String
-  slug                   String      @unique // booking link on Fluta's domain: /s/{slug}
+  slug                   String      @unique // booking link on Fluta's domain: /store/{slug}
   description            String? // plain text only, rendered escaped
   addressText            String? // shown on receipts; plain text
   phone                  String?
