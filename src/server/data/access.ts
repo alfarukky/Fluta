@@ -4,9 +4,10 @@ import type { PlatformRole } from "@/generated/prisma/client";
 
 import { getPrisma } from "./client";
 
-// The user's active membership with what access checks need about its store.
-// Never cached: called on every workspace request so a deactivated membership
-// or a paused store takes effect immediately.
+// The user's active membership with what access checks and the workspace
+// shell need about its store. Read on every workspace request (shared within
+// one request only, see requireStoreMember) so a deactivated membership or a
+// paused store takes effect immediately.
 export async function findActiveMembership(userId: string) {
   return getPrisma().membership.findFirst({
     where: { userId, isActive: true },
@@ -20,6 +21,7 @@ export async function findActiveMembership(userId: string) {
           slug: true,
           status: true,
           timeZone: true,
+          brandPrimaryColor: true,
           subscription: {
             select: {
               cancelledAt: true,

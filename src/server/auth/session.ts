@@ -2,6 +2,7 @@ import "server-only";
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
 import type { StoreRole } from "@/generated/prisma/client";
 
@@ -9,8 +10,9 @@ import { findPlatformRole } from "@/server/data/access";
 
 import {
   authorizeFlutaAdmin,
-  authorizeStoreMember,
+  checkStoreMember,
   getSessionFromHeaders,
+  lookupStoreMembership,
   type FlutaAdminAccess,
   type StoreMemberAccess,
 } from "./access";
@@ -29,6 +31,13 @@ export async function getHomePath(userId: string): Promise<string> {
   return (await findPlatformRole(userId)) === "FLUTA_ADMIN" ? ADMIN_HOME_PATH : WORKSPACE_HOME_PATH;
 }
 
+// One session + membership lookup per request, shared by the layout and the
+// page. React's cache() lasts for a single server render only: nothing is
+// kept across requests or stored in the session, so a deactivated membership
+// is refused on the next request. Role and store-access checks run on every
+// call, outside the cache.
+const lookupCurrentStoreMembership = cache(async () => lookupStoreMembership(await headers()));
+
 // For server components and actions in the store workspace. Redirects to
 // sign-in without a session; returns a 403 result the caller must render
 // (or return) when the user may not use the workspace. Call it in every page
@@ -36,7 +45,7 @@ export async function getHomePath(userId: string): Promise<string> {
 export async function requireStoreMember(
   options: { role?: StoreRole } = {},
 ): Promise<Exclude<StoreMemberAccess, { status: 401 }>> {
-  const result = await authorizeStoreMember(await headers(), options);
+  const result = checkStoreMember(await lookupCurrentStoreMembership(), options);
   if (result.allowed || result.status !== 401) return result;
   redirect(SIGN_IN_PATH);
 }

@@ -43,7 +43,8 @@ If a script above does not exist yet in package.json, say so and ask before addi
 - **Internal showcase:** `/design-system` (`src/app/design-system/`, sections in `src/components/design-system/`) demonstrates every token and component using static FreshFold Laundry sample data. Check new UI there in both themes at ~360px and desktop widths.
   - **Development-only:** the page calls `notFound()` unless `isDevelopment()` (`src/lib/env.ts`, the only module that reads `process.env`) is true, so production serves a 404. Keep the guard in the page itself, not a layout: Next renders layouts and pages in parallel, so a layout-level `notFound()` still serializes the page into the 404 response. Showcase client components take their sample text as props from the server page so none of it ends up in client bundles.
 - **Auth:** Better Auth (`src/server/auth/auth.ts`, lazy `getAuth()`), email/password with database sessions. No endpoint can create a user; users come only from `createUserWithPassword` (`src/server/data/users.ts`), memberships only from `createMembership`. Sign-in posts to `/api/auth/sign-in/email` from the client (rate limits only apply to HTTP requests, not `auth.api` calls). Pages and actions call `requireStoreMember({ role? })` / `requireFlutaAdmin()` from `src/server/auth/session.ts` themselves, not just in layouts; `getStoreAccess` lives in `src/server/domain/store-access.ts`.
-- **Home page:** `src/app/page.tsx` is a placeholder (logo, tagline, and a development-only link to `/design-system`). No product screens yet.
+- **Home page:** `src/app/page.tsx` is a placeholder (logo, tagline, and a development-only link to `/design-system`).
+- **Store workspace:** shell and workspace UI live in `src/components/workspace/` (`AppShell`, `Sidebar`, `MobileNav`, `UserMenu`, `PageHeader`). Navigation is defined once in `nav-items.ts`; pages still call `requireStoreMember()` themselves.
 - Static assets go in `public/`.
 
 ## Note

@@ -59,13 +59,14 @@ export function getSubscriptionStatus(
 
 // What a store may do, from its operational status (set by Fluta admins) and
 // its subscription status (billing). The overview's access table, in one place.
-// A store without a subscription is treated as Cancelled, so access fails closed.
+// A store without a subscription is treated as Suspended: existing orders can
+// still be worked on, but no new orders are accepted.
 export function getStoreAccess(
   store: StoreAccessStore,
   subscription: StoreAccessSubscription | null,
   now: Date,
 ): StoreAccess {
-  const subscriptionStatus = subscription ? getSubscriptionStatus(subscription, store.timeZone, now) : "CANCELLED";
+  const subscriptionStatus = subscription ? getSubscriptionStatus(subscription, store.timeZone, now) : "SUSPENDED";
   const canAcceptNewOrders =
     store.status === "ACTIVE" && (subscriptionStatus === "ACTIVE" || subscriptionStatus === "OVERDUE");
   const canWorkOnExistingOrders = store.status !== "DEACTIVATED" && subscriptionStatus !== "CANCELLED";

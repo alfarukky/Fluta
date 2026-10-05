@@ -75,10 +75,11 @@ describe("getStoreAccess", () => {
     }
   }
 
-  it("fails closed for a store with no subscription", () => {
+  // Deliberate rule (Feature 04): a missing subscription counts as Suspended.
+  it("treats a store with no subscription as Suspended", () => {
     expect(getStoreAccess({ status: "ACTIVE", timeZone: LAGOS }, null, NOW)).toEqual({
-      subscriptionStatus: "CANCELLED",
-      ...TRACKING_ONLY,
+      subscriptionStatus: "SUSPENDED",
+      ...EXISTING_ORDERS_ONLY,
     });
   });
 });

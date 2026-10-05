@@ -31,19 +31,36 @@ export async function getSessionFromHeaders(requestHeaders: Headers) {
   return getAuth().api.getSession({ headers: requestHeaders });
 }
 
-// Session → active membership (from the database, every call) → role →
-// getStoreAccess. The store always comes from the membership, never from the
-// URL, body, query string, or cookies.
-export async function authorizeStoreMember(
-  requestHeaders: Headers,
-  options: { role?: StoreRole } = {},
-  now = new Date(),
-): Promise<StoreMemberAccess> {
+export type StoreMembershipLookup =
+  | { found: false; reason: "UNAUTHENTICATED" | "NO_ACTIVE_MEMBERSHIP" }
+  | { found: true; user: SessionUser; membership: ActiveMembership };
+
+// Session → active membership (from the database, every call). The store
+// always comes from the membership, never from the URL, body, query string,
+// or cookies. No role check here, so the result can be shared by every
+// caller in one request (see requireStoreMember).
+export async function lookupStoreMembership(requestHeaders: Headers): Promise<StoreMembershipLookup> {
   const session = await getSessionFromHeaders(requestHeaders);
-  if (!session) return { allowed: false, status: 401, reason: "UNAUTHENTICATED" };
+  if (!session) return { found: false, reason: "UNAUTHENTICATED" };
 
   const membership = await findActiveMembership(session.user.id);
-  if (!membership) return { allowed: false, status: 403, reason: "NO_ACTIVE_MEMBERSHIP" };
+  if (!membership) return { found: false, reason: "NO_ACTIVE_MEMBERSHIP" };
+  return { found: true, user: session.user, membership };
+}
+
+// Lookup → role → getStoreAccess, for one caller's required role.
+export function checkStoreMember(
+  lookup: StoreMembershipLookup,
+  options: { role?: StoreRole } = {},
+  now = new Date(),
+): StoreMemberAccess {
+  if (!lookup.found) {
+    return lookup.reason === "UNAUTHENTICATED"
+      ? { allowed: false, status: 401, reason: lookup.reason }
+      : { allowed: false, status: 403, reason: lookup.reason };
+  }
+
+  const { user, membership } = lookup;
   if (options.role && ROLE_RANK[membership.role] < ROLE_RANK[options.role]) {
     return { allowed: false, status: 403, reason: "ROLE_NOT_PERMITTED" };
   }
@@ -52,7 +69,15 @@ export async function authorizeStoreMember(
   const access = getStoreAccess(store, subscription, now);
   if (!access.canWorkOnExistingOrders) return { allowed: false, status: 403, reason: "STORE_UNAVAILABLE" };
 
-  return { allowed: true, user: session.user, membership: { id: membership.id, role: membership.role }, store, access };
+  return { allowed: true, user, membership: { id: membership.id, role: membership.role }, store, access };
+}
+
+export async function authorizeStoreMember(
+  requestHeaders: Headers,
+  options: { role?: StoreRole } = {},
+  now = new Date(),
+): Promise<StoreMemberAccess> {
+  return checkStoreMember(await lookupStoreMembership(requestHeaders), options, now);
 }
 
 // platformRole is read from the database on every call, never from the session.

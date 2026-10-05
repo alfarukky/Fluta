@@ -63,10 +63,11 @@ describe("authorizeStoreMember", () => {
     expect(await authorizeStoreMember(headers.owner, { role: "OWNER" })).toMatchObject({ allowed: true });
   });
 
-  it("rejects a deactivated membership even with a valid session", async () => {
+  it("rejects a deactivated membership on the next request, with the same session", async () => {
     const membership = await prisma.membership.findFirstOrThrow({
       where: { storeId: stores.freshFold, role: "STAFF", isActive: true },
     });
+    expect(await authorizeStoreMember(headers.staff)).toMatchObject({ allowed: true });
     await prisma.membership.update({ where: { id: membership.id }, data: { isActive: false, deactivatedAt: new Date() } });
     try {
       expect(await authorizeStoreMember(headers.staff)).toMatchObject({
