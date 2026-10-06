@@ -8,9 +8,11 @@
 /*
  * Semantic design tokens. Components only ever use these, never raw colours,
  * so the dark theme (and store branding later, which overrides primary/accent
- * on the customer layout root) needs no component changes.
+ * on the customer layout root) needs no component changes. `.light` forces
+ * the light tokens inside a dark page (the branding preview shows both).
  */
-:root {
+:root,
+.light {
   --background: #f6f8f7;
   --foreground: #10201b;
   --card: #ffffff;
@@ -76,6 +78,31 @@
   --info: #7fb0f5;
 
   --shadow-color: 0 0% 0%;
+}
+
+/*
+ * Store branding. getBrandTheme() (src/lib/brand-theme.ts) validates the
+ * store's colours and sets the --brand-* variables and data-brand-* attributes
+ * on the branded root; only primary and accent change. Primary has its own
+ * readable shade per theme; accent is a fill with its own text colour. The
+ * .light rule comes last so a light preview inside a dark page stays light.
+ */
+[data-brand-primary] {
+  --primary: var(--brand-primary);
+  --primary-foreground: var(--brand-primary-foreground);
+}
+.dark [data-brand-primary],
+.dark[data-brand-primary] {
+  --primary: var(--brand-primary-dark);
+  --primary-foreground: var(--brand-primary-dark-foreground);
+}
+.light[data-brand-primary] {
+  --primary: var(--brand-primary);
+  --primary-foreground: var(--brand-primary-foreground);
+}
+[data-brand-accent] {
+  --accent: var(--brand-accent);
+  --accent-foreground: var(--brand-accent-foreground);
 }
 
 @media (width >= 48rem) {

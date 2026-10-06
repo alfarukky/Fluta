@@ -1,11 +1,18 @@
 "use client";
 
 import { CopyIcon } from "lucide-react";
+import type { ComponentProps } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 
-export function CopyLinkButton({ url }: { url: string }) {
+interface CopyLinkButtonProps {
+  url: string;
+  variant?: ComponentProps<typeof Button>["variant"];
+}
+
+// type="button" so it never submits a form it sits in (store settings).
+export function CopyLinkButton({ url, variant }: CopyLinkButtonProps) {
   async function copy() {
     try {
       await navigator.clipboard.writeText(url);
@@ -16,7 +23,7 @@ export function CopyLinkButton({ url }: { url: string }) {
   }
 
   return (
-    <Button onClick={copy}>
+    <Button type="button" variant={variant} onClick={copy}>
       <CopyIcon data-icon="inline-start" aria-hidden />
       Copy link
     </Button>

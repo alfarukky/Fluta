@@ -1,10 +1,11 @@
-import { ArrowUpRightIcon, LinkIcon, PaletteIcon } from "lucide-react";
+import { ArrowUpRightIcon, LinkIcon, PaletteIcon, SettingsIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { AccessDenied } from "@/components/auth/AccessDenied";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { BrandColorSwatch } from "@/components/workspace/BrandColorSwatch";
 import { CopyLinkButton } from "@/components/workspace/CopyLinkButton";
@@ -28,7 +29,20 @@ export default async function OverviewPage() {
 
   return (
     <main className="page-container flex flex-1 flex-col gap-section py-section">
-      <PageHeader title="Store overview" description="Welcome to your store workspace." />
+      <PageHeader
+        title="Store overview"
+        description="Welcome to your store workspace."
+        actions={
+          isOwner && (
+            <Button asChild variant="outline">
+              <Link href={SETTINGS_PATH}>
+                <SettingsIcon data-icon="inline-start" aria-hidden />
+                Configure store
+              </Link>
+            </Button>
+          )
+        }
+      />
 
       <div className="grid gap-grid sm:grid-cols-2 xl:grid-cols-4">
         <DetailCard label="Store status" hint={status.description}>

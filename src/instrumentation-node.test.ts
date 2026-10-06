@@ -33,6 +33,11 @@ describe("validateEnvOrExit", () => {
     vi.stubEnv("DATABASE_BRANCH", "development");
     vi.stubEnv("BETTER_AUTH_SECRET", "a-test-secret-that-is-at-least-32-characters");
     vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3000");
+    vi.stubEnv("R2_ACCOUNT_ID", "account");
+    vi.stubEnv("R2_ACCESS_KEY_ID", "access-key");
+    vi.stubEnv("R2_SECRET_ACCESS_KEY", "secret-key");
+    vi.stubEnv("R2_BUCKET", "fluta-test");
+    vi.stubEnv("R2_PUBLIC_URL", "https://logos.example.com");
     const validateEnvOrExit = await loadValidateEnvOrExit();
 
     validateEnvOrExit();

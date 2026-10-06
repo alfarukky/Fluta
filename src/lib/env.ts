@@ -17,6 +17,15 @@ const serverEnvSchema = z.object({
   BETTER_AUTH_SECRET: z.string().min(32, "must be at least 32 characters"),
   // The app's public origin, e.g. http://localhost:3000.
   BETTER_AUTH_URL: z.url({ protocol: /^https?$/, error: "must be an http(s) URL" }),
+  // Cloudflare R2 (S3 API) for store logos. Development and test use their
+  // own bucket, never production's; tests replace R2 with a fake.
+  R2_ACCOUNT_ID: z.string().min(1, "is required"),
+  R2_ACCESS_KEY_ID: z.string().min(1, "is required"),
+  R2_SECRET_ACCESS_KEY: z.string().min(1, "is required"),
+  R2_BUCKET: z.string().min(1, "is required"),
+  // The bucket's public address (r2.dev or a custom domain). Logos are served
+  // from here, never through the app's own origin.
+  R2_PUBLIC_URL: z.url({ protocol: /^https$/, error: "must be an https URL" }),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -48,6 +57,13 @@ export function getServerEnv(): ServerEnv {
 // `next build` prerenders pages (builds must work without secrets, e.g. in CI).
 export function isNodeServerStartup(): boolean {
   return process.env.NEXT_RUNTIME === "nodejs" && process.env.NEXT_PHASE !== "phase-production-build";
+}
+
+// For next.config.ts, which runs during `next build` without secrets: the R2
+// public address if it is set and valid, otherwise undefined (never throws).
+export function readR2PublicUrl(): URL | undefined {
+  const parsed = serverEnvSchema.shape.R2_PUBLIC_URL.safeParse(process.env.R2_PUBLIC_URL);
+  return parsed.success ? new URL(parsed.data) : undefined;
 }
 
 export function isDevelopment(): boolean {

@@ -7,6 +7,11 @@ const VALID = {
   DATABASE_BRANCH: "development",
   BETTER_AUTH_SECRET: "a-test-secret-that-is-at-least-32-characters",
   BETTER_AUTH_URL: "http://localhost:3000",
+  R2_ACCOUNT_ID: "account",
+  R2_ACCESS_KEY_ID: "access-key",
+  R2_SECRET_ACCESS_KEY: "secret-key",
+  R2_BUCKET: "fluta-test",
+  R2_PUBLIC_URL: "https://logos.example.com",
 };
 
 describe("parseServerEnv", () => {
@@ -31,6 +36,12 @@ describe("parseServerEnv", () => {
   it("rejects a short auth secret and a non-http auth URL", () => {
     expect(() => parseServerEnv({ ...VALID, BETTER_AUTH_SECRET: "short", BETTER_AUTH_URL: "ftp://x" })).toThrow(
       /BETTER_AUTH_SECRET: must be at least 32 characters[\s\S]*BETTER_AUTH_URL: must be an http\(s\) URL/,
+    );
+  });
+
+  it("requires the R2 settings and an https public URL", () => {
+    expect(() => parseServerEnv({ ...VALID, R2_BUCKET: "", R2_PUBLIC_URL: "http://logos.example.com" })).toThrow(
+      /R2_BUCKET: is required[\s\S]*R2_PUBLIC_URL: must be an https URL/,
     );
   });
 
