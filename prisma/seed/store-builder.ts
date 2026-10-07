@@ -7,6 +7,7 @@ import {
   type PrismaClient,
 } from "@/generated/prisma/client";
 
+import { toMatchKey } from "@/lib/match-key";
 import { createMembership } from "@/server/data/memberships";
 
 import { lagosDate } from "./helpers";
@@ -61,6 +62,7 @@ export async function seedStore(
       prisma.service.create({
         data: {
           ...service,
+          nameKey: toMatchKey(service.name),
           // Per-kg services always require a quote.
           requiresQuote: service.pricingType === PricingType.PER_KG || (service.requiresQuote ?? false),
           storeId,

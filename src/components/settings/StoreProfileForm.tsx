@@ -7,6 +7,7 @@ import { saveStoreProfile, type ProfileFormValues } from "@/actions/store-settin
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { InputWithPrefix } from "@/components/ui/input-with-prefix";
 import { Textarea } from "@/components/ui/textarea";
 
 import { describedBy, FormField } from "./FormField";
@@ -85,18 +86,14 @@ export function StoreProfileForm({ initialValues, slug, linkPrefix, children }: 
           </FormField>
 
           <FormField id="store-slug" label="Store link" hint={HINTS.slug}>
-            <div className="flex h-11 min-w-0 items-stretch overflow-hidden rounded-lg border border-input bg-muted">
-              <span className="type-body-sm hidden items-center border-r border-input px-3 text-muted-foreground xs:flex">
-                {linkPrefix}
-              </span>
-              <input
-                id="store-slug"
-                value={slug}
-                readOnly
-                aria-describedby="store-slug-hint"
-                className="type-body-sm min-w-0 flex-1 bg-transparent px-3 text-foreground outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              />
-            </div>
+            <InputWithPrefix
+              id="store-slug"
+              value={slug}
+              readOnly
+              aria-describedby="store-slug-hint"
+              prefix={linkPrefix}
+              prefixClassName="hidden xs:flex"
+            />
           </FormField>
 
           <FormField id="store-description" label="Description" hint={HINTS.description} error={errors.description}>

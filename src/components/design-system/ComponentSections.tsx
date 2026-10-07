@@ -61,7 +61,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { InputWithPrefix } from "@/components/ui/input-with-prefix";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -74,6 +77,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SAMPLE_STORE, type BadgeTone } from "./sample-data";
 import { ShowcaseGroup, ShowcaseSection } from "./ShowcaseSection";
@@ -257,6 +261,59 @@ export function InputsSection() {
             />
           </div>
         </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="ds-price">Price</Label>
+          <InputWithPrefix id="ds-price" prefix="₦" defaultValue="1,500" inputMode="decimal" autoComplete="off" />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="ds-link">Store link</Label>
+          <InputWithPrefix id="ds-link" prefix="fluta.app/store/" defaultValue="freshfold-laundry" readOnly />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="ds-category">Category</Label>
+          <Select defaultValue="wash-iron">
+            <SelectTrigger id="ds-category" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              <SelectItem value="all">All categories</SelectItem>
+              <SelectItem value="wash-iron">Wash &amp; iron</SelectItem>
+              <SelectItem value="wash-fold">Wash &amp; fold</SelectItem>
+              <SelectItem value="household">Household</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-start justify-between gap-component rounded-lg border border-border p-3">
+          <div className="flex flex-col gap-0.5">
+            <Label htmlFor="ds-quote">Quote required</Label>
+            <p id="ds-quote-hint" className="type-caption text-muted-foreground">
+              Staff confirm the final price after inspection.
+            </p>
+          </div>
+          <Switch id="ds-quote" defaultChecked aria-describedby="ds-quote-hint" className="mt-1" />
+        </div>
+        <fieldset className="flex flex-col gap-2 md:col-span-2">
+          <legend className="type-label mb-2 text-foreground">Pricing</legend>
+          <RadioGroup defaultValue="per-item" className="gap-2 md:grid-cols-3">
+            {[
+              { value: "per-item", label: "Per item", hint: "Each piece, like a shirt." },
+              { value: "per-kg", label: "Per kg", hint: "Weighed at the store." },
+              { value: "per-package", label: "Per package", hint: "A fixed bundle." },
+            ].map((option) => (
+              <Label
+                key={option.value}
+                htmlFor={`ds-pricing-${option.value}`}
+                className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-border p-3 has-data-checked:border-primary has-data-checked:bg-accent/40"
+              >
+                <RadioGroupItem id={`ds-pricing-${option.value}`} value={option.value} className="mt-0.5" />
+                <span className="flex flex-col gap-0.5">
+                  <span className="type-label text-foreground">{option.label}</span>
+                  <span className="type-caption font-normal text-muted-foreground">{option.hint}</span>
+                </span>
+              </Label>
+            ))}
+          </RadioGroup>
+        </fieldset>
       </div>
     </ShowcaseSection>
   );
