@@ -89,6 +89,8 @@ const BUTTON_VARIANTS = [
   "outline",
   "ghost",
   "destructive",
+  "subtle",
+  "subtle-destructive",
 ] as const;
 
 const BADGE_TONES: BadgeTone[] = ["neutral", "success", "warning", "error", "info"];
@@ -155,7 +157,7 @@ export function ButtonsSection() {
           <div className="flex flex-wrap gap-component">
             {BUTTON_VARIANTS.map((variant) => (
               <Button key={variant} variant={variant} className="capitalize">
-                {variant}
+                {variant.replace("-", " ")}
               </Button>
             ))}
             <Button variant="link">Link</Button>
@@ -165,9 +167,29 @@ export function ButtonsSection() {
           <div className="flex flex-wrap gap-component">
             {BUTTON_VARIANTS.map((variant) => (
               <Button key={variant} variant={variant} disabled className="capitalize">
-                {variant}
+                {variant.replace("-", " ")}
               </Button>
             ))}
+          </div>
+        </ShowcaseGroup>
+        <ShowcaseGroup title="Row actions (table rows and list cards)">
+          <div className="flex flex-col gap-component">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="subtle" size="sm">
+                Edit
+              </Button>
+              <Button variant="subtle-destructive" size="sm">
+                Disable
+              </Button>
+              <Button variant="subtle" size="sm">
+                Enable
+              </Button>
+            </div>
+            <p className="type-caption max-w-xl text-muted-foreground">
+              Subtle at rest so a row of them stays calm, with a stronger hover and a full-strength focus ring.
+              Status changes such as Disable turn to the error tone on hover. Small (36px) in desktop table rows;
+              default size (44px) on mobile cards.
+            </p>
           </div>
         </ShowcaseGroup>
         <ShowcaseGroup title="Sizes, icons and loading">

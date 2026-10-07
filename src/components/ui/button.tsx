@@ -18,6 +18,15 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/15 focus-visible:border-destructive/40 focus-visible:ring-destructive/20",
         link: "text-primary underline-offset-4 hover:underline",
+        // Quiet but visible actions, such as table-row Edit: a filled chip
+        // with a border at rest, a stronger hover, and a full-strength focus
+        // ring. Quieter than primary.
+        subtle:
+          "border-input bg-muted text-foreground hover:border-foreground/40 hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring aria-expanded:bg-accent aria-expanded:text-accent-foreground",
+        // Same as subtle at rest; the error tone on hover signals a status
+        // change (row-level Disable).
+        "subtle-destructive":
+          "border-input bg-muted text-foreground hover:border-error/50 hover:bg-error/10 hover:text-error focus-visible:ring-ring",
       },
       // default/icon meet the 44px touch-target minimum; sm is for dense desktop rows.
       size: {

@@ -36,12 +36,13 @@ function ToggleButton({ service, busy, onToggleActive, compact = false }: {
   service: CatalogueService;
   busy: boolean;
   onToggleActive: (service: CatalogueService) => void;
-  // Small ghost button for table rows; full-size outline on cards.
+  // Small for table rows; full size (44px) on cards.
   compact?: boolean;
 }) {
   return (
     <Button
-      variant={compact ? "ghost" : "outline"}
+      // Disable warns on hover; Enable is a plain action.
+      variant={service.isActive ? "subtle-destructive" : "subtle"}
       size={compact ? "sm" : "default"}
       onClick={() => onToggleActive(service)}
       disabled={busy}
@@ -56,7 +57,7 @@ function ToggleButton({ service, busy, onToggleActive, compact = false }: {
 // width, so nothing overlaps or scrolls sideways at 1024px.
 export function ServiceTable({ services, busyIds, onEdit, onToggleActive }: ServiceListProps) {
   return (
-    <div className="hidden rounded-xl border border-border bg-card lg:block">
+    <div className="hidden overflow-hidden rounded-xl border border-border bg-card lg:block">
       <Table>
         <TableHeader>
           <TableRow>
@@ -99,8 +100,8 @@ export function ServiceTable({ services, busyIds, onEdit, onToggleActive }: Serv
                 <StatusBadge isActive={service.isActive} />
               </TableCell>
               <TableCell className="pr-card text-right">
-                <div className="flex justify-end gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => onEdit(service)} aria-label={`Edit ${service.name}`}>
+                <div className="flex justify-end gap-2">
+                  <Button variant="subtle" size="sm" onClick={() => onEdit(service)} aria-label={`Edit ${service.name}`}>
                     Edit
                   </Button>
                   <ToggleButton service={service} busy={busyIds.has(service.id)} onToggleActive={onToggleActive} compact />
@@ -140,7 +141,7 @@ export function ServiceCards({ services, busyIds, onEdit, onToggleActive }: Serv
           </div>
 
           <div className="grid grid-cols-2 gap-2 border-t border-border pt-3">
-            <Button variant="outline" onClick={() => onEdit(service)} aria-label={`Edit ${service.name}`}>
+            <Button variant="subtle" onClick={() => onEdit(service)} aria-label={`Edit ${service.name}`}>
               Edit
             </Button>
             <ToggleButton service={service} busy={busyIds.has(service.id)} onToggleActive={onToggleActive} />

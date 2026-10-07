@@ -18,11 +18,17 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   )
 }
 
+// The header row sits on the muted surface with semibold labels, so it stands
+// apart from data rows in both themes. Wrap a Table in a container with
+// overflow-hidden when the container has rounded corners.
 function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return (
     <thead
       data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
+      className={cn(
+        "bg-muted [&_tr]:border-b [&_tr]:border-input [&_tr]:hover:bg-transparent",
+        className
+      )}
       {...props}
     />
   )
@@ -69,7 +75,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "h-10 px-2 text-left align-middle font-semibold whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}

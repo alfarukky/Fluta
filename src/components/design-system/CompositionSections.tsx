@@ -211,7 +211,10 @@ function RecentOrders() {
               <TableHead>Services</TableHead>
               <TableHead>Stage</TableHead>
               <TableHead>Payment</TableHead>
-              <TableHead className="pr-card text-right">Total</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+              <TableHead className="pr-card text-right">
+                <span className="sr-only">Actions</span>
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -234,8 +237,11 @@ function RecentOrders() {
                 <TableCell>
                   <Badge variant={order.payment.tone}>{order.payment.label}</Badge>
                 </TableCell>
-                <TableCell className="type-label pr-card text-right">
-                  {order.total}
+                <TableCell className="type-label text-right">{order.total}</TableCell>
+                <TableCell className="pr-card text-right">
+                  <Button variant="subtle" size="sm" aria-label={`View order ${order.number}`}>
+                    View
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
