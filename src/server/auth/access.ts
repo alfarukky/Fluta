@@ -10,7 +10,11 @@ export type SessionUser = Auth["$Infer"]["Session"]["user"];
 
 export type AccessDenied =
   | { allowed: false; status: 401; reason: "UNAUTHENTICATED" }
-  | { allowed: false; status: 403; reason: "NO_ACTIVE_MEMBERSHIP" | "ROLE_NOT_PERMITTED" | "STORE_UNAVAILABLE" | "NOT_FLUTA_ADMIN" };
+  | {
+      allowed: false;
+      status: 403;
+      reason: "NO_ACTIVE_MEMBERSHIP" | "ROLE_NOT_PERMITTED" | "STORE_UNAVAILABLE" | "EDITING_NOT_ALLOWED" | "NOT_FLUTA_ADMIN";
+    };
 
 export type StoreMemberAccess =
   | {
@@ -70,6 +74,34 @@ export function checkStoreMember(
   if (!access.canWorkOnExistingOrders) return { allowed: false, status: 403, reason: "STORE_UNAVAILABLE" };
 
   return { allowed: true, user, membership: { id: membership.id, role: membership.role }, store, access };
+}
+
+// For every owner editing operation (Server Action or API route): an owner of
+// a store that getStoreAccess() allows to change its settings, services, and
+// staff. Today that is the same rule as the membership gate above, so the
+// extra refusal can't happen yet; it is kept separate so edit and view rules
+// can differ later by changing getStoreAccess() alone.
+export function checkOwnerCanEdit(lookup: StoreMembershipLookup, now = new Date()): StoreMemberAccess {
+  const result = checkStoreMember(lookup, { role: "OWNER" }, now);
+  if (result.allowed && !result.access.canEditSettings) {
+    return { allowed: false, status: 403, reason: "EDITING_NOT_ALLOWED" };
+  }
+  return result;
+}
+
+// What an owner editing operation tells a refused caller. A store that can't
+// be changed is explained as such, whichever check refused it.
+export const STORE_LOCKED_MESSAGE = "Your store can't be changed right now. Contact Fluta support for help.";
+
+export function ownerEditRefusalMessage(denied: AccessDenied, notOwnerMessage: string): string {
+  if (denied.status === 401) return "Sign in again to continue.";
+  return denied.reason === "STORE_UNAVAILABLE" || denied.reason === "EDITING_NOT_ALLOWED"
+    ? STORE_LOCKED_MESSAGE
+    : notOwnerMessage;
+}
+
+export async function authorizeOwnerCanEdit(requestHeaders: Headers, now = new Date()): Promise<StoreMemberAccess> {
+  return checkOwnerCanEdit(await lookupStoreMembership(requestHeaders), now);
 }
 
 export async function authorizeStoreMember(

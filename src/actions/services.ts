@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 
 import { serviceFormSchema, serviceIdSchema } from "@/schemas/services";
-import { requireStoreMember } from "@/server/auth/session";
+import { ownerEditRefusalMessage } from "@/server/auth/access";
+import { requireOwnerCanEdit } from "@/server/auth/session";
 import {
   createCatalogueService,
   setCatalogueServiceActive,
@@ -14,7 +15,8 @@ import {
 import type { CatalogueService } from "@/types/services";
 
 // Owner-only service catalogue actions. Each one checks the membership itself
-// (every action is its own request), and the store is always the owner's own
+// (every action is its own request) and that the store may be edited
+// (requireOwnerCanEdit), and the store is always the owner's own
 // store from that membership: any store ID in the form data is ignored, and a
 // service ID is only acted on if it belongs to that store.
 
@@ -37,8 +39,8 @@ const SAVE_ERRORS: Record<ServiceSaveError, { message: string; field?: string }>
 };
 
 export async function createService(formData: FormData): Promise<ServiceActionResult> {
-  const member = await requireStoreMember({ role: "OWNER" });
-  if (!member.allowed) return { ok: false, message: NOT_OWNER };
+  const member = await requireOwnerCanEdit();
+  if (!member.allowed) return { ok: false, message: ownerEditRefusalMessage(member, NOT_OWNER) };
 
   const parsed = serviceFormSchema.safeParse(pick(formData, SERVICE_FIELDS));
   if (!parsed.success) return invalid(parsed.error.issues);
@@ -47,8 +49,8 @@ export async function createService(formData: FormData): Promise<ServiceActionRe
 }
 
 export async function updateService(serviceId: string, formData: FormData): Promise<ServiceActionResult> {
-  const member = await requireStoreMember({ role: "OWNER" });
-  if (!member.allowed) return { ok: false, message: NOT_OWNER };
+  const member = await requireOwnerCanEdit();
+  if (!member.allowed) return { ok: false, message: ownerEditRefusalMessage(member, NOT_OWNER) };
 
   const id = serviceIdSchema.safeParse(serviceId);
   if (!id.success) return { ok: false, message: SAVE_ERRORS.NOT_FOUND.message };
@@ -67,8 +69,8 @@ export async function enableService(serviceId: string): Promise<ServiceActionRes
 }
 
 async function setActive(serviceId: string, isActive: boolean): Promise<ServiceActionResult> {
-  const member = await requireStoreMember({ role: "OWNER" });
-  if (!member.allowed) return { ok: false, message: NOT_OWNER };
+  const member = await requireOwnerCanEdit();
+  if (!member.allowed) return { ok: false, message: ownerEditRefusalMessage(member, NOT_OWNER) };
 
   const id = serviceIdSchema.safeParse(serviceId);
   if (!id.success) return { ok: false, message: SAVE_ERRORS.NOT_FOUND.message };

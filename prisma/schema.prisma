@@ -294,14 +294,17 @@ model ServiceArea {
   id          String         @id @default(cuid())
   storeId     String
   name        String
+  nameKey     String // name trimmed, spaces collapsed, lowercased (src/lib/match-key.ts)
   chargeType  AreaChargeType
-  fixedCharge Int? // minor units (kobo); required when chargeType = FIXED
+  fixedCharge Int? // minor units (kobo); required when chargeType = FIXED, NULL when QUOTE_REQUIRED (CHECK)
   isActive    Boolean        @default(true)
+  updatedAt   DateTime       @updatedAt
 
   store  Store   @relation(fields: [storeId], references: [id])
   orders Order[]
 
   @@unique([storeId, id]) // target for tenant-safe composite FKs
+  @@unique([storeId, nameKey]) // names unique per store, ignoring case and extra spaces
   @@index([storeId])
 }
 

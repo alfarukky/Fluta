@@ -1,6 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_TIME_ZONE, formatLongDate, getGreeting, getHourInTimeZone, resolveTimeZone } from "./time";
+import {
+  DEFAULT_TIME_ZONE,
+  describeTimeZone,
+  formatCalendarDate,
+  formatLongDate,
+  getGreeting,
+  getHourInTimeZone,
+  getLocalDateKey,
+  parseDateKey,
+  resolveTimeZone,
+} from "./time";
 
 const LAGOS = "Africa/Lagos"; // UTC+1, no daylight saving
 const LONDON = "Europe/London"; // UTC+1 in October (BST)
@@ -76,5 +86,37 @@ describe("resolveTimeZone", () => {
     const instant = new Date("2026-10-05T16:30:00Z"); // 17:30 in Lagos
     expect(formatLongDate(instant, "not a zone")).toBe("Monday, 5 October 2026");
     expect(getGreeting(instant, "not a zone")).toBe("Good evening");
+  });
+});
+
+describe("getLocalDateKey", () => {
+  it("gives the calendar date in the store's time zone", () => {
+    // 23:30 UTC on 6 October is already 7 October in Lagos, still 6 October in New York.
+    const late = new Date("2026-10-06T23:30:00Z");
+    expect(getLocalDateKey(late, LAGOS)).toBe("2026-10-07");
+    expect(getLocalDateKey(late, NEW_YORK)).toBe("2026-10-06");
+  });
+});
+
+describe("parseDateKey", () => {
+  it("accepts real dates written YYYY-MM-DD", () => {
+    expect(parseDateKey("2026-10-07")).toBe("2026-10-07");
+    expect(parseDateKey("2028-02-29")).toBe("2028-02-29");
+  });
+
+  it("refuses anything else", () => {
+    for (const text of ["2026-02-30", "2026-13-01", "7/10/2026", "2026-10-7", ""]) expect(parseDateKey(text)).toBeNull();
+  });
+});
+
+describe("formatCalendarDate", () => {
+  it("shows the date itself, whatever the runtime's time zone", () => {
+    expect(formatCalendarDate("2026-10-09")).toBe("Fri, 9 Oct 2026");
+  });
+});
+
+describe("describeTimeZone", () => {
+  it("names the zone and its ID", () => {
+    expect(describeTimeZone(LAGOS, new Date("2026-10-07T12:00:00Z"))).toMatch(/^West Africa .*Time \(Africa\/Lagos\)$/);
   });
 });

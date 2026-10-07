@@ -1,4 +1,4 @@
-import type { PricingType } from "@/generated/prisma/enums";
+import type { AreaChargeType, PricingType } from "@/generated/prisma/enums";
 
 // Money is always an integer number of kobo (₦1 = 100 kobo). Formatting and
 // parsing live only here.
@@ -58,4 +58,16 @@ export function formatServicePrice({ price, pricingType, requiresQuote }: Priced
   const perUnit = `${formatNaira(price)} / ${PRICING_UNITS[pricingType]}`;
   if (!requiresQuote) return perUnit;
   return price === 0 ? "Price on inspection" : `from ${perUnit}`;
+}
+
+export interface AreaCharge {
+  chargeType: AreaChargeType;
+  fixedCharge: number | null;
+}
+
+// A service area's pickup/delivery charge (one per order, covering pickup and
+// return delivery): "₦1,500", "Free" for ₦0, or "Quote required".
+export function formatAreaCharge({ chargeType, fixedCharge }: AreaCharge): string {
+  if (chargeType === "QUOTE_REQUIRED" || fixedCharge === null) return "Quote required";
+  return fixedCharge === 0 ? "Free" : formatNaira(fixedCharge);
 }

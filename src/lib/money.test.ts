@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatNaira, formatNairaInput, formatServicePrice, parseNairaToKobo } from "./money";
+import { formatAreaCharge, formatNaira, formatNairaInput, formatServicePrice, parseNairaToKobo } from "./money";
 
 describe("formatNaira", () => {
   it("formats whole naira with thousands separators", () => {
@@ -93,5 +93,13 @@ describe("formatServicePrice", () => {
     for (const pricingType of ["PER_ITEM", "PER_KG", "PER_PACKAGE"] as const) {
       expect(formatServicePrice({ price: 0, pricingType, requiresQuote: true })).toBe("Price on inspection");
     }
+  });
+});
+
+describe("formatAreaCharge", () => {
+  it("shows a fixed charge in Naira, ₦0 as Free, and quote-required areas as such", () => {
+    expect(formatAreaCharge({ chargeType: "FIXED", fixedCharge: 150_000 })).toBe("₦1,500");
+    expect(formatAreaCharge({ chargeType: "FIXED", fixedCharge: 0 })).toBe("Free");
+    expect(formatAreaCharge({ chargeType: "QUOTE_REQUIRED", fixedCharge: null })).toBe("Quote required");
   });
 });

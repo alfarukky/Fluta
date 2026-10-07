@@ -55,7 +55,9 @@ export async function seedStore(
   await seedMemberships(prisma, storeId, members);
 
   const areas = await Promise.all(
-    spec.areas.map((area) => prisma.serviceArea.create({ data: { ...area, storeId } })),
+    spec.areas.map((area) =>
+      prisma.serviceArea.create({ data: { ...area, nameKey: toMatchKey(area.name), storeId } }),
+    ),
   );
   const services = await Promise.all(
     spec.services.map((service) =>

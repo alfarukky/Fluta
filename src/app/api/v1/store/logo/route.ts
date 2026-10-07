@@ -1,6 +1,6 @@
 import { getServerEnv } from "@/lib/env";
 import { readBodyWithLimit } from "@/lib/read-body";
-import { authorizeStoreMember } from "@/server/auth/access";
+import { authorizeOwnerCanEdit, ownerEditRefusalMessage } from "@/server/auth/access";
 import { LOGO_MAX_BYTES } from "@/server/domain/logo-file";
 import { uploadStoreLogo, type LogoUploadResult } from "@/server/services/store-settings";
 
@@ -26,9 +26,11 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ ok: false, message: "This request isn't allowed." }, { status: 403 });
   }
 
-  const member = await authorizeStoreMember(request.headers, { role: "OWNER" });
+  // Before the body is read or anything reaches R2, so a refused request
+  // never leaves a file behind. A refusal is a real 401/403, never a 200.
+  const member = await authorizeOwnerCanEdit(request.headers);
   if (!member.allowed) {
-    const message = member.status === 401 ? "Sign in again to continue." : "Only the store owner can change the logo.";
+    const message = ownerEditRefusalMessage(member, "Only the store owner can change the logo.");
     return Response.json({ ok: false, message }, { status: member.status });
   }
 

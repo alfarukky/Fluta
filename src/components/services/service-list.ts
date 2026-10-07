@@ -1,4 +1,5 @@
 import { toMatchKey } from "@/lib/match-key";
+import { rememberSavedRecord, withSavedRecords, type SavedRecords } from "@/components/shared/saved-records";
 import type { CatalogueService } from "@/types/services";
 
 // Sorting, searching and the category filter for the services page. Category
@@ -69,39 +70,18 @@ export function filterServices(
   );
 }
 
-// Services the page saved itself (the copy each action returned), by ID. They
-// show at once, without waiting for the page's refreshed data.
-export type SavedServices = ReadonlyMap<string, CatalogueService>;
+// Services the page saved itself (the copy each action returned), by ID; the
+// newest copy wins (src/components/shared/saved-records.ts).
+export type SavedServices = SavedRecords<CatalogueService>;
 
-const isNewer = (a: CatalogueService, b: CatalogueService) => a.updatedAt.getTime() > b.updatedAt.getTime();
-
-// The newest copy of every service: a saved copy replaces the server's until
-// the server's is as new (so an older refresh, say the one from Disable
-// arriving after Undo, can't bring back a stale state), and services just
-// added appear before the server lists them.
 export function withSavedServices(services: readonly CatalogueService[], saved: SavedServices): CatalogueService[] {
-  const merged = services.map((service) => {
-    const copy = saved.get(service.id);
-    return copy && isNewer(copy, service) ? copy : service;
-  });
-  const listed = new Set(services.map((service) => service.id));
-  for (const copy of saved.values()) if (!listed.has(copy.id)) merged.push(copy);
-  return merged;
+  return withSavedRecords(services, saved);
 }
 
-// Adds a saved copy (unless a newer one is already saved), dropping copies the
-// server has caught up with.
 export function rememberSavedService(
   saved: SavedServices,
   service: CatalogueService,
   services: readonly CatalogueService[],
 ): SavedServices {
-  const byId = new Map(services.map((listed) => [listed.id, listed]));
-  const next = new Map<string, CatalogueService>();
-  for (const copy of [...saved.values(), service]) {
-    const listed = byId.get(copy.id);
-    const kept = next.get(copy.id);
-    if ((!listed || isNewer(copy, listed)) && (!kept || isNewer(copy, kept))) next.set(copy.id, copy);
-  }
-  return next;
+  return rememberSavedRecord(saved, service, services);
 }

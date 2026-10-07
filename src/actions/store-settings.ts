@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 
 import { formatPhone } from "@/lib/phone";
 import { storeBrandingSchema, storeProfileSchema } from "@/schemas/store-settings";
-import { requireStoreMember } from "@/server/auth/session";
+import { ownerEditRefusalMessage } from "@/server/auth/access";
+import { requireOwnerCanEdit } from "@/server/auth/session";
 import { removeStoreLogo as removeLogo, saveStoreBranding as saveBranding, saveStoreProfile as saveProfile } from "@/server/services/store-settings";
 
 // Owner-only settings actions. Each one checks the membership itself (every
-// action is its own request), and the store is always the owner's own store
+// action is its own request) and that the store may be edited
+// (requireOwnerCanEdit), and the store is always the owner's own store
 // from that membership: any store ID in the form data is ignored.
 
 export interface ProfileFormValues {
@@ -32,8 +34,8 @@ const NOT_OWNER = "Only the store owner can change store settings.";
 const SAVE_FAILED = "We couldn't save your changes. Please try again.";
 
 export async function saveStoreProfile(formData: FormData): Promise<SettingsActionResult<ProfileFormValues>> {
-  const member = await requireStoreMember({ role: "OWNER" });
-  if (!member.allowed) return { ok: false, message: NOT_OWNER };
+  const member = await requireOwnerCanEdit();
+  if (!member.allowed) return { ok: false, message: ownerEditRefusalMessage(member, NOT_OWNER) };
 
   const parsed = storeProfileSchema.safeParse(pick(formData, ["name", "description", "address", "phone", "email"]));
   if (!parsed.success) return invalid(parsed.error.issues);
@@ -61,8 +63,8 @@ export async function saveStoreProfile(formData: FormData): Promise<SettingsActi
 }
 
 export async function saveStoreBranding(formData: FormData): Promise<SettingsActionResult<BrandingFormValues>> {
-  const member = await requireStoreMember({ role: "OWNER" });
-  if (!member.allowed) return { ok: false, message: NOT_OWNER };
+  const member = await requireOwnerCanEdit();
+  if (!member.allowed) return { ok: false, message: ownerEditRefusalMessage(member, NOT_OWNER) };
 
   const parsed = storeBrandingSchema.safeParse(pick(formData, ["primaryColor", "accentColor"]));
   if (!parsed.success) return invalid(parsed.error.issues);
@@ -83,8 +85,8 @@ export async function saveStoreBranding(formData: FormData): Promise<SettingsAct
 }
 
 export async function removeStoreLogo(): Promise<SettingsActionResult> {
-  const member = await requireStoreMember({ role: "OWNER" });
-  if (!member.allowed) return { ok: false, message: NOT_OWNER };
+  const member = await requireOwnerCanEdit();
+  if (!member.allowed) return { ok: false, message: ownerEditRefusalMessage(member, NOT_OWNER) };
 
   try {
     await removeLogo(member.store.id);

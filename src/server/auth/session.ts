@@ -10,6 +10,7 @@ import { findPlatformRole } from "@/server/data/access";
 
 import {
   authorizeFlutaAdmin,
+  checkOwnerCanEdit,
   checkStoreMember,
   getSessionFromHeaders,
   lookupStoreMembership,
@@ -46,6 +47,15 @@ export async function requireStoreMember(
   options: { role?: StoreRole } = {},
 ): Promise<Exclude<StoreMemberAccess, { status: 401 }>> {
   const result = checkStoreMember(await lookupCurrentStoreMembership(), options);
+  if (result.allowed || result.status !== 401) return result;
+  redirect(SIGN_IN_PATH);
+}
+
+// For every owner editing action: requireStoreMember({ role: "OWNER" }) plus
+// getStoreAccess()'s canEditSettings (see checkOwnerCanEdit). Pages keep using
+// requireStoreMember, so viewing follows the membership gate alone.
+export async function requireOwnerCanEdit(): Promise<Exclude<StoreMemberAccess, { status: 401 }>> {
+  const result = checkOwnerCanEdit(await lookupCurrentStoreMembership());
   if (result.allowed || result.status !== 401) return result;
   redirect(SIGN_IN_PATH);
 }
