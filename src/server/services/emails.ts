@@ -42,7 +42,7 @@ export function buildPasswordResetEmail(input: { to: string; storeName: string |
   const heading = input.storeName ?? "Fluta";
   const asked = "Someone asked to reset the password for your Fluta account.";
   const expiry = `This link works once and expires in ${RESET_LINK_VALID_MINUTES / 60} hour.`;
-  const ignore = "If you didn't ask for this, you can ignore this email; your password stays the same.";
+  const ignore = "If you didn't ask for this, you can ignore this email, your password stays the same.";
   return {
     to: input.to,
     subject: `${heading}: reset your Fluta password`,
