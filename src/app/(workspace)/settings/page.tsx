@@ -4,9 +4,9 @@ import type { Metadata } from "next";
 import { AccessDenied } from "@/components/auth/AccessDenied";
 import { BrandingForm } from "@/components/settings/BrandingForm";
 import { CustomerBookingCard } from "@/components/settings/CustomerBookingCard";
+import { SettingsNav } from "@/components/settings/SettingsNav";
 import { StoreProfileForm } from "@/components/settings/StoreProfileForm";
 import { Card, CardContent } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { PageHeader } from "@/components/workspace/PageHeader";
 import { summarizeStoreStatus } from "@/components/workspace/store-status";
 import { getBookingShare } from "@/lib/booking-link";
@@ -30,7 +30,7 @@ export default async function SettingsPage() {
     <main className="page-container flex flex-1 flex-col gap-section py-section">
       <div className="flex flex-col gap-section">
         <PageHeader title="Store settings" description="Keep your store identity accurate for you and your customers." />
-        <Separator />
+        <SettingsNav />
       </div>
 
       <div className="grid items-start gap-grid lg:grid-cols-3">

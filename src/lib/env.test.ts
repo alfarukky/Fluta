@@ -12,11 +12,22 @@ const VALID = {
   R2_SECRET_ACCESS_KEY: "secret-key",
   R2_BUCKET: "fluta-test",
   R2_PUBLIC_URL: "https://logos.example.com",
+  SMTP_HOST: "smtp.example.com",
+  SMTP_PORT: "465",
+  SMTP_USER: "mailer@example.com",
+  SMTP_PASS: "app-password",
+  EMAIL_FROM: "Fluta <mailer@example.com>",
 };
 
 describe("parseServerEnv", () => {
+  it("reads the SMTP port as a number and rejects a missing sender", () => {
+    expect(() => parseServerEnv({ ...VALID, SMTP_PORT: "smtp", EMAIL_FROM: "" })).toThrow(
+      /SMTP_PORT[\s\S]*EMAIL_FROM: is required/,
+    );
+  });
+
   it("accepts a complete environment", () => {
-    expect(parseServerEnv(VALID)).toEqual(VALID);
+    expect(parseServerEnv(VALID)).toEqual({ ...VALID, SMTP_PORT: 465 });
   });
 
   it("names every missing variable and points at .env.example", () => {

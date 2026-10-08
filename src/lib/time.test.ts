@@ -5,11 +5,14 @@ import {
   describeTimeZone,
   formatCalendarDate,
   formatLongDate,
+  formatTwelveHour,
+  fromTwelveHour,
   getGreeting,
   getHourInTimeZone,
   getLocalDateKey,
   parseDateKey,
   resolveTimeZone,
+  toTwelveHour,
 } from "./time";
 
 const LAGOS = "Africa/Lagos"; // UTC+1, no daylight saving
@@ -118,5 +121,47 @@ describe("formatCalendarDate", () => {
 describe("describeTimeZone", () => {
   it("names the zone and its ID", () => {
     expect(describeTimeZone(LAGOS, new Date("2026-10-07T12:00:00Z"))).toMatch(/^West Africa .*Time \(Africa\/Lagos\)$/);
+  });
+});
+
+describe("12-hour clock times", () => {
+  const cases = [
+    ["00:00", "12:00 AM"],
+    ["00:15", "12:15 AM"],
+    ["08:00", "8:00 AM"],
+    ["11:45", "11:45 AM"],
+    ["12:00", "12:00 PM"],
+    ["12:30", "12:30 PM"],
+    ["13:15", "1:15 PM"],
+    ["23:45", "11:45 PM"],
+  ] as const;
+
+  it.each(cases)("formats %s as %s", (stored, shown) => {
+    expect(formatTwelveHour(stored)).toBe(shown);
+  });
+
+  it.each(cases)("converts %s to 12-hour parts and back", (stored) => {
+    const parts = toTwelveHour(stored);
+    expect(parts).not.toBeNull();
+    expect(fromTwelveHour(parts!)).toBe(stored);
+  });
+
+  it("splits a time into hour, minutes and AM/PM", () => {
+    expect(toTwelveHour("08:00")).toEqual({ hour: 8, minute: "00", period: "AM" });
+    expect(toTwelveHour("12:00")).toEqual({ hour: 12, minute: "00", period: "PM" });
+    expect(toTwelveHour("00:00")).toEqual({ hour: 12, minute: "00", period: "AM" });
+    expect(toTwelveHour("00:15")).toEqual({ hour: 12, minute: "15", period: "AM" });
+  });
+
+  it("builds stored times from 12-hour parts", () => {
+    expect(fromTwelveHour({ hour: 12, minute: "00", period: "AM" })).toBe("00:00");
+    expect(fromTwelveHour({ hour: 12, minute: "15", period: "AM" })).toBe("00:15");
+    expect(fromTwelveHour({ hour: 12, minute: "00", period: "PM" })).toBe("12:00");
+    expect(fromTwelveHour({ hour: 8, minute: "30", period: "PM" })).toBe("20:30");
+  });
+
+  it("rejects anything that isn't HH:MM", () => {
+    for (const text of ["8:00", "24:00", "12:60", "", "noon"]) expect(toTwelveHour(text)).toBeNull();
+    expect(formatTwelveHour("noon")).toBe("noon");
   });
 });

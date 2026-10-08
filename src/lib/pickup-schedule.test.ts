@@ -9,7 +9,8 @@ import {
   parseClockTime,
 } from "./pickup-schedule";
 
-const shown = (open: string, close: string) => getPickupWindows(open, close).map(formatPickupWindow);
+const shown = (open: string, close: string) =>
+  getPickupWindows(open, close).map(({ start, end }) => `${start}–${end}`);
 
 describe("parseClockTime", () => {
   it("reads 24-hour HH:MM as minutes after midnight", () => {
@@ -95,5 +96,12 @@ describe("getPickupWindows", () => {
   it("gives no windows for invalid hours", () => {
     expect(shown("17:00", "08:00")).toEqual([]);
     expect(shown("08:10", "17:00")).toEqual([]);
+  });
+});
+
+describe("formatPickupWindow", () => {
+  it("shows the window in 12-hour time", () => {
+    expect(formatPickupWindow({ start: "08:00", end: "10:00" })).toBe("8:00 AM–10:00 AM");
+    expect(formatPickupWindow({ start: "11:30", end: "13:30" })).toBe("11:30 AM–1:30 PM");
   });
 });

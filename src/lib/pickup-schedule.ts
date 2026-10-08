@@ -3,6 +3,8 @@
 // (validation, src/server/domain/pickup-schedule.ts) and the fulfilment page's
 // live preview. Times are "HH:MM" (24-hour) in the store's time zone.
 
+import { formatTwelveHour } from "./time";
+
 export const TIME_STEP_MINUTES = 15;
 export const PICKUP_WINDOW_MINUTES = 120;
 
@@ -87,7 +89,7 @@ export function getPickupWindows(openTime: string, closeTime: string): PickupWin
   return windows;
 }
 
-// "08:00–10:00"
+// "8:00 AM–10:00 AM": stored 24-hour times shown in 12-hour form.
 export function formatPickupWindow({ start, end }: PickupWindow): string {
-  return `${start}–${end}`;
+  return `${formatTwelveHour(start)}–${formatTwelveHour(end)}`;
 }

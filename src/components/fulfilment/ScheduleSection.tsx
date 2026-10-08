@@ -147,10 +147,11 @@ export function ScheduleSection({
             )}
           </fieldset>
 
-          <div className="grid gap-form xs:grid-cols-2">
+          <div className="grid gap-form md:grid-cols-2">
             <FormField id={fieldId("open")} label="Opening time" error={errors.openTime}>
               <TimeSelect
                 id={fieldId("open")}
+                label="Opening time"
                 value={values.openTime}
                 onChange={(openTime) => setValues((current) => ({ ...current, openTime }))}
                 invalid={Boolean(errors.openTime)}
@@ -160,6 +161,7 @@ export function ScheduleSection({
             <FormField id={fieldId("close")} label="Closing time" error={errors.closeTime}>
               <TimeSelect
                 id={fieldId("close")}
+                label="Closing time"
                 value={values.closeTime}
                 onChange={(closeTime) => setValues((current) => ({ ...current, closeTime }))}
                 invalid={Boolean(errors.closeTime)}
@@ -177,7 +179,7 @@ export function ScheduleSection({
                   <span className="font-medium text-foreground">{windows.map(formatPickupWindow).join(", ")}</span>
                 </>
               ) : (
-                "Enter opening and closing times to see the 2-hour pickup windows customers choose from."
+                "Choose opening and closing times to see the 2-hour pickup windows customers choose from."
               )}
             </p>
           </div>

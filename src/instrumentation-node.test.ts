@@ -38,6 +38,11 @@ describe("validateEnvOrExit", () => {
     vi.stubEnv("R2_SECRET_ACCESS_KEY", "secret-key");
     vi.stubEnv("R2_BUCKET", "fluta-test");
     vi.stubEnv("R2_PUBLIC_URL", "https://logos.example.com");
+    vi.stubEnv("SMTP_HOST", "smtp.example.com");
+    vi.stubEnv("SMTP_PORT", "465");
+    vi.stubEnv("SMTP_USER", "mailer@example.com");
+    vi.stubEnv("SMTP_PASS", "app-password");
+    vi.stubEnv("EMAIL_FROM", "Fluta <mailer@example.com>");
     const validateEnvOrExit = await loadValidateEnvOrExit();
 
     validateEnvOrExit();

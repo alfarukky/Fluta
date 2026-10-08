@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import type { ServerEnv } from "@/lib/env";
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@/schemas/users";
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@/schemas/users";
 
 export function assertSeedAllowed(env: Pick<ServerEnv, "DATABASE_BRANCH">): void {
   if (env.DATABASE_BRANCH === "production") {
@@ -14,8 +14,8 @@ export function assertSeedAllowed(env: Pick<ServerEnv, "DATABASE_BRANCH">): void
 
 const seedPasswordSchema = z
   .string({ error: "is missing" })
-  .min(PASSWORD_MIN_LENGTH, `must be at least ${PASSWORD_MIN_LENGTH} characters`)
-  .max(PASSWORD_MAX_LENGTH, `must be at most ${PASSWORD_MAX_LENGTH} characters`);
+  .min(MIN_PASSWORD_LENGTH, `must be at least ${MIN_PASSWORD_LENGTH} characters`)
+  .max(MAX_PASSWORD_LENGTH, `must be at most ${MAX_PASSWORD_LENGTH} characters`);
 
 // The one password every seeded user signs in with. Read by the seed only (the
 // app's env.ts never sees it) and never set in production.

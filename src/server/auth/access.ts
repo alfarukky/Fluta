@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { StoreRole } from "@/generated/prisma/client";
-import { findActiveMembership, findPlatformRole, type ActiveMembership } from "@/server/data/access";
+import { findActiveMemberships, findPlatformRole, type ActiveMembership } from "@/server/data/access";
 import { getStoreAccess, type StoreAccess } from "@/server/domain/store-access";
 
 import { getAuth, type Auth } from "./auth";
@@ -13,7 +13,13 @@ export type AccessDenied =
   | {
       allowed: false;
       status: 403;
-      reason: "NO_ACTIVE_MEMBERSHIP" | "ROLE_NOT_PERMITTED" | "STORE_UNAVAILABLE" | "EDITING_NOT_ALLOWED" | "NOT_FLUTA_ADMIN";
+      reason:
+        | "NO_ACTIVE_MEMBERSHIP"
+        | "MEMBERSHIP_CONFLICT"
+        | "ROLE_NOT_PERMITTED"
+        | "STORE_UNAVAILABLE"
+        | "EDITING_NOT_ALLOWED"
+        | "NOT_FLUTA_ADMIN";
     };
 
 export type StoreMemberAccess =
@@ -36,20 +42,26 @@ export async function getSessionFromHeaders(requestHeaders: Headers) {
 }
 
 export type StoreMembershipLookup =
-  | { found: false; reason: "UNAUTHENTICATED" | "NO_ACTIVE_MEMBERSHIP" }
+  | { found: false; reason: "UNAUTHENTICATED" | "NO_ACTIVE_MEMBERSHIP" | "MEMBERSHIP_CONFLICT" }
   | { found: true; user: SessionUser; membership: ActiveMembership };
 
 // Session → active membership (from the database, every call). The store
 // always comes from the membership, never from the URL, body, query string,
 // or cookies. No role check here, so the result can be shared by every
-// caller in one request (see requireStoreMember).
+// caller in one request (see requireStoreMember). A user with more than one
+// active membership breaks the one-membership rule: access is refused and an
+// error logged, never one membership picked.
 export async function lookupStoreMembership(requestHeaders: Headers): Promise<StoreMembershipLookup> {
   const session = await getSessionFromHeaders(requestHeaders);
   if (!session) return { found: false, reason: "UNAUTHENTICATED" };
 
-  const membership = await findActiveMembership(session.user.id);
-  if (!membership) return { found: false, reason: "NO_ACTIVE_MEMBERSHIP" };
-  return { found: true, user: session.user, membership };
+  const memberships = await findActiveMemberships(session.user.id);
+  if (memberships.length === 0) return { found: false, reason: "NO_ACTIVE_MEMBERSHIP" };
+  if (memberships.length > 1) {
+    console.error(`[access] user ${session.user.id} has more than one active membership; access refused`);
+    return { found: false, reason: "MEMBERSHIP_CONFLICT" };
+  }
+  return { found: true, user: session.user, membership: memberships[0] };
 }
 
 // Lookup → role → getStoreAccess, for one caller's required role.

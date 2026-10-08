@@ -1,13 +1,15 @@
 "use client";
 
 import { LoaderCircleIcon } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
+import { takeSignInEmail } from "@/lib/sign-in-email";
 
 const TOO_MANY_REQUESTS = 429;
 
@@ -19,6 +21,17 @@ const UNEXPECTED_MESSAGE = "Something went wrong. Check your connection and try 
 
 export function SignInForm() {
   const router = useRouter();
+  const emailRef = useRef<HTMLInputElement>(null);
+
+  // After joining a store from an invitation, the email is filled in (handed
+  // over in sessionStorage, never in the URL).
+  useEffect(() => {
+    const email = takeSignInEmail();
+    if (email && emailRef.current && !emailRef.current.value) {
+      emailRef.current.value = email;
+      document.getElementById("password")?.focus();
+    }
+  }, []);
   const [showPassword, setShowPassword] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,11 +76,20 @@ export function SignInForm() {
           inputMode="email"
           placeholder="you@yourstore.com"
           required
+          ref={emailRef}
           aria-invalid={error === INVALID_CREDENTIALS_MESSAGE || undefined}
         />
       </div>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="password">Password</Label>
+        <div className="flex items-center justify-between gap-component">
+          <Label htmlFor="password">Password</Label>
+          <Link
+            href="/forgot-password"
+            className="type-caption rounded-sm text-primary underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <div className="relative">
           <Input
             id="password"

@@ -26,6 +26,15 @@ const serverEnvSchema = z.object({
   // The bucket's public address (r2.dev or a custom domain). Logos are served
   // from here, never through the app's own origin.
   R2_PUBLIC_URL: z.url({ protocol: /^https$/, error: "must be an https URL" }),
+  // SMTP for Fluta's emails (Gmail with an app password). Port 465 uses TLS
+  // from the start; any other port upgrades with STARTTLS. Tests replace the
+  // mailer with a fake, so .env.test only needs placeholder values.
+  SMTP_HOST: z.string().min(1, "is required"),
+  SMTP_PORT: z.coerce.number({ error: "must be a port number" }).int().min(1).max(65535),
+  SMTP_USER: z.string().min(1, "is required"),
+  SMTP_PASS: z.string().min(1, "is required"),
+  // The sender, e.g. "Fluta <you@gmail.com>". Gmail only sends as the signed-in account.
+  EMAIL_FROM: z.string().min(1, "is required"),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

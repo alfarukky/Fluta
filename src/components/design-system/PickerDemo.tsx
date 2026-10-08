@@ -26,7 +26,7 @@ export function PickerDemo({ dateLabel, timeLabel, today }: PickerDemoProps) {
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="ds-time">{timeLabel}</Label>
-        <TimeSelect id="ds-time" value={time} onChange={setTime} />
+        <TimeSelect id="ds-time" label={timeLabel} value={time} onChange={setTime} />
       </div>
     </>
   );

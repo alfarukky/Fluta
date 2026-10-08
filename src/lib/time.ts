@@ -106,3 +106,35 @@ export function describeTimeZone(timeZone: string, now: Date): string {
     .find((part) => part.type === "timeZoneName")?.value;
   return name && name !== zone ? `${name} (${zone})` : zone;
 }
+
+// Clock times are stored as 24-hour "HH:MM" and shown in 12-hour form.
+export type Meridiem = "AM" | "PM";
+
+export interface TwelveHourTime {
+  hour: number; // 1–12
+  minute: string; // "00"–"59"
+  period: Meridiem;
+}
+
+const CLOCK_TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+// "08:00" → 8:00 AM, "12:00" → 12:00 PM, "00:15" → 12:15 AM. Null unless the
+// text is exactly "HH:MM".
+export function toTwelveHour(time: string): TwelveHourTime | null {
+  const match = CLOCK_TIME.exec(time);
+  if (!match) return null;
+  const hour24 = Number(match[1]);
+  return { hour: hour24 % 12 || 12, minute: match[2], period: hour24 < 12 ? "AM" : "PM" };
+}
+
+// 8:00 AM → "08:00", 12:00 AM → "00:00", 12:00 PM → "12:00".
+export function fromTwelveHour({ hour, minute, period }: TwelveHourTime): string {
+  const hour24 = (hour % 12) + (period === "PM" ? 12 : 0);
+  return `${String(hour24).padStart(2, "0")}:${minute}`;
+}
+
+// "08:00" → "8:00 AM". Anything that isn't "HH:MM" is returned unchanged.
+export function formatTwelveHour(time: string): string {
+  const parts = toTwelveHour(time);
+  return parts ? `${parts.hour}:${parts.minute} ${parts.period}` : time;
+}
