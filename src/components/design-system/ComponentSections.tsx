@@ -79,8 +79,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DEFAULT_TIME_ZONE, getLocalDateKey } from "@/lib/time";
 import { SAMPLE_STORE, type BadgeTone } from "./sample-data";
 import { ShowcaseGroup, ShowcaseSection } from "./ShowcaseSection";
+import { PickerDemo } from "./PickerDemo";
 import { ToastDemo, type ToastSample } from "./ToastDemo";
 
 const BUTTON_VARIANTS = [
@@ -229,7 +231,7 @@ export function InputsSection() {
       title="Inputs and labels"
       description="Every field has a visible label. Errors use aria-invalid and are linked with aria-describedby. Inputs use 16px text on mobile so phones don't zoom in."
     >
-      <div className="grid max-w-3xl gap-form md:grid-cols-2">
+      <div className="grid max-w-3xl grid-cols-1 gap-form md:grid-cols-2">
         <div className="flex flex-col gap-2">
           <Label htmlFor="ds-name">Customer name</Label>
           <Input id="ds-name" placeholder="Tunde Adebayo" autoComplete="off" />
@@ -289,7 +291,13 @@ export function InputsSection() {
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="ds-link">Store link</Label>
-          <InputWithPrefix id="ds-link" prefix="fluta.app/store/" defaultValue="freshfold-laundry" readOnly />
+          <InputWithPrefix
+            id="ds-link"
+            prefix="fluta.app/store/"
+            prefixClassName="hidden xs:flex"
+            defaultValue="freshfold-laundry"
+            readOnly
+          />
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="ds-category">Category</Label>
@@ -305,6 +313,11 @@ export function InputsSection() {
             </SelectContent>
           </Select>
         </div>
+        <PickerDemo
+          dateLabel="Closed date"
+          timeLabel="Opening time"
+          today={getLocalDateKey(new Date(), DEFAULT_TIME_ZONE)}
+        />
         <div className="flex items-start justify-between gap-component rounded-lg border border-border p-3">
           <div className="flex flex-col gap-0.5">
             <Label htmlFor="ds-quote">Quote required</Label>

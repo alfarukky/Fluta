@@ -109,7 +109,7 @@ export function ServiceAreasSection({ areas, onSaved }: ServiceAreasSectionProps
             Service areas
           </CardTitle>
           <CardDescription className="type-body-sm">
-            The areas you pick up from and deliver to. Customers choose one when they book pickup; staff check it
+            The areas you pick up from and deliver to. Customers choose one when they book pickup, staff check it
             against the address.
           </CardDescription>
         </div>

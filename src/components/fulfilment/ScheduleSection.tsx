@@ -7,13 +7,13 @@ import { saveSchedule, type ScheduleActionResult } from "@/actions/fulfilment";
 import { describedBy, FormField } from "@/components/settings/FormField";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { formatPickupWindow, getPickupWindows, TIME_STEP_MINUTES, WEEK_DAYS } from "@/lib/pickup-schedule";
+import { formatPickupWindow, getPickupWindows, WEEK_DAYS } from "@/lib/pickup-schedule";
 import { cn } from "@/lib/utils";
 import type { FulfilmentClosedDate } from "@/types/fulfilment";
 
 import { ClosedDates } from "./ClosedDates";
+import { TimeSelect } from "./TimeSelect";
 
 export interface ScheduleValues {
   activeDays: number[];
@@ -95,7 +95,6 @@ export function ScheduleSection({
   }
 
   const fieldId = (name: string) => `${id}-${name}`;
-  const timeHint = `In ${TIME_STEP_MINUTES}-minute steps.`;
 
   return (
     <Card role="region" aria-labelledby={fieldId("title")}>
@@ -149,26 +148,22 @@ export function ScheduleSection({
           </fieldset>
 
           <div className="grid gap-form xs:grid-cols-2">
-            <FormField id={fieldId("open")} label="Opening time" hint={timeHint} error={errors.openTime}>
-              <Input
+            <FormField id={fieldId("open")} label="Opening time" error={errors.openTime}>
+              <TimeSelect
                 id={fieldId("open")}
-                type="time"
-                step={TIME_STEP_MINUTES * 60}
                 value={values.openTime}
-                onChange={(event) => setValues((current) => ({ ...current, openTime: event.target.value }))}
-                aria-invalid={errors.openTime ? true : undefined}
-                aria-describedby={describedBy(fieldId("open"), timeHint, errors.openTime)}
+                onChange={(openTime) => setValues((current) => ({ ...current, openTime }))}
+                invalid={Boolean(errors.openTime)}
+                describedBy={describedBy(fieldId("open"), undefined, errors.openTime)}
               />
             </FormField>
-            <FormField id={fieldId("close")} label="Closing time" hint={timeHint} error={errors.closeTime}>
-              <Input
+            <FormField id={fieldId("close")} label="Closing time" error={errors.closeTime}>
+              <TimeSelect
                 id={fieldId("close")}
-                type="time"
-                step={TIME_STEP_MINUTES * 60}
                 value={values.closeTime}
-                onChange={(event) => setValues((current) => ({ ...current, closeTime: event.target.value }))}
-                aria-invalid={errors.closeTime ? true : undefined}
-                aria-describedby={describedBy(fieldId("close"), timeHint, errors.closeTime)}
+                onChange={(closeTime) => setValues((current) => ({ ...current, closeTime }))}
+                invalid={Boolean(errors.closeTime)}
+                describedBy={describedBy(fieldId("close"), undefined, errors.closeTime)}
               />
             </FormField>
           </div>

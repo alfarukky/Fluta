@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { addClosedDate, removeClosedDate } from "@/actions/fulfilment";
 import { describedBy, FormField } from "@/components/settings/FormField";
+import { DatePicker } from "@/components/shared/DatePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCalendarDate } from "@/lib/time";
@@ -74,8 +75,6 @@ export function ClosedDates({ closedDates: listed, today }: ClosedDatesProps) {
   }
 
   const fieldId = (name: string) => `${id}-${name}`;
-  const dateHint = "Today or later.";
-  const noteHint = "Optional, like Public holiday.";
 
   return (
     <section aria-labelledby={fieldId("title")} className="flex flex-col gap-component">
@@ -88,18 +87,17 @@ export function ClosedDates({ closedDates: listed, today }: ClosedDatesProps) {
 
       <form onSubmit={submit} className="flex flex-col gap-form" noValidate>
         <div className="grid gap-form md:grid-cols-[14rem_1fr]">
-          <FormField id={fieldId("date")} label="Date" hint={dateHint} error={errors.date}>
-            <Input
+          <FormField id={fieldId("date")} label="Date" error={errors.date}>
+            <DatePicker
               id={fieldId("date")}
-              type="date"
-              min={today}
               value={values.date}
-              onChange={(event) => setValues((current) => ({ ...current, date: event.target.value }))}
-              aria-invalid={errors.date ? true : undefined}
-              aria-describedby={describedBy(fieldId("date"), dateHint, errors.date)}
+              onChange={(date) => setValues((current) => ({ ...current, date }))}
+              min={today}
+              invalid={Boolean(errors.date)}
+              describedBy={describedBy(fieldId("date"), undefined, errors.date)}
             />
           </FormField>
-          <FormField id={fieldId("note")} label="Note" hint={noteHint} error={errors.note}>
+          <FormField id={fieldId("note")} label="Note (optional)" error={errors.note}>
             <Input
               id={fieldId("note")}
               value={values.note}
@@ -107,7 +105,8 @@ export function ClosedDates({ closedDates: listed, today }: ClosedDatesProps) {
               maxLength={CLOSED_DATE_NOTE_MAX}
               autoComplete="off"
               aria-invalid={errors.note ? true : undefined}
-              aria-describedby={describedBy(fieldId("note"), noteHint, errors.note)}
+              placeholder="Like Public holiday"
+              aria-describedby={describedBy(fieldId("note"), undefined, errors.note)}
             />
           </FormField>
         </div>
