@@ -10,7 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run build`: production build; also runs the TypeScript check
 - `npm run lint`: ESLint over the whole repo (flat config in `eslint.config.mjs`); lint one file with `npx eslint <path>`
 - `npm run typecheck`: type-check without building (`tsc --noEmit`)
-- `npm test`: run both Vitest projects once (`npm run test:unit`, `npm run test:integration` for one); `npm run test:watch` for watch mode; run one file with `npx vitest run <path>`
+- `npm run test:unit`: the unit project only (jsdom, fast); `npm run test:watch` for watch mode; run one file with `npx vitest run <path>`
+- `npm run test:integration`: PostgreSQL integration tests on the Neon `test` branch (slower). While building, run only related files, e.g. `npm run test:integration -- path/to/file.test.ts`
+- `npm test`: runs `test:unit`, then `test:integration` (integration is skipped if unit tests fail)
+- `npm run db:seed`: load the FreshFold Laundry sample data
 
 Vitest has two projects (`vitest.config.mts`). **unit**: React Testing Library in jsdom, colocated `src/**/*.test.{ts,tsx}` and `prisma/**/*.test.ts`. **integration**: `*.integration.test.ts` against real PostgreSQL on the Neon `test` branch. Its global setup (`src/test/integration/`) loads `.env.test` only, refuses unless `DATABASE_BRANCH="test"` and the host differs from `.env.local`, then runs `prisma migrate deploy` and the seed. Integration tests get a client from `createTestPrisma()`; Vitest aliases `server-only` to its empty build, so tests can also call server modules (`getAuth()`, `authorizeStoreMember`) against the test branch. `src/test/integration/auth.ts` signs in through Better Auth's HTTP handler. Locally, if workers time out starting (low memory), run with `--maxWorkers=2`. `@/*` imports resolve through `resolve.tsconfigPaths`. Vitest can't render `async` Server Components, so test those end-to-end instead.
 
