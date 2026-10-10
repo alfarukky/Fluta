@@ -15,7 +15,9 @@ const serverEnvSchema = z.object({
   DATABASE_BRANCH: z.enum(["development", "test", "production"]),
   // Signs Better Auth's session cookies. Generate with `openssl rand -base64 32`.
   BETTER_AUTH_SECRET: z.string().min(32, "must be at least 32 characters"),
-  // The app's public origin, e.g. http://localhost:3000.
+  // The app's public origin, e.g. http://localhost:3000. Every link Fluta
+  // emails or shows is built from it. In production it must be https and
+  // not localhost (checked in parseServerEnv).
   BETTER_AUTH_URL: z.url({ protocol: /^https?$/, error: "must be an http(s) URL" }),
   // Cloudflare R2 (S3 API) for store logos. Development and test use their
   // own bucket, never production's; tests replace R2 with a fake.
@@ -26,14 +28,10 @@ const serverEnvSchema = z.object({
   // The bucket's public address (r2.dev or a custom domain). Logos are served
   // from here, never through the app's own origin.
   R2_PUBLIC_URL: z.url({ protocol: /^https$/, error: "must be an https URL" }),
-  // SMTP for Fluta's emails (Gmail with an app password). Port 465 uses TLS
-  // from the start; any other port upgrades with STARTTLS. Tests replace the
-  // mailer with a fake, so .env.test only needs placeholder values.
-  SMTP_HOST: z.string().min(1, "is required"),
-  SMTP_PORT: z.coerce.number({ error: "must be a port number" }).int().min(1).max(65535),
-  SMTP_USER: z.string().min(1, "is required"),
-  SMTP_PASS: z.string().min(1, "is required"),
-  // The sender, e.g. "Fluta <you@gmail.com>". Gmail only sends as the signed-in account.
+  // Resend API key for Fluta's emails. Tests replace the mailer with a fake,
+  // so .env.test only needs a placeholder value.
+  RESEND_API_KEY: z.string().min(1, "is required"),
+  // The sender on Resend's verified domain, e.g. "Fluta <noreply@yourdomain>".
   EMAIL_FROM: z.string().min(1, "is required"),
 });
 
@@ -43,16 +41,26 @@ let cachedEnv: ServerEnv | undefined;
 
 export function parseServerEnv(source: Record<string, string | undefined>): ServerEnv {
   const result = serverEnvSchema.safeParse(source);
-  if (!result.success) {
-    const problems = result.error.issues
-      .map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
-      .join("\n");
-    throw new Error(
-      `Invalid or missing environment variables:\n${problems}\n` +
-        "Copy .env.example to .env.local and fill in the values.",
-    );
-  }
-  return result.data;
+  const urlProblems = productionUrlProblems(source);
+  if (result.success && urlProblems.length === 0) return result.data;
+
+  const problems = [
+    ...(result.success ? [] : result.error.issues.map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)),
+    ...urlProblems,
+  ].join("\n");
+  throw new Error(
+    `Invalid or missing environment variables:\n${problems}\n` +
+      "Copy .env.example to .env.local and fill in the values.",
+  );
+}
+
+// Links in emails and on screen are built from BETTER_AUTH_URL, so a
+// production server must never start with a local or plain-http address.
+function productionUrlProblems(source: Record<string, string | undefined>): string[] {
+  const url = source.BETTER_AUTH_URL;
+  if (source.NODE_ENV !== "production" || url === undefined) return [];
+  if (url.startsWith("https://") && !url.includes("localhost") && !url.includes("127.0.0.1")) return [];
+  return ["  - BETTER_AUTH_URL: must be the public https:// address (not localhost or 127.0.0.1) in production"];
 }
 
 // Validated lazily (and once) so modules that only need isDevelopment() don't

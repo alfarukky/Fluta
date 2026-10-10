@@ -12,22 +12,19 @@ const VALID = {
   R2_SECRET_ACCESS_KEY: "secret-key",
   R2_BUCKET: "fluta-test",
   R2_PUBLIC_URL: "https://logos.example.com",
-  SMTP_HOST: "smtp.example.com",
-  SMTP_PORT: "465",
-  SMTP_USER: "mailer@example.com",
-  SMTP_PASS: "app-password",
+  RESEND_API_KEY: "re_test_placeholder",
   EMAIL_FROM: "Fluta <mailer@example.com>",
 };
 
 describe("parseServerEnv", () => {
-  it("reads the SMTP port as a number and rejects a missing sender", () => {
-    expect(() => parseServerEnv({ ...VALID, SMTP_PORT: "smtp", EMAIL_FROM: "" })).toThrow(
-      /SMTP_PORT[\s\S]*EMAIL_FROM: is required/,
+  it("requires the Resend API key and the sender", () => {
+    expect(() => parseServerEnv({ ...VALID, RESEND_API_KEY: "", EMAIL_FROM: "" })).toThrow(
+      /RESEND_API_KEY: is required[\s\S]*EMAIL_FROM: is required/,
     );
   });
 
   it("accepts a complete environment", () => {
-    expect(parseServerEnv(VALID)).toEqual({ ...VALID, SMTP_PORT: 465 });
+    expect(parseServerEnv(VALID)).toEqual(VALID);
   });
 
   it("names every missing variable and points at .env.example", () => {
@@ -58,6 +55,34 @@ describe("parseServerEnv", () => {
 
   it("never echoes the connection string in the error", () => {
     expect(() => parseServerEnv({ ...VALID, DATABASE_BRANCH: "staging" })).not.toThrow(/secret/);
+  });
+});
+
+describe("parseServerEnv in production", () => {
+  it("accepts an https:// auth URL", () => {
+    expect(parseServerEnv({ ...VALID, NODE_ENV: "production", BETTER_AUTH_URL: "https://app.fluta.ng" })).toEqual({
+      ...VALID,
+      BETTER_AUTH_URL: "https://app.fluta.ng",
+    });
+  });
+
+  it.each(["http://app.fluta.ng", "https://localhost:3000", "http://localhost:3000", "https://127.0.0.1:3000"])(
+    "refuses %s in production",
+    (url) => {
+      expect(() => parseServerEnv({ ...VALID, NODE_ENV: "production", BETTER_AUTH_URL: url })).toThrow(
+        /BETTER_AUTH_URL: must be the public https:\/\/ address \(not localhost or 127\.0\.0\.1\) in production/,
+      );
+    },
+  );
+
+  it.each(["http://app.fluta.ng", "http://localhost:3000", "http://127.0.0.1:3000"])("allows %s in development", (url) => {
+    expect(parseServerEnv({ ...VALID, NODE_ENV: "development", BETTER_AUTH_URL: url }).BETTER_AUTH_URL).toBe(url);
+  });
+
+  it("reports the URL problem alongside schema problems", () => {
+    expect(() =>
+      parseServerEnv({ ...VALID, NODE_ENV: "production", BETTER_AUTH_URL: "http://localhost:3000", EMAIL_FROM: "" }),
+    ).toThrow(/EMAIL_FROM: is required[\s\S]*BETTER_AUTH_URL: must be the public https/);
   });
 });
 

@@ -29,24 +29,36 @@ describe("validateEnvOrExit", () => {
   });
 
   it("does nothing when the environment is valid", async () => {
-    vi.stubEnv("DATABASE_URL", "postgresql://u:p@ep-x-pooler.example.neon.tech/neondb");
-    vi.stubEnv("DATABASE_BRANCH", "development");
-    vi.stubEnv("BETTER_AUTH_SECRET", "a-test-secret-that-is-at-least-32-characters");
-    vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3000");
-    vi.stubEnv("R2_ACCOUNT_ID", "account");
-    vi.stubEnv("R2_ACCESS_KEY_ID", "access-key");
-    vi.stubEnv("R2_SECRET_ACCESS_KEY", "secret-key");
-    vi.stubEnv("R2_BUCKET", "fluta-test");
-    vi.stubEnv("R2_PUBLIC_URL", "https://logos.example.com");
-    vi.stubEnv("SMTP_HOST", "smtp.example.com");
-    vi.stubEnv("SMTP_PORT", "465");
-    vi.stubEnv("SMTP_USER", "mailer@example.com");
-    vi.stubEnv("SMTP_PASS", "app-password");
-    vi.stubEnv("EMAIL_FROM", "Fluta <mailer@example.com>");
+    stubValidEnv();
     const validateEnvOrExit = await loadValidateEnvOrExit();
 
     validateEnvOrExit();
 
     expect(process.exit).not.toHaveBeenCalled();
   });
+
+  it("exits in production when BETTER_AUTH_URL is localhost", async () => {
+    stubValidEnv();
+    vi.stubEnv("NODE_ENV", "production");
+    const validateEnvOrExit = await loadValidateEnvOrExit();
+
+    validateEnvOrExit();
+
+    expect(process.stderr.write).toHaveBeenCalledWith(expect.stringContaining("BETTER_AUTH_URL: must be the public https://"));
+    expect(process.exit).toHaveBeenCalledWith(1);
+  });
 });
+
+function stubValidEnv(): void {
+  vi.stubEnv("DATABASE_URL", "postgresql://u:p@ep-x-pooler.example.neon.tech/neondb");
+  vi.stubEnv("DATABASE_BRANCH", "development");
+  vi.stubEnv("BETTER_AUTH_SECRET", "a-test-secret-that-is-at-least-32-characters");
+  vi.stubEnv("BETTER_AUTH_URL", "http://localhost:3000");
+  vi.stubEnv("R2_ACCOUNT_ID", "account");
+  vi.stubEnv("R2_ACCESS_KEY_ID", "access-key");
+  vi.stubEnv("R2_SECRET_ACCESS_KEY", "secret-key");
+  vi.stubEnv("R2_BUCKET", "fluta-test");
+  vi.stubEnv("R2_PUBLIC_URL", "https://logos.example.com");
+  vi.stubEnv("RESEND_API_KEY", "re_test_placeholder");
+  vi.stubEnv("EMAIL_FROM", "Fluta <mailer@example.com>");
+}

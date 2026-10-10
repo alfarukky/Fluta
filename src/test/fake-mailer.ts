@@ -1,6 +1,6 @@
 import type { EmailMessage, Mailer } from "@/server/integrations/email";
 
-// In-memory stand-in for the SMTP mailer. Tests never send real email:
+// In-memory stand-in for the Resend mailer. Tests never send real email:
 //   vi.mock("@/server/integrations/email", () => ({ getMailer: () => fakeMailer }))
 export class FakeMailer implements Mailer {
   readonly sent: EmailMessage[] = [];
