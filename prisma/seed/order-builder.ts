@@ -13,7 +13,10 @@ import {
   type PrismaClient,
 } from "@/generated/prisma/client";
 
-import { hoursAfter, hoursBefore, lagosDate, lineTotalKobo, seedTrackingTokenHash } from "./helpers";
+import { lineTotalKobo } from "@/lib/money";
+import { parseHundredths } from "@/lib/quantity";
+
+import { hoursAfter, hoursBefore, lagosDate, seedTrackingTokenHash } from "./helpers";
 import type { SeedLine, SeedOrder, SeedRevision, SeedStoreContext } from "./types";
 
 type Tx = Prisma.TransactionClient;
@@ -111,6 +114,7 @@ async function createOrderRow(
       stageBeforeQuote:
         current === OrderStage.QUOTE_AWAITING_APPROVAL ? spec.stages[spec.stages.length - 2] : null,
       serviceAreaId: area?.id ?? null,
+      serviceAreaName: area?.name ?? null,
       addressText: spec.addressText ?? null,
       fulfilmentCharge: area?.chargeType === "FIXED" ? area.fixedCharge : null,
       ...pickupFields(spec, times[0]),
@@ -175,7 +179,7 @@ function resolveLines(ctx: SeedStoreContext, lines: SeedLine[]): ResolvedLine[] 
       unitPrice: service.price,
       estimatedQuantity: line.estimate ?? null,
       quantity: line.quantity ?? null,
-      lineTotal: line.quantity ? lineTotalKobo(service.price, line.quantity) : null,
+      lineTotal: line.quantity ? priceLine(service.price, line.quantity) : null,
     };
   });
 }
@@ -188,7 +192,7 @@ function revisionAmounts(ctx: SeedStoreContext, revision: SeedRevision, fulfilme
     const shownQuantity = line.quantity ?? line.estimatedQuantity;
     if (line.lineType === OrderLineType.SERVICE && !shownQuantity) return [];
     const lineTotal =
-      line.lineTotal ?? lineTotalKobo(line.unitPrice ?? 0, shownQuantity ?? "0");
+      line.lineTotal ?? priceLine(line.unitPrice ?? 0, shownQuantity ?? "0");
     return [
       {
         lineType: line.lineType,
@@ -336,6 +340,13 @@ async function createPayments(
       },
     });
   }
+}
+
+// The app's one rounding rule (money.ts), for a seed quantity like "3.6".
+function priceLine(unitPrice: number, quantity: string): number {
+  const hundredths = parseHundredths(quantity);
+  if (hundredths === null) throw new Error(`Seed data: "${quantity}" isn't a quantity with up to two decimal places.`);
+  return lineTotalKobo(unitPrice, hundredths);
 }
 
 function earlierOf(a: Date, b: Date): Date {

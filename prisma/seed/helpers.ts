@@ -1,7 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { Prisma } from "@/generated/prisma/client";
-
 const HOUR_MS = 60 * 60 * 1000;
 
 export function hoursBefore(now: Date, hours: number): Date {
@@ -32,12 +30,4 @@ export function lagosDate(date: Date, offsetDays = 0): Date {
 export function seedTrackingTokenHash(): string {
   const token = randomBytes(32).toString("base64url");
   return createHash("sha256").update(token).digest("hex");
-}
-
-// unitPrice (kobo) × quantity, rounded to the nearest kobo once.
-export function lineTotalKobo(unitPrice: number, quantity: string): number {
-  return new Prisma.Decimal(unitPrice)
-    .mul(quantity)
-    .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
-    .toNumber();
 }

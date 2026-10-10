@@ -134,3 +134,24 @@ describe("composite store keys", () => {
     ).rejects.toThrow(/Payment_storeId_orderId_fkey/);
   });
 });
+
+describe("OrderLine per-kg CHECK constraint", () => {
+  it("rejects a per-kg line that doesn't require a quote", async () => {
+    await expect(
+      prisma.orderLine.create({
+        data: {
+          storeId: freshFold.storeId,
+          orderId: freshFold.orderId,
+          lineType: "SERVICE",
+          serviceId: freshFold.perKgServiceId,
+          description: "Wash & fold",
+          pricingType: "PER_KG",
+          requiresQuote: false,
+          unitPrice: 150_000,
+          quantity: "2",
+          lineTotal: 300_000,
+        },
+      }),
+    ).rejects.toThrow(/OrderLine_per_kg_requires_quote/);
+  });
+});

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { formatAreaCharge, formatNaira, formatNairaInput, formatServicePrice, parseNairaToKobo } from "./money";
+import {
+  formatAreaCharge,
+  formatNaira,
+  formatNairaInput,
+  formatServicePrice,
+  lineTotalKobo,
+  parseNairaToKobo,
+} from "./money";
 
 describe("formatNaira", () => {
   it("formats whole naira with thousands separators", () => {
@@ -101,5 +108,42 @@ describe("formatAreaCharge", () => {
     expect(formatAreaCharge({ chargeType: "FIXED", fixedCharge: 150_000 })).toBe("₦1,500");
     expect(formatAreaCharge({ chargeType: "FIXED", fixedCharge: 0 })).toBe("Free");
     expect(formatAreaCharge({ chargeType: "QUOTE_REQUIRED", fixedCharge: null })).toBe("Quote required");
+  });
+});
+
+describe("lineTotalKobo", () => {
+  it("multiplies whole items exactly", () => {
+    expect(lineTotalKobo(80_000, 300)).toBe(240_000); // 3 × ₦800
+    expect(lineTotalKobo(0, 500)).toBe(0);
+  });
+
+  it("prices weights in hundredths of a kg", () => {
+    expect(lineTotalKobo(150_000, 250)).toBe(375_000); // 2.5 kg × ₦1,500
+    expect(lineTotalKobo(150_000, 10)).toBe(15_000); // 0.1 kg
+  });
+
+  it("rounds an exact half kobo up", () => {
+    expect(lineTotalKobo(10, 15)).toBe(2); // 0.15 kg × 10 kobo = 1.5 kobo
+    expect(lineTotalKobo(1, 50)).toBe(1); // 0.5 kobo
+    expect(lineTotalKobo(333, 250)).toBe(833); // 832.5 kobo
+  });
+
+  it("rounds below half down and above half up", () => {
+    expect(lineTotalKobo(1, 49)).toBe(0); // 0.49 kobo
+    expect(lineTotalKobo(1, 51)).toBe(1); // 0.51 kobo
+    expect(lineTotalKobo(333, 251)).toBe(836); // 835.83 kobo
+    expect(lineTotalKobo(333, 249)).toBe(829); // 829.17 kobo
+  });
+
+  it("is exact where decimal maths would drift", () => {
+    // 1.005 kg isn't allowed, but 0.29 × 100 is 28.999… in floating point.
+    expect(lineTotalKobo(100, 29)).toBe(29);
+    expect(lineTotalKobo(1_000_000_000, 99_999)).toBe(999_990_000_000);
+  });
+
+  it("refuses fractions and negative values", () => {
+    expect(() => lineTotalKobo(1.5, 100)).toThrow(RangeError);
+    expect(() => lineTotalKobo(100, 2.5)).toThrow(RangeError);
+    expect(() => lineTotalKobo(-100, 100)).toThrow(RangeError);
   });
 });

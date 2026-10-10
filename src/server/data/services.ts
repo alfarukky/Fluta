@@ -93,3 +93,39 @@ async function nullIfNotFound<T>(query: Promise<T>): Promise<T | null> {
     throw error;
   }
 }
+
+const ORDERABLE_SERVICE_FIELDS = {
+  id: true,
+  name: true,
+  category: true,
+  pricingType: true,
+  price: true,
+  requiresQuote: true,
+} as const;
+
+export interface OrderableService {
+  id: string;
+  name: string;
+  category: string | null;
+  pricingType: PricingType;
+  price: number;
+  requiresQuote: boolean;
+}
+
+// The active services staff can add to an order, alphabetically.
+export async function listActiveServices(storeId: string): Promise<OrderableService[]> {
+  return getPrisma().service.findMany({
+    where: { storeId, isActive: true },
+    select: ORDERABLE_SERVICE_FIELDS,
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+  });
+}
+
+// The store's active services among `ids`; IDs from another store, or of a
+// disabled service, are simply missing from the result.
+export async function findActiveServices(storeId: string, ids: readonly string[]): Promise<OrderableService[]> {
+  return getPrisma().service.findMany({
+    where: { storeId, isActive: true, id: { in: [...ids] } },
+    select: ORDERABLE_SERVICE_FIELDS,
+  });
+}

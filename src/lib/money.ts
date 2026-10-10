@@ -71,3 +71,18 @@ export function formatAreaCharge({ chargeType, fixedCharge }: AreaCharge): strin
   if (chargeType === "QUOTE_REQUIRED" || fixedCharge === null) return "Quote required";
   return fixedCharge === 0 ? "Free" : formatNaira(fixedCharge);
 }
+
+// A service line's total: unit price (kobo) × quantity, where the quantity is
+// in hundredths (2.5 kg is 250; 3 items are 300). Rounded half up to the
+// nearest kobo, once, in whole-number arithmetic only, so 0.15 kg at ₦0.10/kg
+// is exactly 2 kobo (1.5 rounded up) and never 1.4999… from decimal maths.
+// The one rounding rule for every line total (per-kg weights included).
+export function lineTotalKobo(unitPrice: number, quantityHundredths: number): number {
+  if (!Number.isSafeInteger(unitPrice) || !Number.isSafeInteger(quantityHundredths)) {
+    throw new RangeError("Line totals take whole kobo and whole hundredths.");
+  }
+  if (unitPrice < 0 || quantityHundredths < 0) throw new RangeError("Line totals can't be negative.");
+  const product = unitPrice * quantityHundredths;
+  if (!Number.isSafeInteger(product)) throw new RangeError("Line total is too large.");
+  return Math.floor((product + 50) / 100);
+}

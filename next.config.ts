@@ -25,8 +25,11 @@ const nextConfig: NextConfig = {
     }));
   },
   // Development request logs would print token URLs; leave those requests out.
+  // Server Action calls are logged with their arguments, which carry customer
+  // phone numbers and addresses (order entry); leave them out too.
   logging: {
     incomingRequests: { ignore: [/\/invite\//, /\/reset-password/] },
+    serverFunctions: false,
   },
 };
 

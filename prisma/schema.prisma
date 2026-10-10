@@ -367,10 +367,13 @@ model Order {
   stage            OrderStage     @default(BOOKED)
   stageBeforeQuote OrderStage? // where the order returns after quote approval
 
-  serviceAreaId    String?
-  addressText      String? // used for BOTH pickup and delivery in the MVP
-  isOutOfArea      Boolean @default(false)
-  fulfilmentCharge Int? // null = quote pending or not applicable
+  serviceAreaId     String?
+  serviceAreaName   String? // copy of the area's name at order time (or the typed name of an out-of-area order); shown instead of the live area name
+  clientRequestId   String? // one-time ID from the order form; prevents duplicate orders on double submit
+  isOutsideSchedule Boolean @default(false) // staff booked a pickup outside the normal schedule (note required)
+  addressText       String? // used for BOTH pickup and delivery in the MVP
+  isOutOfArea       Boolean @default(false)
+  fulfilmentCharge  Int? // null = quote pending or not applicable
 
   requestedPickupDate  DateTime?           @db.Date
   requestedWindowStart String? // "10:00"
@@ -407,6 +410,7 @@ model Order {
   messageEvents  MessageEvent[]
 
   @@unique([storeId, orderNumber])
+  @@unique([storeId, clientRequestId])
   @@unique([storeId, id]) // target for tenant-safe composite FKs
   @@unique([storeId, approvedQuoteId])
   @@index([storeId, stage])
@@ -418,6 +422,7 @@ model Order {
 //   SERVICE:    serviceId, pricingType, unitPrice >= 0 all set; quantity > 0 and lineTotal >= 0
 //               both set, or both NULL only while requiresQuote (not yet weighed/inspected)
 //   ADJUSTMENT: serviceId, pricingType, unitPrice, quantity, estimatedQuantity all NULL; lineTotal set
+// A second CHECK (OrderLine_per_kg_requires_quote): a per-kg line always has requiresQuote = true.
 // App rule: every line needs quantity and lineTotal before a priced quote is issued.
 model OrderLine {
   id                String        @id @default(cuid())

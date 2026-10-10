@@ -16,6 +16,8 @@ interface DatePickerProps {
   onChange: (value: string) => void;
   // Earliest date that can be chosen, "YYYY-MM-DD" (the store's today).
   min?: string;
+  // Other dates that can't be chosen ("YYYY-MM-DD"), such as closed days.
+  isDateDisabled?: (key: string) => boolean;
   placeholder?: string;
   invalid?: boolean;
   describedBy?: string;
@@ -39,6 +41,7 @@ export function DatePicker({
   value,
   onChange,
   min,
+  isDateDisabled,
   placeholder = "Choose a date",
   invalid,
   describedBy,
@@ -71,7 +74,10 @@ export function DatePicker({
             onChange(toKey(date));
             setOpen(false);
           }}
-          disabled={min ? { before: toLocalDate(min) } : undefined}
+          disabled={[
+            ...(min ? [{ before: toLocalDate(min) }] : []),
+            ...(isDateDisabled ? [(date: Date) => isDateDisabled(toKey(date))] : []),
+          ]}
           weekStartsOn={1}
         />
       </PopoverContent>

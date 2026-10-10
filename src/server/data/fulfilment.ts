@@ -181,3 +181,44 @@ async function nullIfNotFound<T>(query: Promise<T>): Promise<T | null> {
     throw error;
   }
 }
+
+const ORDERABLE_AREA_FIELDS = { id: true, name: true, chargeType: true, fixedCharge: true } as const;
+
+export interface OrderableArea {
+  id: string;
+  name: string;
+  chargeType: AreaChargeType;
+  fixedCharge: number | null;
+}
+
+// The active areas staff can choose for a pickup order, alphabetically.
+export async function listActiveServiceAreas(storeId: string): Promise<OrderableArea[]> {
+  return getPrisma().serviceArea.findMany({
+    where: { storeId, isActive: true },
+    select: ORDERABLE_AREA_FIELDS,
+    orderBy: [{ name: "asc" }, { id: "asc" }],
+  });
+}
+
+// Null for an area of another store, or a disabled one.
+export async function findActiveServiceArea(storeId: string, id: string): Promise<OrderableArea | null> {
+  return getPrisma().serviceArea.findFirst({ where: { storeId, id, isActive: true }, select: ORDERABLE_AREA_FIELDS });
+}
+
+// Closed dates on or after `today` ("YYYY-MM-DD"), as "YYYY-MM-DD".
+export async function listClosedDateKeys(storeId: string, today: string): Promise<string[]> {
+  const rows = await getPrisma().closedDate.findMany({
+    where: { storeId, date: { gte: fromDateKey(today) } },
+    select: { date: true },
+    orderBy: { date: "asc" },
+  });
+  return rows.map((row) => toDateKey(row.date));
+}
+
+export async function isClosedDate(storeId: string, date: string): Promise<boolean> {
+  const row = await getPrisma().closedDate.findUnique({
+    where: { storeId_date: { storeId, date: fromDateKey(date) } },
+    select: { id: true },
+  });
+  return row !== null;
+}
