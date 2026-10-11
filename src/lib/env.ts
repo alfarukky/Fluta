@@ -83,6 +83,12 @@ export function readR2PublicUrl(): URL | undefined {
   return parsed.success ? new URL(parsed.data) : undefined;
 }
 
+// The seeded users' password, for the seed and integration tests only. Not in
+// ServerEnv: the app never needs it, and production never sets it.
+export function readSeedUserPassword(): string | undefined {
+  return process.env.SEED_USER_PASSWORD;
+}
+
 export function isDevelopment(): boolean {
   return process.env.NODE_ENV === "development";
 }

@@ -1,5 +1,5 @@
 import * as React from "react"
-import { cn } from "cn"
+import { cn } from "@/lib/utils"
 
 // An Input with a fixed prefix inside its border (the ₦ sign, a link's
 // domain). Same 44px height, text size, border, focus ring and invalid state

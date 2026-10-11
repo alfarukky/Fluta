@@ -152,7 +152,7 @@ export function ButtonsSection() {
     <ShowcaseSection
       id="buttons"
       title="Buttons"
-      description="One primary action per screen; everything else stays quiet. Default and icon sizes are 44px tall to meet the touch-target minimum."
+      description="One primary action per screen. Everything else stays quiet. Default and icon sizes are 44px tall to meet the touch-target minimum."
     >
       <div className="flex flex-col gap-8">
         <ShowcaseGroup title="Variants">
@@ -463,7 +463,7 @@ export function TabsSection() {
     <ShowcaseSection
       id="tabs"
       title="Tabs"
-      description="Arrow keys move between tabs; the active panel is linked to its tab for screen readers."
+      description="Arrow keys move between tabs, and the active panel is linked to its tab for screen readers."
     >
       <Tabs defaultValue="today" className="max-w-md">
         <TabsList>
@@ -651,7 +651,7 @@ export function IconsSection() {
     <ShowcaseSection
       id="icons"
       title="Icons"
-      description="Lucide is the only icon library. Decorative icons are aria-hidden; icon-only buttons always have an aria-label."
+      description="Lucide is the only icon library. Decorative icons are aria-hidden. Icon-only buttons always have an aria-label."
     >
       <ul className="grid grid-cols-2 gap-component xs:grid-cols-3 md:grid-cols-5">
         {ICONS.map(({ name, icon: Icon }) => (

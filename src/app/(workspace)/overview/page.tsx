@@ -64,7 +64,7 @@ export default async function OverviewPage() {
       <div className="grid gap-grid lg:grid-cols-3">
         <Card className={isOwner ? "lg:col-span-2" : "lg:col-span-3"}>
           <CardContent className="flex flex-col gap-component">
-            <p className="type-label flex items-center gap-2 text-primary dark:text-accent-foreground">
+            <p className="type-label flex items-center gap-2 text-accent-foreground">
               <LinkIcon className="size-4" aria-hidden />
               Customer booking link
             </p>
@@ -81,7 +81,7 @@ export default async function OverviewPage() {
         {isOwner && (
           <Card className="bg-accent">
             <CardContent className="flex flex-col gap-component">
-              <span className="flex size-10 items-center justify-center rounded-lg bg-card text-primary dark:text-accent-foreground">
+              <span className="flex size-10 items-center justify-center rounded-lg bg-card text-accent-foreground">
                 <PaletteIcon className="size-5" aria-hidden />
               </span>
               <p className="type-h3 text-accent-foreground">Make it yours</p>

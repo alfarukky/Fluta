@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 
 import { removeStoreLogo } from "@/actions/store-settings";
 import type { PrismaClient } from "@/generated/prisma/client";
+import { getServerEnv } from "@/lib/env";
 import { getPrisma } from "@/server/data/client";
 import { replaceStoreLogoKey } from "@/server/data/stores";
 import { FakeObjectStorage } from "@/test/fake-r2";
@@ -27,7 +28,7 @@ const request = vi.hoisted(() => ({ headers: new Headers() }));
 vi.mock("next/headers", () => ({ headers: async () => request.headers }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
-const ORIGIN = process.env.BETTER_AUTH_URL ?? "";
+const ORIGIN = getServerEnv().BETTER_AUTH_URL;
 
 let prisma: PrismaClient;
 let freshFoldId: string;

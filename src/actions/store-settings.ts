@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { logger } from "@/lib/logger";
 import { formatPhone } from "@/lib/phone";
 import { storeBrandingSchema, storeProfileSchema } from "@/schemas/store-settings";
 import { ownerEditRefusalMessage } from "@/server/auth/access";
@@ -43,7 +44,7 @@ export async function saveStoreProfile(formData: FormData): Promise<SettingsActi
   try {
     await saveProfile(member.store.id, parsed.data);
   } catch (error) {
-    console.error("[store-settings] saving the profile failed:", describeError(error));
+    logger.error("[store-settings] saving the profile failed:", describeError(error));
     return { ok: false, message: SAVE_FAILED };
   }
   revalidatePath("/", "layout");
@@ -72,7 +73,7 @@ export async function saveStoreBranding(formData: FormData): Promise<SettingsAct
   try {
     await saveBranding(member.store.id, parsed.data);
   } catch (error) {
-    console.error("[store-settings] saving branding failed:", describeError(error));
+    logger.error("[store-settings] saving branding failed:", describeError(error));
     return { ok: false, message: SAVE_FAILED };
   }
   revalidatePath("/", "layout");
@@ -91,7 +92,7 @@ export async function removeStoreLogo(): Promise<SettingsActionResult> {
   try {
     await removeLogo(member.store.id);
   } catch (error) {
-    console.error("[store-settings] removing the logo failed:", describeError(error));
+    logger.error("[store-settings] removing the logo failed:", describeError(error));
     return { ok: false, message: "We couldn't remove your logo. Please try again." };
   }
   revalidatePath("/", "layout");

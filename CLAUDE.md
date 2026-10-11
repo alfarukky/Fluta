@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `npm run dev`: dev server at http://localhost:3000 (Turbopack)
 - `npm run build`: production build; also runs the TypeScript check
+- `npm start`: serve the production build (run `npm run build` first)
+- `postinstall` runs `prisma generate` after every `npm install`, so fresh clones, CI and Railway get the client
 - `npm run lint`: ESLint over the whole repo (flat config in `eslint.config.mjs`); lint one file with `npx eslint <path>`
 - `npm run typecheck`: type-check without building (`tsc --noEmit`)
 - `npm run test:unit`: the unit project only (jsdom, fast); `npm run test:watch` for watch mode; run one file with `npx vitest run <path>`

@@ -46,7 +46,6 @@ export const storeProfileSchema = z.object({
     .pipe(z.email("Enter a valid email address").nullable()),
 });
 
-export type StoreProfileInput = z.input<typeof storeProfileSchema>;
 export type StoreProfile = z.output<typeof storeProfileSchema>;
 
 // Blank clears a colour (the store then uses Fluta's own).

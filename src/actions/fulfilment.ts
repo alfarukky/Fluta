@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { logger } from "@/lib/logger";
 import { getLocalDateKey } from "@/lib/time";
 import {
   closedDateFormSchema,
@@ -84,7 +85,7 @@ export async function setFulfilmentOption(option: string, enabled: boolean): Pro
       pickupAvailable: await getPickupAvailability(member.store.id),
     };
   } catch (error) {
-    console.error("[fulfilment] changing an option failed:", describeError(error));
+    logger.error("[fulfilment] changing an option failed:", describeError(error));
     return { ok: false, message: SAVE_FAILED };
   }
 }
@@ -110,7 +111,7 @@ export async function saveSchedule(formData: FormData): Promise<ScheduleActionRe
       pickupAvailable: await getPickupAvailability(member.store.id),
     };
   } catch (error) {
-    console.error("[fulfilment] saving the schedule failed:", describeError(error));
+    logger.error("[fulfilment] saving the schedule failed:", describeError(error));
     return { ok: false, message: SAVE_FAILED };
   }
 }
@@ -182,7 +183,7 @@ export async function addClosedDate(formData: FormData): Promise<ClosedDateActio
     revalidatePath("/fulfilment");
     return { ok: true, message: "Closed date added", closedDate: result.closedDate };
   } catch (error) {
-    console.error("[fulfilment] adding a closed date failed:", describeError(error));
+    logger.error("[fulfilment] adding a closed date failed:", describeError(error));
     return { ok: false, message: SAVE_FAILED };
   }
 }
@@ -197,7 +198,7 @@ export async function removeClosedDate(closedDateId: string): Promise<RemoveClos
   try {
     if (!(await deleteClosedDate(member.store.id, id.data))) return { ok: false, message: CLOSED_DATE_NOT_FOUND };
   } catch (error) {
-    console.error("[fulfilment] removing a closed date failed:", describeError(error));
+    logger.error("[fulfilment] removing a closed date failed:", describeError(error));
     return { ok: false, message: SAVE_FAILED };
   }
   revalidatePath("/fulfilment");
@@ -219,7 +220,7 @@ async function runArea(
     revalidatePath("/fulfilment");
     return { ok: true, message: successMessage, area: result.area, pickupAvailable: await getPickupAvailability(storeId) };
   } catch (error) {
-    console.error(`[fulfilment] ${step} failed:`, describeError(error));
+    logger.error(`[fulfilment] ${step} failed:`, describeError(error));
     return { ok: false, message: SAVE_FAILED };
   }
 }

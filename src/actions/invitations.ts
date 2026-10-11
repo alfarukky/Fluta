@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { logger } from "@/lib/logger";
 import { acceptInvitationSchema, INVITATION_MESSAGES } from "@/schemas/staff";
 import { getAuth } from "@/server/auth/auth";
 import { getSession, WORKSPACE_HOME_PATH } from "@/server/auth/session";
@@ -93,5 +94,5 @@ async function isAnyoneSignedIn(): Promise<boolean> {
 
 function logFailure(step: string, error: unknown): void {
   const code = error instanceof Error && "code" in error && typeof error.code === "string" ? ` ${error.code}` : "";
-  console.error(`[invitations] ${step} failed:`, `${error instanceof Error ? error.name : "unknown error"}${code}`);
+  logger.error(`[invitations] ${step} failed:`, `${error instanceof Error ? error.name : "unknown error"}${code}`);
 }

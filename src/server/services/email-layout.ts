@@ -1,3 +1,5 @@
+import "server-only";
+
 // The HTML layout for Fluta's emails: one card with a heading, a few short
 // paragraphs, one button, and small print. Inline styles and tables only, so
 // it renders the same in Gmail, Outlook, and phone mail apps. Every value is

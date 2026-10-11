@@ -9,7 +9,7 @@ import { StoreProfileForm } from "@/components/settings/StoreProfileForm";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/workspace/PageHeader";
 import { summarizeStoreStatus } from "@/components/workspace/store-status";
-import { getBookingShare } from "@/lib/booking-link";
+import { getBookingLinkPrefix, getBookingShare } from "@/lib/booking-link";
 import { getLogoUrl } from "@/lib/logo-url";
 import { formatPhone } from "@/lib/phone";
 import { requireStoreMember } from "@/server/auth/session";
@@ -24,7 +24,6 @@ export default async function SettingsPage() {
   const settings = await getStoreSettings(member.store.id);
   const { bookingUrl, qrCodePng } = await getBookingShare(settings);
   const status = summarizeStoreStatus(member.store.status, member.access, member.membership.role);
-  const { host } = new URL(bookingUrl);
 
   return (
     <main className="page-container flex flex-1 flex-col gap-section py-section">
@@ -44,7 +43,7 @@ export default async function SettingsPage() {
               email: settings.email ?? "",
             }}
             slug={settings.slug}
-            linkPrefix={`${host}/store/`}
+            linkPrefix={getBookingLinkPrefix(bookingUrl)}
           >
             <CustomerBookingCard bookingUrl={bookingUrl} qrCodePng={qrCodePng} status={status} slug={settings.slug} />
           </StoreProfileForm>

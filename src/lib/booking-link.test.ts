@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { decodePng, expectedModules, readModules } from "@/test/qr";
 
-import { getBookingShare, getBookingUrl } from "./booking-link";
+import { getBookingLinkPrefix, getBookingShare, getBookingUrl } from "./booking-link";
 
 describe("getBookingUrl", () => {
   it("puts /store/{slug} on the app's base URL", () => {
@@ -15,6 +15,14 @@ describe("getBookingUrl", () => {
   it("ignores any path or trailing slash on the base URL", () => {
     expect(getBookingUrl({ slug: "cleanwave" }, "http://localhost:3000/")).toBe("http://localhost:3000/store/cleanwave");
     expect(getBookingUrl({ slug: "cleanwave" }, "http://localhost:3000/app")).toBe("http://localhost:3000/store/cleanwave");
+  });
+});
+
+describe("getBookingLinkPrefix", () => {
+  it("is the booking link without its scheme and slug", () => {
+    const bookingUrl = getBookingUrl({ slug: "freshfold-laundry" }, "https://app.fluta.example");
+    expect(getBookingLinkPrefix(bookingUrl)).toBe("app.fluta.example/store/");
+    expect(getBookingLinkPrefix(getBookingUrl({ slug: "cleanwave" }, "http://localhost:3000"))).toBe("localhost:3000/store/");
   });
 });
 

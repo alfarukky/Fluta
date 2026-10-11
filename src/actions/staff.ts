@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { logger } from "@/lib/logger";
 import { inviteStaffSchema, recordIdSchema, STAFF_MESSAGES } from "@/schemas/staff";
 import { ownerEditRefusalMessage, type StoreMemberAccess } from "@/server/auth/access";
 import { requireOwnerCanEdit } from "@/server/auth/session";
@@ -155,7 +156,7 @@ async function run<Result extends { ok: boolean; message: string }>(
     return await work();
   } catch (error) {
     const code = error instanceof Error && "code" in error && typeof error.code === "string" ? ` ${error.code}` : "";
-    console.error(`[staff] ${step} failed:`, `${error instanceof Error ? error.name : "unknown error"}${code}`);
+    logger.error(`[staff] ${step} failed:`, `${error instanceof Error ? error.name : "unknown error"}${code}`);
     return { ok: false, message: FAILED };
   }
 }

@@ -1,5 +1,6 @@
 import { randomInt } from "node:crypto";
 
+import { getServerEnv, readSeedUserPassword } from "@/lib/env";
 import { getAuth } from "@/server/auth/auth";
 
 // A random private address per call, so tests never share a rate-limit bucket
@@ -11,7 +12,7 @@ export function randomIp(): string {
 // A request through Better Auth's HTTP handler, exactly as the browser sends
 // it: origin check, disabled paths, and rate limiting all apply.
 export async function postToAuth(path: string, body: unknown, ip = randomIp()): Promise<Response> {
-  const origin = process.env.BETTER_AUTH_URL ?? "";
+  const origin = getServerEnv().BETTER_AUTH_URL;
   return getAuth().handler(
     new Request(`${origin}/api/auth${path}`, {
       method: "POST",
@@ -34,7 +35,7 @@ export async function signInHeaders(email: string, password = seedPassword()): P
 }
 
 export function seedPassword(): string {
-  const password = process.env.SEED_USER_PASSWORD;
+  const password = readSeedUserPassword();
   if (!password) throw new Error(".env.test is missing SEED_USER_PASSWORD.");
   return password;
 }

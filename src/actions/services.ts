@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { logger } from "@/lib/logger";
 import { serviceFormSchema, serviceIdSchema } from "@/schemas/services";
 import { ownerEditRefusalMessage } from "@/server/auth/access";
 import { requireOwnerCanEdit } from "@/server/auth/session";
@@ -91,7 +92,7 @@ async function run(
   try {
     result = await save();
   } catch (error) {
-    console.error(`[services] ${step} failed:`, describeError(error));
+    logger.error(`[services] ${step} failed:`, describeError(error));
     return { ok: false, message: SAVE_FAILED };
   }
   if (!result.ok) {

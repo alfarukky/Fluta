@@ -25,8 +25,6 @@ export async function getStoreSettings(storeId: string) {
   });
 }
 
-export type StoreSettings = Awaited<ReturnType<typeof getStoreSettings>>;
-
 export async function updateStoreProfile(storeId: string, profile: StoreProfile): Promise<void> {
   await getPrisma().store.update({
     where: { id: storeId },

@@ -5,6 +5,7 @@ import { createService, disableService, updateService } from "@/actions/services
 import { removeStoreLogo, saveStoreBranding, saveStoreProfile } from "@/actions/store-settings";
 import { POST as uploadLogo } from "@/app/api/v1/store/logo/route";
 import type { PrismaClient } from "@/generated/prisma/client";
+import { getServerEnv } from "@/lib/env";
 import { getPrisma } from "@/server/data/client";
 import { FakeObjectStorage } from "@/test/fake-r2";
 import { pngBytes } from "@/test/images";
@@ -29,7 +30,7 @@ const request = vi.hoisted(() => ({ headers: new Headers() }));
 vi.mock("next/headers", () => ({ headers: async () => request.headers }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 
-const ORIGIN = process.env.BETTER_AUTH_URL ?? "";
+const ORIGIN = getServerEnv().BETTER_AUTH_URL;
 
 let prisma: PrismaClient;
 let freshFoldId: string;

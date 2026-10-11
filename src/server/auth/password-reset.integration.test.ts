@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PrismaClient } from "@/generated/prisma/client";
+import { getServerEnv } from "@/lib/env";
 import { getPrisma } from "@/server/data/client";
 import { FakeMailer } from "@/test/fake-mailer";
 import { postToAuth, randomIp, signInHeaders } from "@/test/integration/auth";
@@ -92,7 +93,7 @@ describe("password reset", () => {
 
     // Following the emailed link redirects to the reset page, and the raw
     // token is never stored (rate-limit rows are keyed by path).
-    const origin = process.env.BETTER_AUTH_URL ?? "";
+    const origin = getServerEnv().BETTER_AUTH_URL;
     const opened = await getAuth().handler(
       new Request(`${origin}/api/auth/reset-password/${token}?callbackURL=%2Freset-password`, {
         headers: { "x-real-ip": randomIp() },

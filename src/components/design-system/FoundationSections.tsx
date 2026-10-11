@@ -200,7 +200,7 @@ export function RadiusSection() {
     <ShowcaseSection
       id="surfaces"
       title="Radius, borders and elevation"
-      description="Rounded but restrained. Subtle borders separate surfaces; soft shadows are reserved for layers that float above the page."
+      description="Rounded but restrained. Subtle borders separate surfaces. Soft shadows are reserved for layers that float above the page."
     >
       <div className="flex flex-col gap-8">
         <ShowcaseGroup title="Radius">

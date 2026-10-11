@@ -49,7 +49,7 @@ export function UserMenu({ member }: { member: WorkspaceMember }) {
         <div className="flex flex-col gap-0.5 px-2 py-2">
           <p className="type-label truncate text-foreground">{member.userName}</p>
           <p className="type-caption truncate text-muted-foreground">{member.userEmail}</p>
-          <p className="type-caption truncate text-primary dark:text-accent-foreground">
+          <p className="type-caption truncate text-accent-foreground">
             {roleLabel} · {member.storeName}
           </p>
         </div>

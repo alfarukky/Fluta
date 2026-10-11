@@ -9,6 +9,13 @@ export function getBookingUrl(store: { slug: string }, baseUrl: string = getServ
   return new URL(`/store/${encodeURIComponent(store.slug)}`, baseUrl).toString();
 }
 
+// The part of a booking link shown before the slug field, without the scheme
+// ("app.fluta.example/store/"). Taken from getBookingUrl so it can't drift.
+export function getBookingLinkPrefix(bookingUrl: string): string {
+  const { host, pathname } = new URL(bookingUrl);
+  return `${host}${pathname.slice(0, pathname.lastIndexOf("/") + 1)}`;
+}
+
 // The link and its QR code, built together so Copy and the QR code can never
 // point at different addresses.
 export async function getBookingShare(

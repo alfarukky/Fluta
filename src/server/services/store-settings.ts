@@ -1,5 +1,6 @@
 import "server-only";
 
+import { logger } from "@/lib/logger";
 import { createLogoKey, getLogoUrl } from "@/lib/logo-url";
 import type { StoreBranding, StoreProfile } from "@/schemas/store-settings";
 import { replaceStoreLogoKey, updateStoreBranding, updateStoreProfile } from "@/server/data/stores";
@@ -64,7 +65,9 @@ async function deleteQuietly(key: string): Promise<void> {
   }
 }
 
-// Keys hold only the store ID and a random UUID, so they are safe to log.
+// Keys hold only the store ID and a random UUID, so they are safe to log. Only
+// the error class is logged, like every other log: provider messages can carry
+// request details.
 function logStorageError(step: "upload" | "save" | "delete", key: string, error: unknown): void {
-  console.error(`[store-logo] ${step} failed for ${key}:`, error instanceof Error ? error.message : error);
+  logger.error(`[store-logo] ${step} failed for ${key}:`, error instanceof Error ? error.name : "unknown error");
 }

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { logger } from "@/lib/logger";
 import { formatPhone } from "@/lib/phone";
 import {
   createOrderSchema,
@@ -78,7 +79,7 @@ export async function createOrder(request: unknown): Promise<CreateOrderActionRe
       message: `Order ${result.displayNumber} created`,
     };
   } catch (error) {
-    console.error(`[orders] creating an order for store ${member.store.id} failed:`, describeError(error));
+    logger.error(`[orders] creating an order for store ${member.store.id} failed:`, describeError(error));
     return { ok: false, code: "CREATE_FAILED", message: "We couldn't create this order. Please try again." };
   }
 }
@@ -95,7 +96,7 @@ export async function searchCustomers(query: unknown): Promise<CustomerSearchRes
   try {
     return { ok: true, customers: (await findCustomers(member.store.id, text.data)).map(toCustomerMatch) };
   } catch (error) {
-    console.error(`[orders] customer search for store ${member.store.id} failed:`, describeError(error));
+    logger.error(`[orders] customer search for store ${member.store.id} failed:`, describeError(error));
     return { ok: false, message: "We couldn't search customers. Please try again." };
   }
 }
@@ -114,7 +115,7 @@ export async function findCustomerByPhone(phone: unknown): Promise<CustomerPhone
     const customer = await getCustomerByPhone(member.store.id, e164.data);
     return { ok: true, customer: customer && toCustomerMatch(customer) };
   } catch (error) {
-    console.error(`[orders] customer lookup for store ${member.store.id} failed:`, describeError(error));
+    logger.error(`[orders] customer lookup for store ${member.store.id} failed:`, describeError(error));
     return { ok: false, message: "We couldn't check this phone number. Please try again." };
   }
 }

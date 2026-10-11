@@ -1,36 +1,57 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Fluta
 
-## Getting Started
+Fluta is a subscription tool for independent laundry stores. Owners and staff manage orders, services, pickup and delivery, quotes, payments and staff in one place. Each store also gets a branded booking and order-tracking page for its customers, who never need an account.
 
-First, run the development server:
+It is a mobile-first web app built with Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, shadcn/ui, Prisma 7 on Neon PostgreSQL, and Better Auth.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Getting started
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+You need Node.js 22 and access to the Neon project (a `development` branch for the app and a `test` branch for integration tests).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Install dependencies. This also generates the Prisma client.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+   ```bash
+   npm install
+   ```
 
-## Learn More
+2. Copy `.env.example` to `.env.local` and fill in every value. The comments in `.env.example` explain each one. For integration tests, make a second copy named `.env.test` that points at the Neon `test` branch and the `fluta-test` bucket.
 
-To learn more about Next.js, take a look at the following resources:
+3. Apply the migrations and load the sample data (the FreshFold Laundry and CleanWave stores and their users, all signing in with `SEED_USER_PASSWORD`).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+   ```bash
+   npx prisma migrate dev
+   npm run db:seed
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+4. Start the dev server at http://localhost:3000.
 
-## Deploy on Vercel
+   ```bash
+   npm run dev
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The app checks its environment at startup and exits with a clear message if a variable is missing or invalid.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Dev server (Turbopack) |
+| `npm run build` | Production build, including the TypeScript check |
+| `npm start` | Serve the production build |
+| `npm run lint` | ESLint over the whole repo |
+| `npm run typecheck` | TypeScript check without building |
+| `npm run test:unit` | Unit tests (jsdom, fast) |
+| `npm run test:integration` | Integration tests against the Neon `test` branch |
+| `npm test` | Unit tests, then integration tests |
+| `npm run db:seed` | Reset the sample stores and users |
+
+## Project layout
+
+- `src/app/`: routes (store workspace, sign-in and invitations, API routes)
+- `src/actions/`: Server Actions
+- `src/server/`: services, data access (the only place that uses Prisma), domain rules, integrations and auth
+- `src/components/`: UI, with shadcn/ui primitives in `src/components/ui/`
+- `src/lib/`: shared helpers (money, phone numbers, time, tokens, environment)
+- `prisma/`: schema, migrations and seed
+
+In development, `/design-system` shows every design token and component in both themes.

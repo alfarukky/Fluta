@@ -1,6 +1,5 @@
 import "server-only";
 
-import { Prisma } from "@/generated/prisma/client";
 import { formatNaira, lineTotalKobo } from "@/lib/money";
 import { formatOrderNumber } from "@/lib/orders";
 import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY, toDecimalString, type QuantityProblem } from "@/lib/quantity";
@@ -8,6 +7,7 @@ import { fromDateKey, getLocalDateKey } from "@/lib/time";
 import { generateToken, hashToken } from "@/lib/tokens";
 import type { CreateOrderInput, PickupInput } from "@/schemas/orders";
 import { findCustomer, findCustomerByPhone, searchCustomers, type CustomerRecord } from "@/server/data/customers";
+import { isUniqueViolation } from "@/server/data/errors";
 import {
   findActiveServiceArea,
   getFulfilmentOptionsAndSchedule,
@@ -75,7 +75,7 @@ export async function createStaffOrder(
   } catch (error) {
     // The same request again (a double tap, a retry): the database's unique
     // rule refused a second order, so return the first one.
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") throw error;
+    if (!isUniqueViolation(error)) throw error;
     const existing = await findOrderByClientRequestId(actor.storeId, input.clientRequestId);
     if (!existing) throw error;
     return created(existing);

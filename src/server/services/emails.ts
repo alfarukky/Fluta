@@ -1,5 +1,6 @@
 import "server-only";
 
+import { logger } from "@/lib/logger";
 import { formatLongDate } from "@/lib/time";
 import { INVITATION_VALID_DAYS } from "@/schemas/staff";
 import { getMailer, type EmailMessage } from "@/server/integrations/email";
@@ -65,7 +66,7 @@ export async function trySendEmail(message: EmailMessage, kind: string): Promise
     await getMailer().send(message);
     return true;
   } catch (error) {
-    console.error(`[email] sending the ${kind} email failed:`, error instanceof Error ? error.name : "unknown error");
+    logger.error(`[email] sending the ${kind} email failed:`, error instanceof Error ? error.name : "unknown error");
     return false;
   }
 }

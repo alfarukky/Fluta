@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getServerEnv } from "@/lib/env";
+import { logger } from "@/lib/logger";
 import { getAuth } from "@/server/auth/auth";
 import {
   createStaffInvitation,
@@ -86,7 +87,7 @@ export async function deactivateStaff(
     const context = await getAuth().$context;
     await context.internalAdapter.deleteUserSessions(result.userId);
   } catch (error) {
-    console.error(
+    logger.error(
       `[staff] revoking sessions for user ${result.userId} failed:`,
       error instanceof Error ? error.name : "unknown error",
     );

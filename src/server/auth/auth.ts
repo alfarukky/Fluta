@@ -1,14 +1,14 @@
 import "server-only";
 
 import { betterAuth } from "better-auth";
-import { prismaAdapter } from "better-auth/adapters/prisma";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 
 import { getServerEnv } from "@/lib/env";
+import { logger } from "@/lib/logger";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@/schemas/users";
 import { findActiveMemberships } from "@/server/data/access";
-import { getPrisma } from "@/server/data/client";
+import { getAuthDatabase } from "@/server/data/auth-database";
 import { buildPasswordResetEmail, RESET_LINK_VALID_MINUTES, trySendEmail } from "@/server/services/emails";
 
 const SIGN_IN_WINDOW_SECONDS = 5 * 60;
@@ -24,7 +24,7 @@ function createAuth() {
   return betterAuth({
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,
-    database: prismaAdapter(getPrisma(), { provider: "postgresql" }),
+    database: getAuthDatabase(),
     emailAndPassword: {
       enabled: true,
       disableSignUp: true,
@@ -91,7 +91,7 @@ async function sendPasswordResetEmail(user: { id: string; email: string }, url: 
     const [membership] = await findActiveMemberships(user.id);
     await trySendEmail(buildPasswordResetEmail({ to: user.email, storeName: membership?.store.name ?? null, url }), "password reset");
   } catch (error) {
-    console.error("[auth] preparing the password reset email failed:", error instanceof Error ? error.name : "unknown error");
+    logger.error("[auth] preparing the password reset email failed:", error instanceof Error ? error.name : "unknown error");
   }
 }
 

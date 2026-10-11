@@ -1,8 +1,8 @@
 import "server-only";
 
-import { Prisma } from "@/generated/prisma/client";
 import { toMatchKey } from "@/lib/match-key";
 import type { ServiceInput } from "@/schemas/services";
+import { isUniqueViolation } from "@/server/data/errors";
 import {
   findServiceByNameKey,
   insertService,
@@ -70,7 +70,7 @@ async function toServiceData(storeId: string, input: ServiceInput, serviceId?: s
 // A unique-rule rejection is the duplicate-name result (worded differently
 // when the existing service is disabled); anything else is rethrown.
 async function duplicateResult(storeId: string, nameKey: string, error: unknown): Promise<ServiceSaveResult> {
-  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") throw error;
+  if (!isUniqueViolation(error)) throw error;
   const existing = await findServiceByNameKey(storeId, nameKey);
   return { ok: false, error: existing && !existing.isActive ? "DUPLICATE_DISABLED_NAME" : "DUPLICATE_NAME" };
 }

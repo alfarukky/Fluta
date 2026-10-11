@@ -1,8 +1,8 @@
 import "server-only";
 
-import { Prisma } from "@/generated/prisma/client";
 import { toMatchKey } from "@/lib/match-key";
 import type { ClosedDateInput, FulfilmentOption, ScheduleInput, ServiceAreaInput } from "@/schemas/fulfilment";
+import { isUniqueViolation } from "@/server/data/errors";
 import {
   countActiveServiceAreas,
   deleteClosedDate,
@@ -123,8 +123,4 @@ async function duplicateAreaResult(storeId: string, nameKey: string, error: unkn
   if (!isUniqueViolation(error)) throw error;
   const existing = await findServiceAreaByNameKey(storeId, nameKey);
   return { ok: false, error: existing && !existing.isActive ? "DUPLICATE_DISABLED_NAME" : "DUPLICATE_NAME" };
-}
-
-function isUniqueViolation(error: unknown): boolean {
-  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }

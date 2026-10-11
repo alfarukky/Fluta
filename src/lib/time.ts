@@ -1,5 +1,7 @@
 // Timestamps are stored in UTC and shown in the store's time zone.
 
+import { logger } from "./logger";
+
 // The schema default for Store.timeZone.
 export const DEFAULT_TIME_ZONE = "Africa/Lagos";
 
@@ -15,7 +17,7 @@ export function resolveTimeZone(timeZone: string): string {
   } catch {
     if (!warnedTimeZones.has(timeZone)) {
       warnedTimeZones.add(timeZone);
-      console.warn(`Invalid store time zone "${timeZone}"; using ${DEFAULT_TIME_ZONE}.`);
+      logger.warn(`Invalid store time zone "${timeZone}". Using ${DEFAULT_TIME_ZONE}.`);
     }
     return DEFAULT_TIME_ZONE;
   }

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { StoreRole } from "@/generated/prisma/client";
+import { logger } from "@/lib/logger";
 import { findActiveMemberships, findPlatformRole, type ActiveMembership } from "@/server/data/access";
 import { getStoreAccess, type StoreAccess } from "@/server/domain/store-access";
 
@@ -58,7 +59,7 @@ export async function lookupStoreMembership(requestHeaders: Headers): Promise<St
   const memberships = await findActiveMemberships(session.user.id);
   if (memberships.length === 0) return { found: false, reason: "NO_ACTIVE_MEMBERSHIP" };
   if (memberships.length > 1) {
-    console.error(`[access] user ${session.user.id} has more than one active membership; access refused`);
+    logger.error(`[access] user ${session.user.id} has more than one active membership, so access was refused`);
     return { found: false, reason: "MEMBERSHIP_CONFLICT" };
   }
   return { found: true, user: session.user, membership: memberships[0] };

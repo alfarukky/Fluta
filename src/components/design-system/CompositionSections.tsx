@@ -400,7 +400,7 @@ export function CompositionsSection() {
     <ShowcaseSection
       id="compositions"
       title="Product compositions"
-      description="Static placeholder layouts that check how the foundation holds up when components are combined. All data is fictional FreshFold Laundry sample data; nothing here is wired to real functionality."
+      description="Static placeholder layouts that check how the foundation holds up when components are combined. All data is fictional FreshFold Laundry sample data, and nothing here is wired to real functionality."
     >
       <div className="flex flex-col gap-section">
         <ShowcaseGroup title="Store workspace preview">
