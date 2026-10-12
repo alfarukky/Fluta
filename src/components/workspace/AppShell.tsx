@@ -7,11 +7,12 @@ import { formatLongDate, getGreeting } from "@/lib/time";
 import { MobileNav } from "./MobileNav";
 import { Sidebar } from "./Sidebar";
 import { TopBarGreeting } from "./TopBarGreeting";
-import type { WorkspaceMember } from "./types";
+import type { NavCounts, WorkspaceMember } from "./types";
 import { UserMenu } from "./UserMenu";
 
 interface AppShellProps {
   member: WorkspaceMember;
+  navCounts: NavCounts;
   // The store's IANA time zone; the date and greeting use it, not the server's.
   timeZone: string;
   now: Date;
@@ -19,7 +20,7 @@ interface AppShellProps {
 }
 
 // Sidebar (desktop), top bar, and the page. Pages render their own <main>.
-export function AppShell({ member, timeZone, now, children }: AppShellProps) {
+export function AppShell({ member, navCounts, timeZone, now, children }: AppShellProps) {
   return (
     <div className="flex min-h-dvh flex-1">
       <a
@@ -28,12 +29,12 @@ export function AppShell({ member, timeZone, now, children }: AppShellProps) {
       >
         Skip to content
       </a>
-      <Sidebar member={member} />
+      <Sidebar member={member} navCounts={navCounts} />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 border-b border-border bg-background">
           <div className="flex h-16 items-center gap-2 px-page md:gap-3">
-            <MobileNav member={member} />
+            <MobileNav member={member} navCounts={navCounts} />
             <TopBarGreeting
               timeZone={timeZone}
               firstName={getFirstName(member.userName)}

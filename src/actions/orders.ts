@@ -8,12 +8,16 @@ import {
   createOrderSchema,
   customerPhoneSchema,
   customerSearchSchema,
+  DEFAULT_ORDER_LIST_FILTERS,
+  orderListCursorSchema,
+  orderListFiltersSchema,
   STORE_NOT_ACCEPTING_MESSAGE,
 } from "@/schemas/orders";
 import { requireStoreMember } from "@/server/auth/session";
 import type { CustomerRecord } from "@/server/data/customers";
 import { createStaffOrder, findCustomers, getCustomerByPhone, type OrderEntryError } from "@/server/services/order-entry";
-import type { CustomerMatch } from "@/types/orders";
+import { getOrderListPage } from "@/server/services/orders";
+import type { CustomerMatch, OrderListPage } from "@/types/orders";
 
 // Staff order entry. Each action checks the membership itself (every action
 // is its own request); creating also needs a store that is accepting new
@@ -141,4 +145,30 @@ function describeError(error: unknown): string {
   if (!(error instanceof Error)) return "unknown error";
   const code = "code" in error && typeof error.code === "string" ? ` ${error.code}` : "";
   return `${error.name}${code}`;
+}
+
+export type LoadMoreOrdersResult = ({ ok: true } & OrderListPage) | { ok: false; message: string };
+
+// The next page of the orders list, for "Load more". The filters are the
+// page's own (from its address) and are parsed again here; the cursor only
+// says where to continue within the member's own store.
+export async function loadMoreOrders(filters: unknown, cursor: unknown): Promise<LoadMoreOrdersResult> {
+  const member = await requireStoreMember();
+  if (!member.allowed) return { ok: false, message: "You can't view this store's orders." };
+
+  const after = orderListCursorSchema.safeParse(cursor);
+  if (!after.success) return { ok: false, message: "We couldn't load more orders. Reload the page and try again." };
+
+  // Filters are the page's own; anything malformed falls back to the defaults,
+  // as on the page itself.
+  const parsed = orderListFiltersSchema.safeParse(filters);
+  const listFilters = parsed.success ? parsed.data : DEFAULT_ORDER_LIST_FILTERS;
+
+  try {
+    const page = await getOrderListPage(member.store, listFilters, new Date(), after.data);
+    return { ok: true, ...page };
+  } catch (error) {
+    logger.error(`[orders] loading more orders for store ${member.store.id} failed:`, describeError(error));
+    return { ok: false, message: "We couldn't load more orders. Try again." };
+  }
 }

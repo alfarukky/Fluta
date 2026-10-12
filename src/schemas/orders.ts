@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-import { FulfilmentType } from "@/generated/prisma/enums";
+import { FulfilmentType, OrderStage } from "@/generated/prisma/enums";
 import { normalizeEmail } from "@/lib/email-address";
 import { formatNaira, parseNairaToKobo } from "@/lib/money";
-import { STAFF_CHANNELS } from "@/lib/orders";
+import { PAYMENT_STATES, STAFF_CHANNELS } from "@/lib/orders";
 import { normalizePhone } from "@/lib/phone";
 import { parseClockTime } from "@/lib/pickup-schedule";
 import { parseHundredths } from "@/lib/quantity";
@@ -203,3 +203,58 @@ export const customerSearchSchema = z.string().trim().min(2).max(80);
 
 // An order ID from the URL. It is only ever looked up within the member's own store.
 export const orderIdSchema = z.string().trim().min(1).max(64);
+
+// ───────────── Orders list ─────────────
+
+export const ORDER_SEARCH_MAX = 80;
+
+// Created-date filter: calendar days in the store's time zone.
+export const ORDER_DATE_RANGES = ["today", "7d", "30d", "all"] as const;
+export type OrderDateRange = (typeof ORDER_DATE_RANGES)[number];
+
+export const ORDER_DATE_RANGE_LABELS: Record<OrderDateRange, string> = {
+  today: "Today",
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+  all: "All",
+};
+
+// The list's search and filters, from the page address. Anything missing or
+// invalid (a typo, a repeated parameter, an old link) falls back to its
+// default rather than failing the page.
+export const orderListFiltersSchema = z.object({
+  q: z.string().trim().max(ORDER_SEARCH_MAX).catch(""),
+  stage: z.enum(OrderStage).nullable().catch(null),
+  payment: z.enum(PAYMENT_STATES).nullable().catch(null),
+  type: z.enum(FulfilmentType).nullable().catch(null),
+  created: z.enum(ORDER_DATE_RANGES).catch("all"),
+});
+
+export type OrderListFilters = z.output<typeof orderListFiltersSchema>;
+
+export const DEFAULT_ORDER_LIST_FILTERS: OrderListFilters = orderListFiltersSchema.parse({});
+
+// Where "Load more" continues from: the last row's created time and ID.
+export const orderListCursorSchema = z
+  .string()
+  .regex(/^\d{1,15}\.[A-Za-z0-9_-]{1,64}$/)
+  .transform((text) => {
+    const [time, id] = [text.slice(0, text.indexOf(".")), text.slice(text.indexOf(".") + 1)];
+    return { createdAt: new Date(Number(time)), id };
+  });
+
+export function encodeOrderListCursor(cursor: { createdAt: Date; id: string }): string {
+  return `${cursor.createdAt.getTime()}.${cursor.id}`;
+}
+
+// The page address for a set of filters, leaving out defaults ("" for none).
+export function toOrderListSearch(filters: OrderListFilters): string {
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.stage) params.set("stage", filters.stage);
+  if (filters.payment) params.set("payment", filters.payment);
+  if (filters.type) params.set("type", filters.type);
+  if (filters.created !== "all") params.set("created", filters.created);
+  const search = params.toString();
+  return search ? `?${search}` : "";
+}

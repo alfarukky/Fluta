@@ -34,6 +34,7 @@ function lookupFor(
         slug: "freshfold-laundry",
         status: storeStatus,
         timeZone: "Africa/Lagos",
+        orderPrefix: "FF",
         brandPrimaryColor: null,
         subscription: { cancelledAt, graceDays: 7, invoices: [] },
       },

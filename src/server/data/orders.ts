@@ -1,15 +1,17 @@
 import "server-only";
 
-import type {
-  ActorType,
-  FulfilmentType,
-  OrderChannel,
-  OrderLineType,
-  OrderStage,
-  PickupWindowStatus,
-  PricingType,
+import {
   Prisma,
+  type ActorType,
+  type FulfilmentType,
+  type OrderChannel,
+  type OrderLineType,
+  type OrderStage,
+  type PickupWindowStatus,
+  type PricingType,
 } from "@/generated/prisma/client";
+import { CLOSED_STAGES, type PaymentState } from "@/lib/orders";
+import type { OrderListQuery } from "@/types/orders";
 
 import { getPrisma } from "./client";
 import { upsertCustomerByPhone, type NewCustomerData } from "./customers";
@@ -183,8 +185,141 @@ export async function findOrderByClientRequestId(storeId: string, clientRequestI
   return order && { id: order.id, orderNumber: order.orderNumber, orderPrefix: order.store.orderPrefix };
 }
 
-// What the order summary page shows.
-export async function findOrderSummary(storeId: string, orderId: string) {
+// Whether the order is this store's: checked before the detail page starts
+// streaming, so a missing order (or another store's) gets a real 404.
+export async function orderExists(storeId: string, orderId: string): Promise<boolean> {
+  const order = await getPrisma().order.findUnique({ where: { storeId_id: { storeId, id: orderId } }, select: { id: true } });
+  return order !== null;
+}
+
+// ───────────── Orders list ─────────────
+
+const LIST_ROW_SELECT = {
+  id: true,
+  orderNumber: true,
+  stage: true,
+  fulfilmentType: true,
+  scheduledPickupDate: true,
+  scheduledWindowStart: true,
+  scheduledWindowEnd: true,
+  requestedPickupDate: true,
+  requestedWindowStart: true,
+  requestedWindowEnd: true,
+  createdAt: true,
+  customer: { select: { name: true } },
+  lines: {
+    where: { lineType: "SERVICE" },
+    select: { description: true, pricingType: true, quantity: true },
+    orderBy: { id: "asc" },
+  },
+  approvedQuote: { select: { total: true } },
+  payments: { select: { amount: true, status: true, voidedAt: true } },
+  refunds: { select: { amount: true, voidedAt: true } },
+} as const satisfies Prisma.OrderSelect;
+
+export type OrderListRecord = Prisma.OrderGetPayload<{ select: typeof LIST_ROW_SELECT }>;
+
+// One page of the store's orders, newest first, and whether more follow.
+// Two steps, each a fixed number of queries whatever the page size: one SQL
+// query picks the page's IDs (search, filters, and cursor), then Prisma loads
+// those orders with their lines, quote, payments, and refunds.
+export async function listOrders(
+  storeId: string,
+  query: OrderListQuery,
+  pageSize: number,
+): Promise<{ orders: OrderListRecord[]; hasMore: boolean }> {
+  const ids = await findOrderPageIds(storeId, query, pageSize + 1);
+  const hasMore = ids.length > pageSize;
+  const pageIds = ids.slice(0, pageSize);
+  if (pageIds.length === 0) return { orders: [], hasMore: false };
+
+  const records = await getPrisma().order.findMany({
+    where: { storeId, id: { in: pageIds } },
+    select: LIST_ROW_SELECT,
+  });
+  const byId = new Map(records.map((record) => [record.id, record]));
+  return { orders: pageIds.flatMap((id) => byId.get(id) ?? []), hasMore };
+}
+
+async function findOrderPageIds(storeId: string, query: OrderListQuery, limit: number): Promise<string[]> {
+  const conditions: Prisma.Sql[] = [Prisma.sql`o."storeId" = ${storeId}`];
+
+  if (query.search) {
+    const { orderNumber, phoneDigits, name } = query.search;
+    const matches = [Prisma.sql`c."name" ILIKE ${`%${escapeLike(name)}%`}`];
+    if (orderNumber !== null) matches.push(Prisma.sql`o."orderNumber" = ${orderNumber}`);
+    // Stored as E.164 ("+234…"), and the digits never hold a LIKE wildcard.
+    if (phoneDigits !== null) matches.push(Prisma.sql`c."phone" LIKE ${`%${phoneDigits}%`}`);
+    conditions.push(Prisma.sql`(${Prisma.join(matches, " OR ")})`);
+  }
+  if (query.stage) conditions.push(Prisma.sql`o."stage" = ${query.stage}::"OrderStage"`);
+  if (query.fulfilmentType) {
+    conditions.push(Prisma.sql`o."fulfilmentType" = ${query.fulfilmentType}::"FulfilmentType"`);
+  }
+  if (query.createdFrom) conditions.push(Prisma.sql`o."createdAt" >= ${query.createdFrom}`);
+  if (query.after) {
+    conditions.push(Prisma.sql`(o."createdAt", o."id") < (${query.after.createdAt}, ${query.after.id})`);
+  }
+  if (query.paymentState) conditions.push(paymentStateCondition(query.paymentState));
+
+  const rows = await getPrisma().$queryRaw<{ id: string }[]>`
+    SELECT o."id"
+    FROM "Order" o
+    JOIN "Customer" c ON c."storeId" = o."storeId" AND c."id" = o."customerId"
+    WHERE ${Prisma.join(conditions, " AND ")}
+    ORDER BY o."createdAt" DESC, o."id" DESC
+    LIMIT ${limit}
+  `;
+  return rows.map((row) => row.id);
+}
+
+// The payment-state filter: getBalance's rule (src/server/domain/balance.ts)
+// written in SQL, used only to choose rows; every amount and badge shown still
+// comes from getBalance. An integration test checks they agree on every order.
+//   balance = approved total (0 if cancelled) − confirmed payments + refunds paid
+function paymentStateCondition(state: PaymentState): Prisma.Sql {
+  const approvedTotal = Prisma.sql`(
+    CASE WHEN o."stage" = 'CANCELLED' THEN 0
+    ELSE (SELECT q."total" FROM "QuoteRevision" q WHERE q."storeId" = o."storeId" AND q."id" = o."approvedQuoteId")
+    END)`;
+  const confirmedPayments = Prisma.sql`(
+    SELECT COALESCE(SUM(p."amount"), 0) FROM "Payment" p
+    WHERE p."storeId" = o."storeId" AND p."orderId" = o."id" AND p."status" = 'CONFIRMED' AND p."voidedAt" IS NULL)`;
+  const paidRefunds = Prisma.sql`(
+    SELECT COALESCE(SUM(r."amount"), 0) FROM "Refund" r
+    WHERE r."storeId" = o."storeId" AND r."orderId" = o."id" AND r."voidedAt" IS NULL)`;
+  const balance = Prisma.sql`(${approvedTotal} - ${confirmedPayments} + ${paidRefunds})`;
+
+  switch (state) {
+    case "AWAITING_QUOTE":
+      return Prisma.sql`(o."stage" <> 'CANCELLED' AND o."approvedQuoteId" IS NULL)`;
+    case "PAID":
+      return Prisma.sql`(o."stage" <> 'CANCELLED' AND ${balance} = 0)`;
+    case "NOTHING_DUE":
+      return Prisma.sql`(o."stage" = 'CANCELLED' AND ${balance} = 0)`;
+    case "OUTSTANDING":
+      return Prisma.sql`${balance} > 0`;
+    case "REFUND_OWED":
+      return Prisma.sql`${balance} < 0`;
+  }
+}
+
+// Search text matched literally inside ILIKE: %, _, and \ lose their meaning.
+function escapeLike(text: string): string {
+  return text.replace(/[\\%_]/g, (character) => `\\${character}`);
+}
+
+// Orders not yet Completed or Cancelled, for the sidebar.
+export async function countOpenOrders(storeId: string): Promise<number> {
+  return getPrisma().order.count({ where: { storeId, stage: { notIn: [...CLOSED_STAGES] } } });
+}
+
+// ───────────── Order detail ─────────────
+
+// Everything the order detail page shows, from the order's own copies. A
+// fixed number of queries: each relation loads in one query whatever its
+// size. Staff names for the timeline come separately (findStaffNames).
+export async function findOrderDetail(storeId: string, orderId: string) {
   return getPrisma().order.findUnique({
     where: { storeId_id: { storeId, id: orderId } },
     select: {
@@ -198,9 +333,13 @@ export async function findOrderSummary(storeId: string, orderId: string) {
       isOutsideSchedule: true,
       fulfilmentCharge: true,
       addressText: true,
+      requestedPickupDate: true,
+      requestedWindowStart: true,
+      requestedWindowEnd: true,
       scheduledPickupDate: true,
       scheduledWindowStart: true,
       scheduledWindowEnd: true,
+      pickupWindowStatus: true,
       internalNote: true,
       createdAt: true,
       store: { select: { orderPrefix: true } },
@@ -220,10 +359,46 @@ export async function findOrderSummary(storeId: string, orderId: string) {
         // Services first, then Others, each in the order they were entered.
         orderBy: [{ lineType: "asc" }, { id: "asc" }],
       },
-      approvedQuote: { select: { version: true, total: true } },
-      quoteRevisions: { where: { version: 1 }, select: { total: true, status: true } },
+      approvedQuote: { select: { id: true, version: true, total: true } },
+      quoteRevisions: {
+        select: { id: true, version: true, total: true, status: true, createdAt: true, approvedAt: true, declinedAt: true },
+        orderBy: { version: "desc" },
+      },
+      payments: {
+        select: {
+          id: true,
+          amount: true,
+          method: true,
+          status: true,
+          paystackReference: true,
+          note: true,
+          confirmedAt: true,
+          voidedAt: true,
+          createdAt: true,
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      },
+      refunds: {
+        select: { id: true, amount: true, note: true, paidAt: true, voidedAt: true },
+        orderBy: [{ paidAt: "desc" }, { id: "desc" }],
+      },
+      statusEvents: {
+        select: { id: true, toStage: true, actorType: true, actorUserId: true, note: true, createdAt: true },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      },
     },
   });
 }
 
-export type OrderSummaryRecord = NonNullable<Awaited<ReturnType<typeof findOrderSummary>>>;
+export type OrderDetailRecord = NonNullable<Awaited<ReturnType<typeof findOrderDetail>>>;
+
+// Names of this store's members (current or former) among `userIds`, in one
+// query. IDs of anyone outside the store are ignored.
+export async function findStaffNames(storeId: string, userIds: readonly string[]): Promise<Map<string, string>> {
+  if (userIds.length === 0) return new Map();
+  const users = await getPrisma().user.findMany({
+    where: { id: { in: [...new Set(userIds)] }, memberships: { some: { storeId } } },
+    select: { id: true, name: true },
+  });
+  return new Map(users.map((user) => [user.id, user.name]));
+}

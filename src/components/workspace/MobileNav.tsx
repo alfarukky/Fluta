@@ -7,10 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 
 import { SidebarContent } from "./SidebarContent";
-import type { WorkspaceMember } from "./types";
+import type { NavCounts, WorkspaceMember } from "./types";
 
 // Below lg: a menu button that opens the sidebar in a sheet.
-export function MobileNav({ member }: { member: WorkspaceMember }) {
+export function MobileNav({ member, navCounts }: { member: WorkspaceMember; navCounts: NavCounts }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -23,7 +23,7 @@ export function MobileNav({ member }: { member: WorkspaceMember }) {
       <SheetContent side="left" className="w-72 gap-0 bg-card p-0">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         <SheetDescription className="sr-only">Pages in the {member.storeName} workspace</SheetDescription>
-        <SidebarContent member={member} onNavigate={() => setOpen(false)} />
+        <SidebarContent member={member} navCounts={navCounts} onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>
   );

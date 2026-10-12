@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  addDaysToDateKey,
+  formatDateTime,
+  startOfLocalDay,
   DEFAULT_TIME_ZONE,
   describeTimeZone,
   formatCalendarDate,
@@ -163,5 +166,40 @@ describe("12-hour clock times", () => {
   it("rejects anything that isn't HH:MM", () => {
     for (const text of ["8:00", "24:00", "12:60", "", "noon"]) expect(toTwelveHour(text)).toBeNull();
     expect(formatTwelveHour("noon")).toBe("noon");
+  });
+});
+
+describe("formatDateTime", () => {
+  it("shows the store's local date and a 12-hour time", () => {
+    // 08:42 UTC is 9:42 AM in Lagos (UTC+1).
+    expect(formatDateTime(new Date("2026-10-12T08:42:00Z"), "Africa/Lagos")).toBe("Mon, 12 Oct 2026, 9:42 AM");
+  });
+
+  it("uses the local date, not the UTC one, near midnight", () => {
+    // 23:30 UTC on the 11th is already 12:30 AM on the 12th in Lagos.
+    expect(formatDateTime(new Date("2026-10-11T23:30:00Z"), "Africa/Lagos")).toBe("Mon, 12 Oct 2026, 12:30 AM");
+    expect(formatDateTime(new Date("2026-10-12T13:05:00Z"), "UTC")).toBe("Mon, 12 Oct 2026, 1:05 PM");
+  });
+});
+
+describe("addDaysToDateKey", () => {
+  it("moves across month and year ends", () => {
+    expect(addDaysToDateKey("2026-10-12", -6)).toBe("2026-10-06");
+    expect(addDaysToDateKey("2026-10-01", -1)).toBe("2026-09-30");
+    expect(addDaysToDateKey("2026-12-31", 1)).toBe("2027-01-01");
+  });
+});
+
+describe("startOfLocalDay", () => {
+  it("is local midnight as a UTC instant", () => {
+    expect(startOfLocalDay("2026-10-12", "Africa/Lagos").toISOString()).toBe("2026-10-11T23:00:00.000Z");
+    expect(startOfLocalDay("2026-10-12", "UTC").toISOString()).toBe("2026-10-12T00:00:00.000Z");
+    expect(startOfLocalDay("2026-10-12", "America/New_York").toISOString()).toBe("2026-10-12T04:00:00.000Z");
+  });
+
+  it("follows a clock change", () => {
+    // London moves from BST (UTC+1) to GMT on 25 October 2026.
+    expect(startOfLocalDay("2026-10-25", "Europe/London").toISOString()).toBe("2026-10-24T23:00:00.000Z");
+    expect(startOfLocalDay("2026-10-26", "Europe/London").toISOString()).toBe("2026-10-26T00:00:00.000Z");
   });
 });

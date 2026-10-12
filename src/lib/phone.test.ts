@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatPhone, maskPhone, normalizePhone } from "./phone";
+import { formatPhone, maskPhone, normalizePhone, toPhoneSearchDigits } from "./phone";
 
 describe("normalizePhone", () => {
   it("reads a Nigerian number without a country code using the default country", () => {
@@ -51,5 +51,31 @@ describe("maskPhone", () => {
 describe("formatPhone", () => {
   it("formats a stored number for display", () => {
     expect(formatPhone("+2348031234521")).toBe("+234 803 123 4521");
+  });
+});
+
+describe("toPhoneSearchDigits", () => {
+  const stored = "+2348031234567";
+
+  it.each(["0803 123", "803123", "+234 803 123", "2348031234567", "0803-123-4567"])(
+    "turns %j into digits found in the stored number",
+    (text) => {
+      const digits = toPhoneSearchDigits(text);
+      expect(digits).not.toBeNull();
+      expect(stored).toContain(digits);
+    },
+  );
+
+  it("replaces a leading 0 with 234", () => {
+    expect(toPhoneSearchDigits("0803 123")).toBe("234803123");
+  });
+
+  it("keeps digits only", () => {
+    expect(toPhoneSearchDigits("+234 (803) 123")).toBe("234803123");
+  });
+
+  it("is null when there are no digits", () => {
+    expect(toPhoneSearchDigits("Adaeze")).toBeNull();
+    expect(toPhoneSearchDigits("  ")).toBeNull();
   });
 });

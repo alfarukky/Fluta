@@ -17,7 +17,6 @@ import {
 } from "@/server/data/fulfilment";
 import {
   findOrderByClientRequestId,
-  findOrderSummary,
   insertOrder,
   type CreatedOrder,
   type NewOrderData,
@@ -401,8 +400,4 @@ export async function findCustomers(storeId: string, query: string): Promise<Cus
 
 export async function getCustomerByPhone(storeId: string, phone: string): Promise<CustomerRecord | null> {
   return findCustomerByPhone(storeId, phone);
-}
-
-export async function getOrderSummary(storeId: string, orderId: string) {
-  return findOrderSummary(storeId, orderId);
 }

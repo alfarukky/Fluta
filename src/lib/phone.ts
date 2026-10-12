@@ -30,3 +30,13 @@ export function maskPhone(e164: string): string {
   if (national.length < 8) return `+${phone.countryCallingCode} ***`;
   return `+${phone.countryCallingCode} ${national.slice(0, 3)} *** ${national.slice(-4)}`;
 }
+
+// Search text → the digits to look for anywhere in stored E.164 numbers, or
+// null when it has none. Digits only, and a leading 0 (local Nigerian format,
+// "0803…") becomes 234, so "0803 123", "803123", and "+234 803 123" all find
+// +2348031234567.
+export function toPhoneSearchDigits(text: string): string | null {
+  const digits = text.replace(/\D/g, "");
+  if (!digits) return null;
+  return digits.startsWith("0") ? `234${digits.slice(1)}` : digits;
+}

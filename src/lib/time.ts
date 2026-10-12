@@ -140,3 +140,50 @@ export function formatTwelveHour(time: string): string {
   const parts = toTwelveHour(time);
   return parts ? `${parts.hour}:${parts.minute} ${parts.period}` : time;
 }
+
+// "Mon, 12 Oct 2026, 9:42 AM": a timestamp in the store's time zone, with a
+// 12-hour time. Built from parts so Node.js and browsers agree.
+export function formatDateTime(date: Date, timeZone: string): string {
+  const zone = resolveTimeZone(timeZone);
+  const clock = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zone })
+    .formatToParts(date)
+    .reduce<Record<string, string>>((parts, part) => ({ ...parts, [part.type]: part.value }), {});
+  return `${formatCalendarDate(getLocalDateKey(date, zone))}, ${formatTwelveHour(`${clock.hour}:${clock.minute}`)}`;
+}
+
+// The calendar date `days` after (or before, if negative) a "YYYY-MM-DD" date.
+export function addDaysToDateKey(key: string, days: number): string {
+  const date = fromDateKey(key);
+  date.setUTCDate(date.getUTCDate() + days);
+  return toDateKey(date);
+}
+
+// The UTC instant a calendar day starts (midnight) in `timeZone`. Used to turn
+// a store-local date range into a database query.
+export function startOfLocalDay(key: string, timeZone: string): Date {
+  const zone = resolveTimeZone(timeZone);
+  const midnightUtc = fromDateKey(key).getTime();
+  // Two passes, so a day whose offset differs from the day before (a clock
+  // change) still lands on its own midnight.
+  let instant = midnightUtc - offsetMs(new Date(midnightUtc), zone);
+  instant = midnightUtc - offsetMs(new Date(instant), zone);
+  return new Date(instant);
+}
+
+// How far `timeZone`'s clocks are ahead of UTC at `date`, in milliseconds.
+function offsetMs(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    timeZone,
+  })
+    .formatToParts(date)
+    .reduce<Record<string, number>>((all, part) => ({ ...all, [part.type]: Number(part.value) }), {});
+  const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return asUtc - Math.floor(date.getTime() / 1000) * 1000;
+}

@@ -11,6 +11,7 @@ export const STORE_ACCESS_SELECT = {
   slug: true,
   status: true,
   timeZone: true,
+  orderPrefix: true, // for showing order numbers
   brandPrimaryColor: true,
   subscription: {
     select: {

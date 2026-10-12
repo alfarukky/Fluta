@@ -10,16 +10,17 @@ import { getInitials } from "@/lib/names";
 import { cn } from "@/lib/utils";
 
 import { getNavItems, isNavItemActive, ROLE_LABELS, type NavItem } from "./nav-items";
-import type { WorkspaceMember } from "./types";
+import type { NavCounts, WorkspaceMember } from "./types";
 
 interface SidebarContentProps {
   member: WorkspaceMember;
+  navCounts: NavCounts;
   // Called when a link is followed, so the mobile sheet can close.
   onNavigate?: () => void;
 }
 
 // The sidebar's contents, shared by the desktop sidebar and the mobile sheet.
-export function SidebarContent({ member, onNavigate }: SidebarContentProps) {
+export function SidebarContent({ member, navCounts, onNavigate }: SidebarContentProps) {
   const pathname = usePathname();
   const items = getNavItems(member.role);
   const roleLabel = ROLE_LABELS[member.role];
@@ -42,8 +43,18 @@ export function SidebarContent({ member, onNavigate }: SidebarContentProps) {
       </div>
 
       <nav aria-label="Workspace" className="flex flex-1 flex-col justify-between gap-6">
-        <NavList items={items.filter((item) => item.section === "main")} pathname={pathname} onNavigate={onNavigate} />
-        <NavList items={items.filter((item) => item.section === "footer")} pathname={pathname} onNavigate={onNavigate} />
+        <NavList
+          items={items.filter((item) => item.section === "main")}
+          counts={navCounts}
+          pathname={pathname}
+          onNavigate={onNavigate}
+        />
+        <NavList
+          items={items.filter((item) => item.section === "footer")}
+          counts={navCounts}
+          pathname={pathname}
+          onNavigate={onNavigate}
+        />
       </nav>
 
       <Separator />
@@ -65,11 +76,12 @@ export function SidebarContent({ member, onNavigate }: SidebarContentProps) {
 
 interface NavListProps {
   items: NavItem[];
+  counts: NavCounts;
   pathname: string;
   onNavigate?: () => void;
 }
 
-function NavList({ items, pathname, onNavigate }: NavListProps) {
+function NavList({ items, counts, pathname, onNavigate }: NavListProps) {
   if (items.length === 0) return null;
 
   return (
@@ -77,6 +89,7 @@ function NavList({ items, pathname, onNavigate }: NavListProps) {
       {items.map((item) => {
         const active = isNavItemActive(item, pathname);
         const Icon = item.icon;
+        const count = counts[item.href as keyof NavCounts];
         return (
           <li key={item.href}>
             <Link
@@ -89,7 +102,13 @@ function NavList({ items, pathname, onNavigate }: NavListProps) {
               )}
             >
               <Icon className="size-4 shrink-0" aria-hidden />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {count !== undefined && count > 0 && (
+                <span className="type-caption rounded-full bg-muted px-2 py-0.5 font-semibold text-muted-foreground">
+                  {count}
+                  <span className="sr-only"> open</span>
+                </span>
+              )}
             </Link>
           </li>
         );

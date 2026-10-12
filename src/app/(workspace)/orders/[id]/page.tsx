@@ -1,31 +1,34 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
 import { AccessDenied } from "@/components/auth/AccessDenied";
-import { OrderSummary } from "@/components/orders/OrderSummary";
-import { formatOrderNumber } from "@/lib/orders";
+import { OrderDetail } from "@/components/orders/OrderDetail";
+import { OrderDetailSkeleton } from "@/components/orders/OrderDetailSkeleton";
 import { orderIdSchema } from "@/schemas/orders";
 import { requireStoreMember } from "@/server/auth/session";
-import { getOrderSummary } from "@/server/services/order-entry";
+import { getOrderDetail, isStoreOrder } from "@/server/services/orders";
 
 export const metadata: Metadata = { title: "Order · Fluta" };
 
-// A simple summary after creating an order; Feature 10 replaces it with the
-// full order detail.
 export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
   const member = await requireStoreMember();
   if (!member.allowed) return <AccessDenied reason={member.reason} />;
 
+  // Checked before anything streams, so the response is a real 404. Another
+  // store's order matches nothing, exactly like a missing one.
   const id = orderIdSchema.safeParse((await params).id);
-  // Another store's order matches nothing, exactly like a missing one.
-  const order = id.success ? await getOrderSummary(member.store.id, id.data) : null;
-  if (!order) notFound();
+  if (!id.success || !(await isStoreOrder(member.store.id, id.data))) notFound();
 
   return (
-    <OrderSummary
-      order={order}
-      displayNumber={formatOrderNumber(order.store, order.orderNumber)}
-      timeZone={member.store.timeZone}
-    />
+    <Suspense fallback={<OrderDetailSkeleton />}>
+      <OrderDetailContent storeId={member.store.id} orderId={id.data} timeZone={member.store.timeZone} />
+    </Suspense>
   );
+}
+
+async function OrderDetailContent({ storeId, orderId, timeZone }: { storeId: string; orderId: string; timeZone: string }) {
+  const detail = await getOrderDetail(storeId, orderId);
+  if (!detail) notFound();
+  return <OrderDetail detail={detail} timeZone={timeZone} />;
 }
