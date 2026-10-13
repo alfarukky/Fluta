@@ -187,8 +187,8 @@ function resolveLines(ctx: SeedStoreContext, lines: SeedLine[]): ResolvedLine[] 
 // What a revision shows the customer. An unweighed line uses the customer's
 // estimate when there is one and is left out otherwise (version 1 of a
 // quote-required order is only ever an estimate and is never approved).
-function revisionAmounts(ctx: SeedStoreContext, revision: SeedRevision, fulfilmentCharge: number) {
-  const snapshot = resolveLines(ctx, revision.lines).flatMap((line) => {
+function revisionAmounts(ctx: SeedStoreContext, spec: SeedOrder, revision: SeedRevision, fulfilmentCharge: number) {
+  const lines = resolveLines(ctx, revision.lines).flatMap((line) => {
     const shownQuantity = line.quantity ?? line.estimatedQuantity;
     if (line.lineType === OrderLineType.SERVICE && !shownQuantity) return [];
     const lineTotal =
@@ -199,6 +199,7 @@ function revisionAmounts(ctx: SeedStoreContext, revision: SeedRevision, fulfilme
         serviceId: line.serviceId,
         description: line.description,
         pricingType: line.pricingType ?? null,
+        requiresQuote: line.requiresQuote,
         unitPrice: line.unitPrice,
         quantity: shownQuantity,
         quantityIsEstimate: line.quantity === null && shownQuantity !== null,
@@ -206,7 +207,15 @@ function revisionAmounts(ctx: SeedStoreContext, revision: SeedRevision, fulfilme
       },
     ];
   });
-  const itemsSubtotal = snapshot.reduce((sum, line) => sum + line.lineTotal, 0);
+  const itemsSubtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+  // The same shape as buildQuoteSnapshot (src/server/domain/orders.ts).
+  const area = spec.area ? ctx.areas.get(spec.area) : undefined;
+  const snapshot = {
+    lines,
+    areaName: area?.name ?? null,
+    isOutOfArea: false,
+    fulfilmentCharge: spec.fulfilmentType === "PICKUP_DELIVERY" ? fulfilmentCharge : null,
+  };
   return { snapshot, itemsSubtotal, total: itemsSubtotal + fulfilmentCharge };
 }
 
@@ -226,7 +235,7 @@ async function createRevisions(
     const createdAt = times[step];
     const approvedAt =
       index === 0 ? createdAt : (times[step + 1] ?? earlierOf(hoursAfter(createdAt, 1), ctx.now));
-    const { snapshot, itemsSubtotal, total } = revisionAmounts(ctx, revision, fulfilmentCharge);
+    const { snapshot, itemsSubtotal, total } = revisionAmounts(ctx, spec, revision, fulfilmentCharge);
     const created = await tx.quoteRevision.create({
       data: {
         storeId: ctx.storeId,

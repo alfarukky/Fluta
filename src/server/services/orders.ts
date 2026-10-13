@@ -3,6 +3,7 @@ import "server-only";
 import type { StoreRole } from "@/generated/prisma/client";
 import { formatNaira } from "@/lib/money";
 import { formatOrderNumber, summarizeServices } from "@/lib/orders";
+import { canReviseQuote, findDeclinedRevision, findPendingRevision } from "@/lib/quotes";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
 import { fromDecimalString } from "@/lib/quantity";
 import { formatCalendarDate, formatDateTime, toDateKey } from "@/lib/time";
@@ -16,6 +17,8 @@ import {
   type OrderDetailRecord,
   type OrderListRecord,
 } from "@/server/data/orders";
+import { buildOrderTimeline, type TimelineEntry } from "@/server/data/order-timeline";
+import { findRevisionAudits } from "@/server/data/quotes";
 import { getBalance, type Balance } from "@/server/domain/balance";
 import { getAvailableTransitions, getStageOrderState, type AvailableTransitions } from "@/server/domain/order-stages";
 import { buildOrderListQuery, ORDER_LIST_PAGE_SIZE } from "@/server/domain/order-list";
@@ -88,6 +91,23 @@ export interface OrderDetail {
   staffNames: Map<string, string>;
   // The stage moves this member may make now (the page shows only these).
   stageMoves: AvailableTransitions;
+  // Stage events and revision moments, newest first.
+  timeline: TimelineEntry[];
+  quote: OrderQuoteState;
+}
+
+type DetailRevision = OrderDetailRecord["quoteRevisions"][number];
+
+export interface OrderQuoteState {
+  // Edit quote is offered (up to Ready).
+  canEdit: boolean;
+  // An unpriced order waiting at Received by store: "Price order" is the main move.
+  needsPricing: boolean;
+  approvedTotal: number | null;
+  // The revision waiting for the customer's approval.
+  pending: DetailRevision | null;
+  // The newest revision, when the customer declined it.
+  declined: DetailRevision | null;
 }
 
 // False for an order that isn't this store's, exactly as for one that doesn't exist.
@@ -100,13 +120,30 @@ export async function getOrderDetail(storeId: string, orderId: string, role: Sto
   const order = await findOrderDetail(storeId, orderId);
   if (!order) return null;
 
-  const actorIds = order.statusEvents.flatMap((event) => (event.actorUserId ? [event.actorUserId] : []));
+  const audits = await findRevisionAudits(
+    storeId,
+    order.quoteRevisions.map((revision) => revision.id),
+  );
+  const timeline = buildOrderTimeline(order.statusEvents, order.quoteRevisions, audits);
+  const actorIds = timeline.flatMap((entry) => {
+    const id = entry.kind === "stage" ? entry.event.actorUserId : entry.staffUserId;
+    return id ? [id] : [];
+  });
+  const pending = findPendingRevision(order.quoteRevisions);
   return {
     order,
     displayNumber: formatOrderNumber(order.store, order.orderNumber),
     balance: getBalance(order),
     staffNames: await findStaffNames(storeId, actorIds),
     stageMoves: getAvailableTransitions(getStageOrderState(order), role),
+    timeline,
+    quote: {
+      canEdit: canReviseQuote(order.stage),
+      needsPricing: order.stage === "RECEIVED_BY_STORE" && order.approvedQuoteId === null && pending === null,
+      approvedTotal: order.approvedQuote?.total ?? null,
+      pending,
+      declined: findDeclinedRevision(order.quoteRevisions),
+    },
   };
 }
 

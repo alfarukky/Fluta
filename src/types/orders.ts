@@ -90,3 +90,40 @@ export interface AvailableTransitions {
   // Why the main next move isn't allowed yet, in plain language.
   blockedReason: string | null;
 }
+
+// ───────────── Quotes ─────────────
+
+// A service line already on the order, for the edit-quote screen. It keeps
+// the unit price it was added at.
+export interface QuoteEditorLine {
+  id: string;
+  name: string;
+  pricingType: PricingType;
+  requiresQuote: boolean;
+  unitPrice: number;
+  quantity: number | null; // hundredths; null while unweighed
+  estimate: number | null; // hundredths, the customer's estimate
+}
+
+// Everything the edit-quote screen needs, from the order's own copies.
+export interface QuoteEditorData {
+  orderId: string;
+  displayNumber: string;
+  stage: OrderStage;
+  fulfilmentType: FulfilmentType;
+  // The newest version: the screen sends it back, and nothing is saved if
+  // another revision was issued in the meantime.
+  latestVersion: number;
+  lines: QuoteEditorLine[];
+  adjustments: { description: string; amount: number }[];
+  pickup: {
+    areaName: string | null;
+    isOutOfArea: boolean;
+    // Staff enter the charge when keeping the area (quote-required or out of area).
+    chargeEntered: boolean;
+    charge: number | null;
+  } | null;
+  approvedTotal: number | null;
+  hasPendingRevision: boolean;
+  reasonRequired: boolean;
+}

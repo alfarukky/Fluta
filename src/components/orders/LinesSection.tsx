@@ -162,7 +162,7 @@ export function LinesSection({ draft, onChange, errors, services, review }: Line
   );
 }
 
-function groupByCategory(services: readonly OrderEntryService[]): [string, OrderEntryService[]][] {
+export function groupByCategory(services: readonly OrderEntryService[]): [string, OrderEntryService[]][] {
   const groups = new Map<string, OrderEntryService[]>();
   for (const service of services) {
     const category = service.category ?? "Other services";
@@ -240,7 +240,7 @@ function ServiceLineRow({ idPrefix, line, service, lineTotal, errors, onChange, 
   );
 }
 
-interface AdjustmentRowProps {
+export interface AdjustmentRowProps {
   idPrefix: string;
   line: AdjustmentDraft;
   errors: { description?: string; kind?: string; amount?: string };
@@ -248,7 +248,7 @@ interface AdjustmentRowProps {
   onRemove: () => void;
 }
 
-function AdjustmentRow({ idPrefix, line, errors, onChange, onRemove }: AdjustmentRowProps) {
+export function AdjustmentRow({ idPrefix, line, errors, onChange, onRemove }: AdjustmentRowProps) {
   return (
     <li className="flex flex-col gap-component rounded-lg border border-border p-card">
       <div className="flex items-start gap-component">

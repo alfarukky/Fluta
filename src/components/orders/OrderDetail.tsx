@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, PhoneIcon } from "lucide-react";
+import { ArrowLeftIcon, CircleCheckIcon, CircleXIcon, PhoneIcon, ReceiptTextIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -17,6 +17,7 @@ import {
 import { formatPhone } from "@/lib/phone";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
 import { formatQuantity, fromDecimalString } from "@/lib/quantity";
+import { describeRevisionMoment } from "@/lib/quotes";
 import { ADJUSTMENT_KIND_LABELS } from "@/schemas/orders";
 import { formatCalendarDate, formatDateTime, toDateKey } from "@/lib/time";
 import type { OrderDetail as OrderDetailData } from "@/server/services/orders";
@@ -24,6 +25,7 @@ import { cn } from "@/lib/utils";
 
 import { PaymentBadge, StageBadge } from "./OrderBadges";
 import { OrderStageActions } from "./OrderStageActions";
+import { QuoteBanner } from "./QuoteBanner";
 
 type Order = OrderDetailData["order"];
 
@@ -35,10 +37,11 @@ interface OrderDetailProps {
 }
 
 // Everything about one order, from the order's own copies (never the current
-// service or area records), with the stage moves this member may make. Quote
-// and payment actions come in later features.
+// service or area records), with the stage and quote actions this member may
+// take. Payment actions come in later features.
 export function OrderDetail({ detail, canChangeStage, timeZone }: OrderDetailProps) {
-  const { order, displayNumber, balance } = detail;
+  const { order, displayNumber, balance, quote } = detail;
+  const editQuoteHref = `/orders/${order.id}/quote`;
 
   return (
     <main className="page-container flex flex-1 flex-col gap-section py-section">
@@ -65,14 +68,41 @@ export function OrderDetail({ detail, canChangeStage, timeZone }: OrderDetailPro
             orderId={order.id}
             stage={order.stage}
             fulfilmentType={order.fulfilmentType}
-            moves={detail.stageMoves}
+            // The quote banner explains a pending or declined quote itself.
+            moves={quote.pending || quote.declined ? { ...detail.stageMoves, blockedReason: null } : detail.stageMoves}
+            quote={{
+              editQuoteHref: quote.canEdit ? editQuoteHref : null,
+              priceOrder: quote.needsPricing,
+              address: quote.canEdit && order.fulfilmentType === "PICKUP_DELIVERY" ? (order.addressText ?? "") : null,
+            }}
           />
         )}
       </header>
 
+      {canChangeStage && quote.pending && (
+        <QuoteBanner
+          kind="pending"
+          orderId={order.id}
+          stage={order.stage}
+          approvedTotal={quote.approvedTotal}
+          revision={quote.pending}
+        />
+      )}
+      {canChangeStage && !quote.pending && quote.declined && (
+        <QuoteBanner
+          kind="declined"
+          orderId={order.id}
+          stage={order.stage}
+          approvedTotal={quote.approvedTotal}
+          revision={quote.declined}
+          editQuoteHref={quote.canEdit ? editQuoteHref : null}
+          cancelMove={detail.stageMoves.secondary.find((move) => move.kind === "CANCEL") ?? null}
+        />
+      )}
+
       <div className="grid grid-cols-1 items-start gap-grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex min-w-0 flex-col gap-grid">
-          <OrderSummarySection order={order} />
+          <OrderSummarySection order={order} proposed={quote.pending ?? quote.declined} />
           <PaymentsSection detail={detail} timeZone={timeZone} />
           <QuoteHistorySection order={order} timeZone={timeZone} />
         </div>
@@ -87,14 +117,18 @@ export function OrderDetail({ detail, canChangeStage, timeZone }: OrderDetailPro
   );
 }
 
-function OrderSummarySection({ order }: { order: Order }) {
+type Revision = Order["quoteRevisions"][number];
+
+// While a revision is pending or declined, the lines are its proposal: the
+// money still follows the last approved total.
+function OrderSummarySection({ order, proposed }: { order: Order; proposed: Revision | null }) {
   const services = order.lines.filter((line) => line.lineType === "SERVICE");
   const others = order.lines.filter((line) => line.lineType === "ADJUSTMENT");
   const pickup = order.fulfilmentType === "PICKUP_DELIVERY";
   const estimate = order.quoteRevisions.find((revision) => revision.version === 1);
 
   return (
-    <Section title="Order summary">
+    <Section title="Order summary" badge={proposed && <Badge variant="warning">Proposed changes</Badge>}>
       <ul className="flex flex-col divide-y divide-border">
         {services.map((line) => {
           const pricingType = line.pricingType ?? "PER_ITEM";
@@ -151,7 +185,25 @@ function OrderSummarySection({ order }: { order: Order }) {
       </ul>
 
       <div className="flex flex-col gap-1 border-t border-border pt-component">
-        {order.approvedQuote ? (
+        {proposed ? (
+          <>
+            <div className="flex items-baseline justify-between gap-component">
+              <span className="type-body-sm text-muted-foreground">Last approved total</span>
+              <span className="type-body-sm text-foreground">
+                {order.approvedQuote ? formatNaira(order.approvedQuote.total) : "None yet"}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between gap-component">
+              <span className="type-label text-foreground">Proposed total</span>
+              <span className="type-h3 text-foreground">{formatNaira(proposed.total)}</span>
+            </div>
+            <p className="type-caption text-muted-foreground">
+              {proposed.status === "DECLINED"
+                ? "The customer declined these changes. Payments follow the last approved total."
+                : "Waiting for the customer's approval. Payments follow the last approved total until then."}
+            </p>
+          </>
+        ) : order.approvedQuote ? (
           <div className="flex items-baseline justify-between gap-component">
             <span className="type-label text-foreground">Approved total</span>
             <span className="type-h3 text-foreground">{formatNaira(order.approvedQuote.total)}</span>
@@ -262,22 +314,46 @@ function InternalNoteSection({ note }: { note: string | null }) {
 }
 
 function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZone: string }) {
+  const staffName = (id: string | null) => (id ? (detail.staffNames.get(id) ?? null) : null);
   return (
     <Section title="Timeline">
-      <ol className="flex flex-col divide-y divide-border">
-        {detail.order.statusEvents.map((event) => (
-          <li key={event.id} className="flex flex-col gap-0.5 py-2.5 first:pt-0 last:pb-0">
-            <span className="type-label text-foreground">{getTimelineLabel(event, detail.order.fulfilmentType)}</span>
-            <span className="type-caption text-muted-foreground">
-              {formatDateTime(event.createdAt, timeZone)} ·{" "}
-              {getActorLabel(event.actorType, event.actorUserId ? (detail.staffNames.get(event.actorUserId) ?? null) : null)}
-            </span>
-            {event.note && <span className="type-body-sm break-words text-foreground">{event.note}</span>}
-          </li>
-        ))}
+      <ol className="flex flex-col gap-1">
+        {detail.timeline.map((entry) =>
+          entry.kind === "stage" ? (
+            <li key={entry.key} className="flex flex-col gap-0.5 border-b border-border py-2.5 last:border-b-0">
+              <span className="type-label text-foreground">{getTimelineLabel(entry.event, detail.order.fulfilmentType)}</span>
+              <span className="type-caption text-muted-foreground">
+                {formatDateTime(entry.at, timeZone)} · {getActorLabel(entry.event.actorType, staffName(entry.event.actorUserId))}
+              </span>
+              {entry.event.note && <span className="type-body-sm break-words text-foreground">{entry.event.note}</span>}
+            </li>
+          ) : (
+            // Revision moments stand out with a soft tint and an icon, never colour alone.
+            <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-info/10 px-3 py-2.5">
+              <RevisionIcon moment={entry.moment} />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="type-label break-words text-foreground">
+                  {describeRevisionMoment(entry, staffName(entry.staffUserId))}
+                </span>
+                <span className="type-caption text-muted-foreground">
+                  {formatDateTime(entry.at, timeZone)}
+                  {entry.moment === "ISSUED" && ` · ${getActorLabel("STAFF", staffName(entry.staffUserId))}`}
+                </span>
+                {entry.moment === "ISSUED" && entry.reason && (
+                  <span className="type-body-sm break-words text-foreground">Reason: {entry.reason}</span>
+                )}
+              </div>
+            </li>
+          ),
+        )}
       </ol>
     </Section>
   );
+}
+
+function RevisionIcon({ moment }: { moment: "ISSUED" | "APPROVED" | "DECLINED" }) {
+  const Icon = moment === "ISSUED" ? ReceiptTextIcon : moment === "APPROVED" ? CircleCheckIcon : CircleXIcon;
+  return <Icon className="mt-0.5 size-4 shrink-0 text-info" aria-hidden />;
 }
 
 function QuoteHistorySection({ order, timeZone }: { order: Order; timeZone: string }) {
@@ -288,7 +364,14 @@ function QuoteHistorySection({ order, timeZone }: { order: Order; timeZone: stri
           <LineRow
             key={revision.id}
             label={`Version ${revision.version}`}
-            detail={`${getQuoteRevisionLabel(revision)} · ${formatDateTime(revision.createdAt, timeZone)}`}
+            detail={[
+              getQuoteRevisionLabel(revision),
+              formatDateTime(revision.createdAt, timeZone),
+              revision.version > 1 && revision.reason ? `Reason: ${revision.reason}` : null,
+              revision.status === "DECLINED" && revision.customerMessage ? `Customer said: “${revision.customerMessage}”` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
             amount={formatNaira(revision.total)}
           />
         ))}

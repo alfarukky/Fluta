@@ -62,33 +62,53 @@ export interface PricedOrderLine {
   serviceId: string | null;
   description: string;
   pricingType: PricingType | null;
+  requiresQuote: boolean;
   unitPrice: number | null;
   quantity: number | null; // hundredths
   estimate: number | null; // hundredths
   lineTotal: number | null;
 }
 
-// A type alias (not an interface) so it is assignable to Prisma's JSON input.
+// Type aliases (not interfaces) so they are assignable to Prisma's JSON input.
 export type QuoteSnapshotLine = {
   lineType: OrderLineType;
   serviceId: string | null;
-  description: string;
+  description: string; // the service's name when the line was added, or the Others description
   pricingType: PricingType | null;
+  requiresQuote: boolean;
   unitPrice: number | null;
   quantity: string | null;
   quantityIsEstimate: boolean;
   lineTotal: number;
 };
 
-// What version 1 shows the customer, frozen in QuoteRevision.linesSnapshot.
+// QuoteRevision.linesSnapshot: enough to show the quote again without the
+// catalogue or the service area. Never changed once written.
+export type QuoteSnapshot = {
+  lines: QuoteSnapshotLine[];
+  areaName: string | null;
+  isOutOfArea: boolean;
+  fulfilmentCharge: number | null; // null on a drop-off order
+};
+
+export interface SnapshotFulfilment {
+  areaName: string | null;
+  isOutOfArea: boolean;
+  // Null on a drop-off order, or while a pickup charge is still to be quoted.
+  charge: number | null;
+}
+
+export const NO_FULFILMENT: SnapshotFulfilment = { areaName: null, isOutOfArea: false, charge: null };
+
+// What a revision shows the customer, frozen in QuoteRevision.linesSnapshot.
 // An unweighed line shows the customer's estimate when there is one (priced
 // at the unit price) and is left out otherwise; such a version is only ever
 // an estimate and is never approved.
 export function buildQuoteSnapshot(
   lines: readonly PricedOrderLine[],
-  fulfilmentCharge: number | null,
-): { linesSnapshot: QuoteSnapshotLine[]; itemsSubtotal: number; fulfilmentCharge: number; total: number } {
-  const linesSnapshot = lines.flatMap((line): QuoteSnapshotLine[] => {
+  fulfilment: SnapshotFulfilment,
+): { linesSnapshot: QuoteSnapshot; itemsSubtotal: number; fulfilmentCharge: number; total: number } {
+  const snapshotLines = lines.flatMap((line): QuoteSnapshotLine[] => {
     const shown = line.quantity ?? line.estimate;
     if (line.lineType === "SERVICE" && shown === null) return [];
     const lineTotal = line.lineTotal ?? lineTotalKobo(line.unitPrice ?? 0, shown ?? 0);
@@ -98,6 +118,7 @@ export function buildQuoteSnapshot(
         serviceId: line.serviceId,
         description: line.description,
         pricingType: line.pricingType,
+        requiresQuote: line.requiresQuote,
         unitPrice: line.unitPrice,
         quantity: shown === null ? null : toDecimalString(shown),
         quantityIsEstimate: line.quantity === null && shown !== null,
@@ -105,7 +126,17 @@ export function buildQuoteSnapshot(
       },
     ];
   });
-  const itemsSubtotal = linesSnapshot.reduce((sum, line) => sum + line.lineTotal, 0);
-  const charge = fulfilmentCharge ?? 0;
-  return { linesSnapshot, itemsSubtotal, fulfilmentCharge: charge, total: itemsSubtotal + charge };
+  const itemsSubtotal = snapshotLines.reduce((sum, line) => sum + line.lineTotal, 0);
+  const charge = fulfilment.charge ?? 0;
+  return {
+    linesSnapshot: {
+      lines: snapshotLines,
+      areaName: fulfilment.areaName,
+      isOutOfArea: fulfilment.isOutOfArea,
+      fulfilmentCharge: fulfilment.charge,
+    },
+    itemsSubtotal,
+    fulfilmentCharge: charge,
+    total: itemsSubtotal + charge,
+  };
 }

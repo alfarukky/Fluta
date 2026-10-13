@@ -129,7 +129,11 @@ async function prepareOrder(
       quantity: line.quantityHundredths,
       estimate: line.estimateHundredths,
     })),
-    fulfilmentCharge,
+    {
+      areaName: fulfilment.fields.serviceAreaName,
+      isOutOfArea: fulfilment.fields.isOutOfArea,
+      charge: fulfilmentCharge,
+    },
   );
 
   return {

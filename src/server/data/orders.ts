@@ -363,7 +363,19 @@ export async function findOrderDetail(storeId: string, orderId: string) {
       },
       approvedQuote: { select: { id: true, version: true, total: true } },
       quoteRevisions: {
-        select: { id: true, version: true, total: true, status: true, createdAt: true, approvedAt: true, declinedAt: true },
+        select: {
+          id: true,
+          version: true,
+          total: true,
+          status: true,
+          reason: true,
+          customerMessage: true,
+          createdAt: true,
+          createdByUserId: true,
+          approvedAt: true,
+          approvedByActor: true,
+          declinedAt: true,
+        },
         orderBy: { version: "desc" },
       },
       payments: {

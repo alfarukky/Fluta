@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildQuoteSnapshot, getPickupProblem, type PickupContext, type PickupRequest } from "./orders";
+import { buildQuoteSnapshot, getPickupProblem, NO_FULFILMENT, type PickupContext, type PickupRequest } from "./orders";
 
 // 2099-06-15 is a Monday; the store picks up Monday–Friday, 8:00 AM–5:00 PM.
 const context: PickupContext = {
@@ -70,38 +70,58 @@ describe("buildQuoteSnapshot", () => {
     serviceId: "shirt",
     description: "Shirt",
     pricingType: "PER_ITEM" as const,
+    requiresQuote: false,
     unitPrice: 80_000,
     quantity: 300,
     estimate: null,
     lineTotal: 240_000,
   };
-  const wash = { ...shirts, serviceId: "wash", description: "Wash & fold", pricingType: "PER_KG" as const, unitPrice: 150_000 };
+  const wash = {
+    ...shirts,
+    serviceId: "wash",
+    description: "Wash & fold",
+    pricingType: "PER_KG" as const,
+    requiresQuote: true,
+    unitPrice: 150_000,
+  };
   const discount = {
     lineType: "ADJUSTMENT" as const,
     serviceId: null,
     description: "Loyalty discount",
     pricingType: null,
+    requiresQuote: false,
     unitPrice: null,
     quantity: null,
     estimate: null,
     lineTotal: -20_000,
   };
 
-  it("freezes priced lines, adjustments, and the charge", () => {
-    const snapshot = buildQuoteSnapshot([shirts, discount], 150_000);
+  it("freezes priced lines, adjustments, the area, and the charge", () => {
+    const snapshot = buildQuoteSnapshot([shirts, discount], { areaName: "Wuse 2", isOutOfArea: false, charge: 150_000 });
     expect(snapshot).toMatchObject({ itemsSubtotal: 220_000, fulfilmentCharge: 150_000, total: 370_000 });
-    expect(snapshot.linesSnapshot[0]).toMatchObject({ quantity: "3.00", quantityIsEstimate: false, lineTotal: 240_000 });
+    expect(snapshot.linesSnapshot).toMatchObject({ areaName: "Wuse 2", isOutOfArea: false, fulfilmentCharge: 150_000 });
+    expect(snapshot.linesSnapshot.lines[0]).toEqual({
+      lineType: "SERVICE",
+      serviceId: "shirt",
+      description: "Shirt",
+      pricingType: "PER_ITEM",
+      requiresQuote: false,
+      unitPrice: 80_000,
+      quantity: "3.00",
+      quantityIsEstimate: false,
+      lineTotal: 240_000,
+    });
   });
 
   it("shows an unweighed line at the customer's estimate", () => {
-    const snapshot = buildQuoteSnapshot([{ ...wash, quantity: null, estimate: 250, lineTotal: null }], null);
-    expect(snapshot.linesSnapshot).toEqual([expect.objectContaining({ quantity: "2.50", quantityIsEstimate: true, lineTotal: 375_000 })]);
+    const snapshot = buildQuoteSnapshot([{ ...wash, quantity: null, estimate: 250, lineTotal: null }], NO_FULFILMENT);
+    expect(snapshot.linesSnapshot.lines).toEqual([expect.objectContaining({ quantity: "2.50", quantityIsEstimate: true, lineTotal: 375_000 })]);
     expect(snapshot).toMatchObject({ itemsSubtotal: 375_000, fulfilmentCharge: 0, total: 375_000 });
   });
 
   it("leaves out an unweighed line without an estimate", () => {
-    const snapshot = buildQuoteSnapshot([shirts, { ...wash, quantity: null, lineTotal: null }], null);
-    expect(snapshot.linesSnapshot).toHaveLength(1);
+    const snapshot = buildQuoteSnapshot([shirts, { ...wash, quantity: null, lineTotal: null }], NO_FULFILMENT);
+    expect(snapshot.linesSnapshot.lines).toHaveLength(1);
     expect(snapshot.total).toBe(240_000);
   });
 });

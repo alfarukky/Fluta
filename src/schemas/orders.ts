@@ -28,7 +28,7 @@ export const STORE_NOT_ACCEPTING_MESSAGE =
 export const ADJUSTMENT_KIND_LABELS = { CHARGE: "Extra charge", DISCOUNT: "Discount" } as const;
 export type AdjustmentKind = keyof typeof ADJUSTMENT_KIND_LABELS;
 
-const recordId = z.string().trim().min(1).max(64);
+export const recordId = z.string().trim().min(1).max(64);
 
 // A customer's phone number in E.164.
 export const customerPhoneSchema = z
@@ -65,7 +65,7 @@ const customerSchema = z.discriminatedUnion("kind", [
 
 // Up to two decimal places, as hundredths ("2.5" → 250). Blank is null. The
 // server checks the range for the service's pricing type (getQuantityProblem).
-const quantityText = z
+export const quantityText = z
   .string()
   .max(12, "Enter a number")
   .transform((value, ctx) => {
@@ -107,7 +107,7 @@ function nairaAmount(max: number, maxLabel: string) {
 }
 
 // "Others": a description and a positive amount; a discount is stored negative.
-const adjustmentSchema = z
+export const adjustmentSchema = z
   .object({
     description: z
       .string()
@@ -122,20 +122,27 @@ const adjustmentSchema = z
     amount: kind === "DISCOUNT" ? -amount : amount,
   }));
 
+// A pickup & delivery charge as typed: blank is null (none entered), ₦0 allowed.
+export const chargeText = z
+  .string()
+  .max(40, AMOUNT_FORMAT_MESSAGE)
+  .transform((value) => value.trim())
+  .pipe(z.union([z.literal("").transform(() => null), nairaAmount(MAX_AREA_CHARGE, "Charge")]));
+
+// An out-of-area name, kept on the order only.
+export const outOfAreaNameSchema = z
+  .string()
+  .trim()
+  .min(2, "Area name must be at least 2 characters")
+  .max(AREA_NAME_MAX, `Area name must be ${AREA_NAME_MAX} characters or fewer`);
+
 const clockTime = z.string().refine((value) => parseClockTime(value) !== null, "Choose a time");
 
 const pickupSchema = z.object({
   area: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("area"), areaId: recordId }),
     // Outside the store's service areas: the name is kept on the order only.
-    z.object({
-      kind: z.literal("outOfArea"),
-      name: z
-        .string()
-        .trim()
-        .min(2, "Area name must be at least 2 characters")
-        .max(AREA_NAME_MAX, `Area name must be ${AREA_NAME_MAX} characters or fewer`),
-    }),
+    z.object({ kind: z.literal("outOfArea"), name: outOfAreaNameSchema }),
   ]),
   address: z
     .string()
@@ -148,11 +155,7 @@ const pickupSchema = z.object({
   windowEnd: clockTime,
   // Staff enter the agreed charge only for a quote-required area or an
   // out-of-area order (₦0 allowed); a fixed area's charge comes from the area.
-  charge: z
-    .string()
-    .max(40, AMOUNT_FORMAT_MESSAGE)
-    .transform((value) => value.trim())
-    .pipe(z.union([z.literal("").transform(() => null), nairaAmount(MAX_AREA_CHARGE, "Charge")])),
+  charge: chargeText,
 });
 
 export const createOrderSchema = z
