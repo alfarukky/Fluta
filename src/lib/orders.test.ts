@@ -7,6 +7,8 @@ import {
   getActorLabel,
   getInitialStage,
   getQuoteRevisionLabel,
+  getTimelineLabel,
+  isAwaitingApproval,
   parseOrderNumberSearch,
   summarizeServices,
 } from "./orders";
@@ -104,5 +106,33 @@ describe("getActorLabel", () => {
   it("labels customers and the system", () => {
     expect(getActorLabel("CUSTOMER", null)).toBe("Customer");
     expect(getActorLabel("SYSTEM", null)).toBe("System");
+  });
+});
+
+describe("getTimelineLabel", () => {
+  it("labels a pickup order completed from Ready as collected by the customer", () => {
+    expect(getTimelineLabel({ fromStage: "READY", toStage: "COMPLETED" }, "PICKUP_DELIVERY")).toBe(
+      "Completed: collected by customer",
+    );
+  });
+
+  it("uses the stage name otherwise", () => {
+    expect(getTimelineLabel({ fromStage: "OUT_FOR_DELIVERY", toStage: "COMPLETED" }, "PICKUP_DELIVERY")).toBe("Completed");
+    expect(getTimelineLabel({ fromStage: "READY", toStage: "COMPLETED" }, "DROP_OFF")).toBe("Completed");
+    expect(getTimelineLabel({ fromStage: null, toStage: "BOOKED" }, "DROP_OFF")).toBe("Booked");
+  });
+});
+
+describe("isAwaitingApproval", () => {
+  const revision = { approvedAt: null, declinedAt: null };
+
+  it("is true for a sent revision still pending", () => {
+    expect(isAwaitingApproval({ ...revision, version: 2, status: "PENDING" })).toBe(true);
+  });
+
+  it("is false for an estimate, or anything already decided", () => {
+    expect(isAwaitingApproval({ ...revision, version: 1, status: "PENDING" })).toBe(false);
+    expect(isAwaitingApproval({ ...revision, version: 2, status: "SUPERSEDED" })).toBe(false);
+    expect(isAwaitingApproval({ version: 2, status: "APPROVED", approvedAt: new Date(), declinedAt: null })).toBe(false);
   });
 });

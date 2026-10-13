@@ -10,8 +10,8 @@ import {
   FULFILMENT_TYPE_LABELS,
   getActorLabel,
   getQuoteRevisionLabel,
+  getTimelineLabel,
   ORDER_CHANNEL_LABELS,
-  ORDER_STAGE_LABELS,
   PAYMENT_METHOD_LABELS,
 } from "@/lib/orders";
 import { formatPhone } from "@/lib/phone";
@@ -23,18 +23,21 @@ import type { OrderDetail as OrderDetailData } from "@/server/services/orders";
 import { cn } from "@/lib/utils";
 
 import { PaymentBadge, StageBadge } from "./OrderBadges";
+import { OrderStageActions } from "./OrderStageActions";
 
 type Order = OrderDetailData["order"];
 
 interface OrderDetailProps {
   detail: OrderDetailData;
+  // False when the store can't work on existing orders: no moves are offered.
+  canChangeStage: boolean;
   timeZone: string;
 }
 
-// Everything about one order, read-only, from the order's own copies (never
-// the current service or area records). Stage, quote, and payment actions
-// come in later features.
-export function OrderDetail({ detail, timeZone }: OrderDetailProps) {
+// Everything about one order, from the order's own copies (never the current
+// service or area records), with the stage moves this member may make. Quote
+// and payment actions come in later features.
+export function OrderDetail({ detail, canChangeStage, timeZone }: OrderDetailProps) {
   const { order, displayNumber, balance } = detail;
 
   return (
@@ -57,6 +60,14 @@ export function OrderDetail({ detail, timeZone }: OrderDetailProps) {
           <StageBadge stage={order.stage} />
           <PaymentBadge state={balance.state} />
         </div>
+        {canChangeStage && (
+          <OrderStageActions
+            orderId={order.id}
+            stage={order.stage}
+            fulfilmentType={order.fulfilmentType}
+            moves={detail.stageMoves}
+          />
+        )}
       </header>
 
       <div className="grid grid-cols-1 items-start gap-grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -256,7 +267,7 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
       <ol className="flex flex-col divide-y divide-border">
         {detail.order.statusEvents.map((event) => (
           <li key={event.id} className="flex flex-col gap-0.5 py-2.5 first:pt-0 last:pb-0">
-            <span className="type-label text-foreground">{ORDER_STAGE_LABELS[event.toStage]}</span>
+            <span className="type-label text-foreground">{getTimelineLabel(event, detail.order.fulfilmentType)}</span>
             <span className="type-caption text-muted-foreground">
               {formatDateTime(event.createdAt, timeZone)} ·{" "}
               {getActorLabel(event.actorType, event.actorUserId ? (detail.staffNames.get(event.actorUserId) ?? null) : null)}

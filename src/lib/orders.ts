@@ -113,14 +113,38 @@ export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
 // A revision's label in the quote history. Version 1 of an order that wasn't
 // fully priced at creation was never sent for approval (the priced quote is a
 // later version), so it is an Estimate, not "Awaiting approval".
-export function getQuoteRevisionLabel(revision: {
+export interface RevisionStatus {
   version: number;
   status: QuoteStatus;
   approvedAt: Date | null;
   declinedAt: Date | null;
-}): string {
-  if (revision.version === 1 && revision.approvedAt === null && revision.declinedAt === null) return "Estimate";
+}
+
+export function getQuoteRevisionLabel(revision: RevisionStatus): string {
+  if (isEstimate(revision)) return "Estimate";
   return QUOTE_STATUS_LABELS[revision.status];
+}
+
+// A revision sent to the customer and not yet approved or declined. An
+// estimate (version 1 never sent) isn't waiting for anyone.
+export function isAwaitingApproval(revision: RevisionStatus): boolean {
+  return revision.status === "PENDING" && !isEstimate(revision);
+}
+
+function isEstimate(revision: RevisionStatus): boolean {
+  return revision.version === 1 && revision.approvedAt === null && revision.declinedAt === null;
+}
+
+// A timeline entry's label. A pickup order normally completes from Out for
+// delivery, so completing one from Ready means the customer collected it.
+export function getTimelineLabel(
+  event: { fromStage: OrderStage | null; toStage: OrderStage },
+  fulfilmentType: FulfilmentType,
+): string {
+  if (event.toStage === "COMPLETED" && event.fromStage === "READY" && fulfilmentType === "PICKUP_DELIVERY") {
+    return "Completed: collected by customer";
+  }
+  return ORDER_STAGE_LABELS[event.toStage];
 }
 
 // Who did something in the timeline. A staff member's name when known.

@@ -66,3 +66,27 @@ export interface OrderListCursor {
   createdAt: Date;
   id: string;
 }
+
+// ───────────── Order stages ─────────────
+
+// The moves the order detail page offers (see getAvailableTransitions in
+// src/server/domain/order-stages.ts). Moves into or out of Quote awaiting
+// approval (other than cancelling) and Booked → Pickup scheduled come with
+// quotes and online bookings.
+export type StageMoveKind = "ADVANCE" | "COLLECTED_INSTEAD" | "STEP_BACK" | "CANCEL" | "REOPEN";
+
+export interface StageMove {
+  kind: StageMoveKind;
+  to: OrderStage;
+  collectedByCustomer: boolean;
+  noteRequired: boolean;
+}
+
+export interface AvailableTransitions {
+  // The main next move, when it is allowed.
+  primary: StageMove | null;
+  // Every other allowed move, in menu order.
+  secondary: StageMove[];
+  // Why the main next move isn't allowed yet, in plain language.
+  blockedReason: string | null;
+}

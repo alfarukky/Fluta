@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { StoreRole } from "@/generated/prisma/client";
 import { formatNaira } from "@/lib/money";
 import { formatOrderNumber, summarizeServices } from "@/lib/orders";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
@@ -16,6 +17,7 @@ import {
   type OrderListRecord,
 } from "@/server/data/orders";
 import { getBalance, type Balance } from "@/server/domain/balance";
+import { getAvailableTransitions, getStageOrderState, type AvailableTransitions } from "@/server/domain/order-stages";
 import { buildOrderListQuery, ORDER_LIST_PAGE_SIZE } from "@/server/domain/order-list";
 import type { OrderListCursor, OrderListPage, OrderListRow } from "@/types/orders";
 
@@ -84,6 +86,8 @@ export interface OrderDetail {
   balance: Balance;
   // Staff names by user ID, for the timeline.
   staffNames: Map<string, string>;
+  // The stage moves this member may make now (the page shows only these).
+  stageMoves: AvailableTransitions;
 }
 
 // False for an order that isn't this store's, exactly as for one that doesn't exist.
@@ -92,7 +96,7 @@ export async function isStoreOrder(storeId: string, orderId: string): Promise<bo
 }
 
 // Null for an order that isn't this store's, exactly as for one that doesn't exist.
-export async function getOrderDetail(storeId: string, orderId: string): Promise<OrderDetail | null> {
+export async function getOrderDetail(storeId: string, orderId: string, role: StoreRole): Promise<OrderDetail | null> {
   const order = await findOrderDetail(storeId, orderId);
   if (!order) return null;
 
@@ -102,6 +106,7 @@ export async function getOrderDetail(storeId: string, orderId: string): Promise<
     displayNumber: formatOrderNumber(order.store, order.orderNumber),
     balance: getBalance(order),
     staffNames: await findStaffNames(storeId, actorIds),
+    stageMoves: getAvailableTransitions(getStageOrderState(order), role),
   };
 }
 

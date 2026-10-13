@@ -204,6 +204,27 @@ export const customerSearchSchema = z.string().trim().min(2).max(80);
 // An order ID from the URL. It is only ever looked up within the member's own store.
 export const orderIdSchema = z.string().trim().min(1).max(64);
 
+// ───────────── Order stages ─────────────
+
+export const STAGE_NOTE_MAX = 500;
+
+// A stage change from the order detail page. `from` is the stage the user
+// saw: if the order has moved since, nothing is saved.
+export const changeOrderStageSchema = z.object({
+  orderId: orderIdSchema,
+  from: z.enum(OrderStage),
+  to: z.enum(OrderStage),
+  collectedByCustomer: z.boolean().default(false),
+  note: z
+    .string()
+    .trim()
+    .max(STAGE_NOTE_MAX, `Note must be ${STAGE_NOTE_MAX} characters or fewer`)
+    .nullish()
+    .transform((value) => value || null),
+});
+
+export type ChangeOrderStageInput = z.infer<typeof changeOrderStageSchema>;
+
 // ───────────── Orders list ─────────────
 
 export const ORDER_SEARCH_MAX = 80;

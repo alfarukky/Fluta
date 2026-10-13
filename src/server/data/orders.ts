@@ -328,6 +328,8 @@ export async function findOrderDetail(storeId: string, orderId: string) {
       channel: true,
       fulfilmentType: true,
       stage: true,
+      stageBeforeQuote: true,
+      approvedQuoteId: true,
       serviceAreaName: true,
       isOutOfArea: true,
       isOutsideSchedule: true,
@@ -383,7 +385,7 @@ export async function findOrderDetail(storeId: string, orderId: string) {
         orderBy: [{ paidAt: "desc" }, { id: "desc" }],
       },
       statusEvents: {
-        select: { id: true, toStage: true, actorType: true, actorUserId: true, note: true, createdAt: true },
+        select: { id: true, fromStage: true, toStage: true, actorType: true, actorUserId: true, note: true, createdAt: true },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       },
     },

@@ -341,7 +341,7 @@ describe("store isolation", () => {
 
   it("finds nothing for another store's order ID", async () => {
     expect(await isStoreOrder(seeded.freshFold.id, seeded.cleanWaveOrderId)).toBe(false);
-    expect(await getOrderDetail(seeded.freshFold.id, seeded.cleanWaveOrderId)).toBeNull();
+    expect(await getOrderDetail(seeded.freshFold.id, seeded.cleanWaveOrderId, "STAFF")).toBeNull();
     expect(await isStoreOrder(seeded.cleanWave.id, seeded.cleanWaveOrderId)).toBe(true);
   });
 
@@ -520,8 +520,8 @@ describe("query counts", () => {
   });
 
   it("loads a long order's detail with the same number of queries as a simple one", async () => {
-    const simple = await countQueries(() => getOrderDetail(store.id, orders.A));
-    const long = await countQueries(() => getOrderDetail(store.id, orders.H));
+    const simple = await countQueries(() => getOrderDetail(store.id, orders.A, "STAFF"));
+    const long = await countQueries(() => getOrderDetail(store.id, orders.H, "STAFF"));
     expect(long.result?.order.statusEvents).toHaveLength(12);
     expect(long.result?.order.quoteRevisions).toHaveLength(5);
     expect(long.result?.order.payments).toHaveLength(6);
@@ -533,12 +533,12 @@ describe("query counts", () => {
 
 describe("order detail", () => {
   it("names the staff in the timeline, fetched together", async () => {
-    const detail = await getOrderDetail(store.id, orders.H);
+    const detail = await getOrderDetail(store.id, orders.H, "STAFF");
     expect([...(detail?.staffNames.values() ?? [])].sort()).toEqual(["Staff first", "Staff second"]);
   });
 
   it("works out the balance with getBalance, ignoring pending, failed, and voided records", async () => {
-    const detail = await getOrderDetail(store.id, orders.E);
+    const detail = await getOrderDetail(store.id, orders.E, "STAFF");
     expect(detail?.balance).toEqual({
       state: "PAID",
       approvedTotalKobo: 200_000,
@@ -549,7 +549,7 @@ describe("order detail", () => {
   });
 
   it("shows a cancelled order that was never priced as Nothing due, not Awaiting quote", async () => {
-    const detail = await getOrderDetail(store.id, orders.J);
+    const detail = await getOrderDetail(store.id, orders.J, "STAFF");
     expect(detail?.order.approvedQuote).toBeNull();
     expect(detail?.balance).toEqual({
       state: "NOTHING_DUE",
@@ -565,7 +565,7 @@ describe("order detail", () => {
   });
 
   it("labels an unpriced order's version 1 as an Estimate", async () => {
-    const detail = await getOrderDetail(store.id, orders.C);
+    const detail = await getOrderDetail(store.id, orders.C, "STAFF");
     expect(detail?.order.approvedQuote).toBeNull();
     expect(detail?.order.quoteRevisions.map(getQuoteRevisionLabel)).toEqual(["Estimate"]);
     expect(detail?.balance).toMatchObject({ state: "AWAITING_QUOTE", approvedTotalKobo: null, balanceKobo: null });
