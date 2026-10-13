@@ -70,11 +70,12 @@ export function LinesSection({ draft, onChange, errors, services, review }: Line
 
   const categories = groupByCategory(services);
   const linesError = errors.serviceLines;
+  const hasDiscount = draft.adjustments.some((line) => line.kind === "DISCOUNT");
 
   return (
     <OrderSection title="Lines" description="Prices come from your service catalogue.">
       {draft.serviceLines.length === 0 ? (
-        <p className={linesError ? "type-body-sm text-error" : "type-body-sm text-muted-foreground"}>
+        <p id={`${id}-lines-error`} className={linesError ? "type-body-sm text-error" : "type-body-sm text-muted-foreground"}>
           {linesError ?? "No services yet. Add at least one."}
         </p>
       ) : (
@@ -103,7 +104,12 @@ export function LinesSection({ draft, onChange, errors, services, review }: Line
       )}
 
       <Select key={pickerKey} onValueChange={pick} disabled={draft.serviceLines.length >= MAX_SERVICE_LINES}>
-        <SelectTrigger className="w-full md:w-80" aria-label="Add a service">
+        <SelectTrigger
+          className="w-full md:w-80"
+          aria-label="Add a service"
+          aria-invalid={linesError && draft.serviceLines.length === 0 ? true : undefined}
+          aria-describedby={linesError && draft.serviceLines.length === 0 ? `${id}-lines-error` : undefined}
+        >
           <PlusIcon className="text-muted-foreground" aria-hidden />
           <SelectValue placeholder="Add a service" />
         </SelectTrigger>
@@ -126,7 +132,7 @@ export function LinesSection({ draft, onChange, errors, services, review }: Line
           <h3 className="type-label text-foreground">Others</h3>
           <p className="type-caption text-muted-foreground">Extra charges or discounts, like express service.</p>
         </div>
-        {errors.adjustments && <p className="type-caption text-error">{errors.adjustments}</p>}
+        {errors.adjustments && !hasDiscount && <p className="type-caption text-error">{errors.adjustments}</p>}
         {draft.adjustments.length > 0 && (
           <ul className="flex flex-col gap-component" aria-label="Others">
             {draft.adjustments.map((line, index) => (
@@ -137,7 +143,8 @@ export function LinesSection({ draft, onChange, errors, services, review }: Line
                 errors={{
                   description: errors[`adjustments.${index}.description`],
                   kind: errors[`adjustments.${index}.kind`],
-                  amount: errors[`adjustments.${index}.amount`],
+                    // A total below ₦0 is the discounts' doing: shown on each one.
+                    amount: errors[`adjustments.${index}.amount`] ?? (line.kind === "DISCOUNT" ? errors.adjustments : undefined),
                 }}
                 onChange={(change) => updateAdjustment(line.key, change)}
                 onRemove={() => onChange({ adjustments: draft.adjustments.filter((other) => other.key !== line.key) })}

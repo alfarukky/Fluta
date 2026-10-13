@@ -4,6 +4,7 @@ import { useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { saveStoreProfile, type ProfileFormValues } from "@/actions/store-settings";
+import { useScrollToFirstError } from "@/components/forms/scroll-to-first-error";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,7 @@ export function StoreProfileForm({ initialValues, slug, linkPrefix, children }: 
   const [values, setValues] = useState(initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
+  const { ref, scrollToFirstError } = useScrollToFirstError();
 
   const dirty = (Object.keys(values) as (keyof ProfileFormValues)[]).some((key) => values[key] !== saved[key]);
 
@@ -59,6 +61,7 @@ export function StoreProfileForm({ initialValues, slug, linkPrefix, children }: 
         toast.success(result.message);
       } else {
         setErrors(result.fieldErrors ?? {});
+        scrollToFirstError();
         toast.error(result.message);
       }
     });
@@ -74,7 +77,7 @@ export function StoreProfileForm({ initialValues, slug, linkPrefix, children }: 
   });
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-grid" noValidate>
+    <form ref={ref} onSubmit={submit} className="flex flex-col gap-grid" noValidate>
       <Card>
         <CardHeader>
           <CardTitle>Store information</CardTitle>

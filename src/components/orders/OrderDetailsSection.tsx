@@ -126,6 +126,8 @@ function ChoiceGroup<T extends string>({ legend, idPrefix, value, options, onCha
     <fieldset className="flex flex-col gap-2" aria-describedby={error ? `${idPrefix}-error` : undefined}>
       <legend className="type-label mb-2 text-foreground">{legend}</legend>
       <RadioGroup
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${idPrefix}-error` : undefined}
         value={value}
         onValueChange={(next) => {
           const option = options.find((candidate) => candidate.value === next);

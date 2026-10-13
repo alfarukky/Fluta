@@ -24,6 +24,24 @@ const pickup = {
 };
 
 describe("createOrderSchema", () => {
+  // The first message for each field is the one shown beneath it.
+  const firstMessage = (request: CreateOrderRequest, path: string) =>
+    createOrderSchema.safeParse(request).error?.issues.find((issue) => issue.path.join(".") === path)?.message;
+
+  it("asks for a customer, a name, and a phone number in plain words", () => {
+    expect(firstMessage({ ...dropOff, customer: { kind: "existing", customerId: "" } }, "customer.customerId")).toBe(
+      "Choose a customer, or add a new one",
+    );
+    const blank = { kind: "new" as const, name: " ", phone: "", email: "" };
+    expect(firstMessage({ ...dropOff, customer: blank }, "customer.name")).toBe("Enter the customer's name");
+    expect(firstMessage({ ...dropOff, customer: blank }, "customer.phone")).toBe("Enter the customer's phone number");
+  });
+
+  it("asks for a pickup window in plain words", () => {
+    const noWindow = { ...dropOff, fulfilmentType: "PICKUP_DELIVERY" as const, pickup: { ...pickup, windowStart: "", windowEnd: "" } };
+    expect(firstMessage(noWindow, "pickup.windowStart")).toBe("Choose a pickup window");
+  });
+
   it("parses a counter drop-off: trimmed name, E.164 phone, hundredths, blank note as null", () => {
     const order = createOrderSchema.parse(dropOff);
     expect(order.customer).toEqual({ kind: "new", name: "Tunde Bakare", phone: "+2348031234521", email: null });

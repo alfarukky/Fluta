@@ -5,6 +5,7 @@ import { useState, useTransition, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { createOrder } from "@/actions/orders";
+import { useScrollToFirstError } from "@/components/forms/scroll-to-first-error";
 import { Button } from "@/components/ui/button";
 import type { OrderEntryArea, OrderEntryService } from "@/types/orders";
 
@@ -31,6 +32,7 @@ export function NewOrderForm({ services, areas, settings }: NewOrderFormProps) {
   const [clientRequestId] = useState(() => crypto.randomUUID());
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
+  const { ref, scrollToFirstError } = useScrollToFirstError();
   const [created, setCreated] = useState(false);
 
   const review = reviewDraft(draft, services, areas);
@@ -53,6 +55,7 @@ export function NewOrderForm({ services, areas, settings }: NewOrderFormProps) {
         return;
       }
       setErrors(result.fieldErrors ?? {});
+      scrollToFirstError();
       toast.error(result.message);
     });
   }
@@ -60,7 +63,7 @@ export function NewOrderForm({ services, areas, settings }: NewOrderFormProps) {
   const busy = pending || created;
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-section" noValidate>
+    <form ref={ref} onSubmit={submit} className="flex flex-col gap-section" noValidate>
       <CustomerSection draft={draft} onChange={change} errors={errors} />
       <OrderDetailsSection draft={draft} onChange={change} errors={errors} areas={areas} settings={settings} />
       <LinesSection draft={draft} onChange={change} errors={errors} services={services} review={review} />

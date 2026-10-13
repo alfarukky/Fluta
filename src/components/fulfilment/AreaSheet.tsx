@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { createServiceArea, updateServiceArea, type AreaActionResult } from "@/actions/fulfilment";
 import { describedBy, FormField } from "@/components/settings/FormField";
 import { Badge } from "@/components/ui/badge";
+import { useScrollToFirstError } from "@/components/forms/scroll-to-first-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputWithPrefix } from "@/components/ui/input-with-prefix";
@@ -75,8 +76,11 @@ function AreaForm({ area, onSaved, onToggleActive, toggling, onCancel }: AreaFor
   const [values, setValues] = useState(() => initialValues(area));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
+  const { ref: formRef, scrollToFirstError } = useScrollToFirstError();
 
   const fixed = values.chargeType === AreaChargeType.FIXED;
+  // A charge error with no charge field showing belongs to the charge type choice.
+  const chargeTypeError = errors.chargeType ?? (fixed ? undefined : errors.fixedCharge);
   const kobo = fixed ? parseNairaToKobo(values.fixedCharge) : null;
   const preview = fixed
     ? kobo === null
@@ -104,6 +108,7 @@ function AreaForm({ area, onSaved, onToggleActive, toggling, onCancel }: AreaFor
         onSaved(result);
       } else {
         setErrors(result.fieldErrors ?? {});
+        scrollToFirstError();
         toast.error(result.message);
       }
     });
@@ -114,7 +119,7 @@ function AreaForm({ area, onSaved, onToggleActive, toggling, onCancel }: AreaFor
   const chargeHint = "One charge per order, covering pickup and return delivery.";
 
   return (
-    <form onSubmit={submit} className="flex min-h-full flex-col" noValidate>
+    <form ref={formRef} onSubmit={submit} className="flex min-h-full flex-col" noValidate>
       <SheetHeader className="border-b border-border p-card pr-14">
         <div className="flex flex-wrap items-center gap-2">
           <SheetTitle className="type-h3">{area ? "Edit area" : "Add area"}</SheetTitle>
@@ -144,11 +149,17 @@ function AreaForm({ area, onSaved, onToggleActive, toggling, onCancel }: AreaFor
 
         <fieldset
           className="flex flex-col gap-2"
-          aria-describedby={errors.chargeType ? fieldId("charge-type-error") : undefined}
+          aria-describedby={chargeTypeError ? fieldId("charge-type-error") : undefined}
         >
           <legend className="type-label mb-1 text-foreground">Pickup & delivery charge</legend>
           <p className="type-caption mb-1 text-muted-foreground">{chargeHint}</p>
-          <RadioGroup value={values.chargeType} onValueChange={changeChargeType} className="gap-2">
+          <RadioGroup
+            value={values.chargeType}
+            onValueChange={changeChargeType}
+            className="gap-2"
+            aria-invalid={chargeTypeError ? true : undefined}
+            aria-describedby={chargeTypeError ? fieldId("charge-type-error") : undefined}
+          >
             {CHARGE_TYPES.map((type) => (
               <Label
                 key={type}
@@ -163,9 +174,9 @@ function AreaForm({ area, onSaved, onToggleActive, toggling, onCancel }: AreaFor
               </Label>
             ))}
           </RadioGroup>
-          {errors.chargeType && (
+          {chargeTypeError && (
             <p id={fieldId("charge-type-error")} className="type-caption text-error">
-              {errors.chargeType}
+              {chargeTypeError}
             </p>
           )}
         </fieldset>
@@ -186,7 +197,6 @@ function AreaForm({ area, onSaved, onToggleActive, toggling, onCancel }: AreaFor
             />
           </FormField>
         )}
-        {!fixed && errors.fixedCharge && <p className="type-caption text-error">{errors.fixedCharge}</p>}
 
         {preview && (
           <p className="type-caption text-muted-foreground" aria-live="polite">

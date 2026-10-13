@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { createService, updateService } from "@/actions/services";
 import { FormField, describedBy } from "@/components/settings/FormField";
 import { Badge } from "@/components/ui/badge";
+import { useScrollToFirstError } from "@/components/forms/scroll-to-first-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputWithPrefix } from "@/components/ui/input-with-prefix";
@@ -81,6 +82,7 @@ function ServiceForm({ service, categories, onSaved, onToggleActive, toggling, o
   const [values, setValues] = useState(() => initialValues(service));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
+  const { ref: formRef, scrollToFirstError } = useScrollToFirstError();
 
   const perKg = values.pricingType === PricingType.PER_KG;
   const requiresQuote = perKg || values.requiresQuote;
@@ -119,6 +121,7 @@ function ServiceForm({ service, categories, onSaved, onToggleActive, toggling, o
         onSaved(result.service);
       } else {
         setErrors(result.fieldErrors ?? {});
+        scrollToFirstError();
         toast.error(result.message);
       }
     });
@@ -137,7 +140,7 @@ function ServiceForm({ service, categories, onSaved, onToggleActive, toggling, o
   };
 
   return (
-    <form onSubmit={submit} className="flex min-h-full flex-col" noValidate>
+    <form ref={formRef} onSubmit={submit} className="flex min-h-full flex-col" noValidate>
       <SheetHeader className="border-b border-border p-card pr-14">
         <div className="flex flex-wrap items-center gap-2">
           <SheetTitle className="type-h3">{service ? "Edit service" : "Add service"}</SheetTitle>
@@ -185,7 +188,13 @@ function ServiceForm({ service, categories, onSaved, onToggleActive, toggling, o
 
         <fieldset className="flex flex-col gap-2" aria-describedby={errors.pricingType ? fieldId("pricing-error") : undefined}>
           <legend className="type-label mb-2 text-foreground">Pricing</legend>
-          <RadioGroup value={values.pricingType} onValueChange={changePricingType} className="gap-2">
+          <RadioGroup
+            value={values.pricingType}
+            onValueChange={changePricingType}
+            className="gap-2"
+            aria-invalid={errors.pricingType ? true : undefined}
+            aria-describedby={errors.pricingType ? fieldId("pricing-error") : undefined}
+          >
             {PRICING_TYPES.map((type) => (
               <Label
                 key={type}

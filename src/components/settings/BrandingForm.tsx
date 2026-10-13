@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 
 import { removeStoreLogo, saveStoreBranding, type BrandingFormValues } from "@/actions/store-settings";
+import { useScrollToFirstError } from "@/components/forms/scroll-to-first-error";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -45,6 +46,7 @@ export function BrandingForm({ storeName, initialColors, initialLogoUrl }: Brand
   const [savingColors, startSavingColors] = useTransition();
   const [logoBusy, setLogoBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const { ref: formRef, scrollToFirstError } = useScrollToFirstError();
 
   const dirty = colors.primaryColor !== saved.primaryColor || colors.accentColor !== saved.accentColor;
 
@@ -60,6 +62,7 @@ export function BrandingForm({ storeName, initialColors, initialLogoUrl }: Brand
         toast.success(result.message);
       } else {
         setErrors(result.fieldErrors ?? {});
+        scrollToFirstError();
         toast.error(result.message);
       }
     });
@@ -170,7 +173,7 @@ export function BrandingForm({ storeName, initialColors, initialLogoUrl }: Brand
           </div>
         </section>
 
-        <form onSubmit={submit} className="flex flex-col gap-form" noValidate aria-labelledby="colours-heading">
+        <form ref={formRef} onSubmit={submit} className="flex flex-col gap-form" noValidate aria-labelledby="colours-heading">
           <div className="flex flex-col gap-1">
             <h3 id="colours-heading" className="type-label text-foreground">
               Colours

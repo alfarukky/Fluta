@@ -4,6 +4,7 @@ import { useId, useState, useTransition, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { saveSchedule, type ScheduleActionResult } from "@/actions/fulfilment";
+import { useScrollToFirstError } from "@/components/forms/scroll-to-first-error";
 import { describedBy, FormField } from "@/components/settings/FormField";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -57,6 +58,7 @@ export function ScheduleSection({
   const [values, setValues] = useState(saved);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
+  const { ref: formRef, scrollToFirstError } = useScrollToFirstError();
 
   const dirty =
     !sameDays(values.activeDays, saved.activeDays) ||
@@ -89,6 +91,7 @@ export function ScheduleSection({
         onSaved(result);
       } else {
         setErrors(result.fieldErrors ?? {});
+        scrollToFirstError();
         toast.error(result.message);
       }
     });
@@ -108,7 +111,7 @@ export function ScheduleSection({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-section">
-        <form onSubmit={submit} className="flex flex-col gap-form" noValidate>
+        <form ref={formRef} onSubmit={submit} className="flex flex-col gap-form" noValidate>
           <fieldset
             className="flex flex-col gap-2"
             aria-describedby={errors.activeDays ? fieldId("days-error") : undefined}
@@ -134,6 +137,8 @@ export function ScheduleSection({
                       checked={checked}
                       onChange={(event) => toggleDay(day.value, event.target.checked)}
                       aria-label={day.long}
+                      aria-invalid={errors.activeDays ? true : undefined}
+                      aria-describedby={errors.activeDays ? fieldId("days-error") : undefined}
                     />
                     <span aria-hidden>{day.short}</span>
                   </label>

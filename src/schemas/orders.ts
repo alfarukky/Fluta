@@ -45,12 +45,16 @@ export const customerPhoneSchema = z
   });
 
 const customerSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("existing"), customerId: recordId }),
+  z.object({
+    kind: z.literal("existing"),
+    customerId: z.string().trim().min(1, "Choose a customer, or add a new one").max(64),
+  }),
   z.object({
     kind: z.literal("new"),
     name: z
       .string()
       .trim()
+      .min(1, "Enter the customer's name")
       .min(2, "Name must be at least 2 characters")
       .max(CUSTOMER_NAME_MAX, `Name must be ${CUSTOMER_NAME_MAX} characters or fewer`),
     phone: customerPhoneSchema,
@@ -136,7 +140,7 @@ export const outOfAreaNameSchema = z
   .min(2, "Area name must be at least 2 characters")
   .max(AREA_NAME_MAX, `Area name must be ${AREA_NAME_MAX} characters or fewer`);
 
-const clockTime = z.string().refine((value) => parseClockTime(value) !== null, "Choose a time");
+const clockTime = z.string().refine((value) => parseClockTime(value) !== null, "Choose a pickup window");
 
 const pickupSchema = z.object({
   area: z.discriminatedUnion("kind", [

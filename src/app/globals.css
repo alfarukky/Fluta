@@ -270,3 +270,17 @@
   --normal-border: var(--border);
   --border-radius: var(--radius-lg);
 }
+
+/*
+ * Forms with errors scroll to the problem (src/components/forms/scroll-to-first-error.ts).
+ * A field stops clear of the sticky top bar (4rem plus its border), with a
+ * little room above it. Inside a drawer or dialog, which scroll on their own,
+ * it stops a little below their top.
+ */
+[data-form-field] {
+  scroll-margin-top: calc(4rem + 1px + 1rem);
+}
+
+:is([data-slot="sheet-content"], [data-slot="dialog-content"]) [data-form-field] {
+  scroll-margin-top: 1rem;
+}

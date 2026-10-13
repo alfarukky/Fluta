@@ -4,6 +4,7 @@ import { useId, useState, useTransition, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { addClosedDate, removeClosedDate } from "@/actions/fulfilment";
+import { useScrollToFirstError } from "@/components/forms/scroll-to-first-error";
 import { describedBy, FormField } from "@/components/settings/FormField";
 import { DatePicker } from "@/components/shared/DatePicker";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ export function ClosedDates({ closedDates: listed, today }: ClosedDatesProps) {
   const [values, setValues] = useState({ date: "", note: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [adding, startAdding] = useTransition();
+  const { ref: formRef, scrollToFirstError } = useScrollToFirstError();
   const [removingIds, setRemovingIds] = useState<ReadonlySet<string>>(new Set());
 
   const listedIds = new Set(listed.map((closed) => closed.id));
@@ -50,6 +52,7 @@ export function ClosedDates({ closedDates: listed, today }: ClosedDatesProps) {
         toast.success(`${result.message}: ${formatCalendarDate(result.closedDate.date)}`);
       } else {
         setErrors(result.fieldErrors ?? {});
+        scrollToFirstError();
         toast.error(result.message);
       }
     });
@@ -85,7 +88,7 @@ export function ClosedDates({ closedDates: listed, today }: ClosedDatesProps) {
         <p className="type-caption text-muted-foreground">Days with no pickups or deliveries, such as public holidays.</p>
       </div>
 
-      <form onSubmit={submit} className="flex flex-col gap-form" noValidate>
+      <form ref={formRef} onSubmit={submit} className="flex flex-col gap-form" noValidate>
         <div className="grid gap-form md:grid-cols-[14rem_1fr]">
           <FormField id={fieldId("date")} label="Date" error={errors.date}>
             <DatePicker

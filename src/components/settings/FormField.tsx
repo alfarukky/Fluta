@@ -12,9 +12,11 @@ interface FormFieldProps {
 
 // Label, hint, control, and error message. The control should set
 // aria-describedby={describedBy(id, hint, error)} and aria-invalid.
+// data-form-field is where a form scrolls to when this field has an error
+// (src/components/forms/scroll-to-first-error.ts).
 export function FormField({ id, label, hint, error, children }: FormFieldProps) {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" data-form-field>
       <div className="flex flex-col gap-1">
         <Label htmlFor={id} className="type-label text-foreground">
           {label}

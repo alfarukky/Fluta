@@ -7,6 +7,7 @@ import { useId, useState, useTransition, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { issueRevision } from "@/actions/quotes";
+import { useScrollToFirstError } from "@/components/forms/scroll-to-first-error";
 import { describedBy, FormField } from "@/components/settings/FormField";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
   const [pickerKey, setPickerKey] = useState(0);
   const [pending, startTransition] = useTransition();
   const [sent, setSent] = useState(false);
+  const { ref, scrollToFirstError } = useScrollToFirstError();
 
   const review = reviewQuoteDraft(draft, editor, areas);
   const orderHref = `/orders/${editor.orderId}`;
@@ -84,6 +86,7 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
         return;
       }
       setErrors(result.fieldErrors ?? {});
+      scrollToFirstError();
       toast.error(result.message);
     });
   }
@@ -92,9 +95,11 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
     ? "Visible to the customer. Required: explain what changed."
     : "Visible to the customer. Optional for the first priced quote.";
   const chargeEntered = isChargeEntered(draft, editor, areas);
+  const areaError = errors.area ?? errors["area.areaId"];
+  const hasDiscount = draft.adjustments.some((line) => line.kind === "DISCOUNT");
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-section" noValidate>
+    <form ref={ref} onSubmit={submit} className="flex flex-col gap-section" noValidate>
       {editor.hasPendingRevision && (
         <p role="note" className="type-body-sm flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-card text-foreground">
           <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
@@ -104,7 +109,7 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
 
       <OrderSection title="Lines" description="Lines already on the order keep their price. Added services use today's price.">
         {draft.lines.length === 0 ? (
-          <p className={errors.lines ? "type-body-sm text-error" : "type-body-sm text-muted-foreground"}>
+          <p id={`${id}-lines-error`} className={errors.lines ? "type-body-sm text-error" : "type-body-sm text-muted-foreground"}>
             {errors.lines ?? "No services. Add at least one."}
           </p>
         ) : (
@@ -124,7 +129,12 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
         )}
 
         <Select key={pickerKey} onValueChange={pick} disabled={draft.lines.length >= MAX_SERVICE_LINES}>
-          <SelectTrigger className="w-full md:w-80" aria-label="Add a service">
+          <SelectTrigger
+            className="w-full md:w-80"
+            aria-label="Add a service"
+            aria-invalid={errors.lines && draft.lines.length === 0 ? true : undefined}
+            aria-describedby={errors.lines && draft.lines.length === 0 ? `${id}-lines-error` : undefined}
+          >
             <PlusIcon className="text-muted-foreground" aria-hidden />
             <SelectValue placeholder="Add a service" />
           </SelectTrigger>
@@ -147,7 +157,7 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
             <h3 className="type-label text-foreground">Others</h3>
             <p className="type-caption text-muted-foreground">Extra charges or discounts, like stain removal.</p>
           </div>
-          {errors.adjustments && <p className="type-caption text-error">{errors.adjustments}</p>}
+          {errors.adjustments && !hasDiscount && <p className="type-caption text-error">{errors.adjustments}</p>}
           {draft.adjustments.length > 0 && (
             <ul className="flex flex-col gap-component" aria-label="Others">
               {draft.adjustments.map((line, index) => (
@@ -158,7 +168,8 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
                   errors={{
                     description: errors[`adjustments.${index}.description`],
                     kind: errors[`adjustments.${index}.kind`],
-                    amount: errors[`adjustments.${index}.amount`],
+                    // A total below ₦0 is the discounts' doing: shown on each one.
+                    amount: errors[`adjustments.${index}.amount`] ?? (line.kind === "DISCOUNT" ? errors.adjustments : undefined),
                   }}
                   onChange={(update) =>
                     change({ adjustments: draft.adjustments.map((other) => (other.key === line.key ? { ...other, ...update } : other)) })
@@ -187,9 +198,14 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
 
       {editor.pickup && (
         <OrderSection title="Pickup & delivery">
-          <FormField id={`${id}-area`} label="Service area" error={errors.area ?? errors["area.areaId"]}>
+          <FormField id={`${id}-area`} label="Service area" error={areaError}>
             <Select value={draft.areaChoice} onValueChange={(areaChoice) => change({ areaChoice })}>
-              <SelectTrigger id={`${id}-area`} className="w-full">
+              <SelectTrigger
+                id={`${id}-area`}
+                className="w-full"
+                aria-invalid={areaError ? true : undefined}
+                aria-describedby={describedBy(`${id}-area`, undefined, areaError)}
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
