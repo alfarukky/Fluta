@@ -390,6 +390,7 @@ model Order {
   trackingTokenIssuedAt DateTime
 
   internalNote    String?
+  customerNote    String? // online bookings: the customer's "Anything else?" note, staff only, never priced
   completedAt     DateTime? // with cancelledAt, drives tracking-link expiry
   cancelledAt     DateTime?
   cancelNote      String?

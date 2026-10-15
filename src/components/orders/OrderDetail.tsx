@@ -104,6 +104,7 @@ export function OrderDetail({ detail, canChangeStage, timeZone }: OrderDetailPro
       <div className="grid grid-cols-1 items-start gap-grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex min-w-0 flex-col gap-grid">
           <OrderSummarySection order={order} proposed={quote.pending ?? quote.declined} />
+          {order.customerNote && <CustomerNoteSection note={order.customerNote} />}
           <PaymentsSection detail={detail} timeZone={timeZone} />
           <QuoteHistorySection order={order} timeZone={timeZone} />
         </div>
@@ -299,6 +300,18 @@ function FulfilmentSection({ order }: { order: Order }) {
 
 function formatWindow(start: string | null, end: string | null): string | null {
   return start && end ? formatPickupWindow({ start, end }) : null;
+}
+
+// What the customer wrote under "Anything else?" when booking online. Plain
+// text (React escapes it), and never priced: anything extra goes through a
+// quote the customer approves.
+function CustomerNoteSection({ note }: { note: string }) {
+  return (
+    <Section title="Customer's note" badge={<Badge variant="info">From booking</Badge>}>
+      <p className="type-body-sm break-words whitespace-pre-line text-foreground">{note}</p>
+      <p className="type-caption text-muted-foreground">Not priced. Add anything extra to the quote.</p>
+    </Section>
+  );
 }
 
 function InternalNoteSection({ note }: { note: string | null }) {

@@ -198,6 +198,7 @@ async function prepareOnlineOrder(
       lines: serviceLines.lines,
       fulfilment: fulfilment.fields,
       internalNote: null,
+      customerNote: input.customerNote,
       // No online payment yet (Feature 17): every booking is paid later.
       payLater: true,
       bookingIpHash: actor.ipHash,
@@ -291,6 +292,7 @@ async function prepareOrder(
       lines: [...serviceLines.lines, ...adjustmentLines],
       fulfilment: fulfilment.fields,
       internalNote: input.internalNote,
+      customerNote: null,
       payLater: false,
       bookingIpHash: null,
       actor: { type: "STAFF", userId: actor.userId },
@@ -306,6 +308,7 @@ type OrderParts = Pick<
   | "channel"
   | "fulfilmentType"
   | "internalNote"
+  | "customerNote"
   | "payLater"
   | "bookingIpHash"
   | "actor"

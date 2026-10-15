@@ -175,7 +175,14 @@ export function BookingFlow({ slug, storeName, options }: BookingFlowProps) {
       )}
 
       {step === "services" && (
-        <ServicesStep services={options.services} lines={draft.lines} errors={errors} onChange={(lines) => update({ lines })} />
+        <ServicesStep
+          services={options.services}
+          lines={draft.lines}
+          note={draft.note}
+          errors={errors}
+          onChange={(lines) => update({ lines })}
+          onNoteChange={(note) => update({ note })}
+        />
       )}
       {step === "fulfilment" && (
         <FulfilmentStep

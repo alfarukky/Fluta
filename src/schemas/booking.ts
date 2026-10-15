@@ -6,7 +6,7 @@ import { normalizePhone } from "@/lib/phone";
 import { parseClockTime } from "@/lib/pickup-schedule";
 import { parseDateKey } from "@/lib/time";
 
-import { ADDRESS_MAX, CUSTOMER_NAME_MAX } from "./field-limits";
+import { ADDRESS_MAX, CUSTOMER_NAME_MAX, CUSTOMER_NOTE_MAX } from "./field-limits";
 import {
   CUSTOMER_PHONE_COUNTRY,
   MAX_SERVICE_LINES,
@@ -81,6 +81,15 @@ export const bookingRequestSchema = z
     fulfilmentType: z.enum(FulfilmentType, "Choose how you'll get your laundry to the store"),
     pickup: pickupSchema.nullable(),
     customer: contactSchema,
+    // "Anything else?": other items or instructions, for staff to read and
+    // price through a quote. Never priced here. Blank or missing (a page
+    // opened before notes existed) is saved as no note.
+    customerNote: z
+      .string()
+      .trim()
+      .max(CUSTOMER_NOTE_MAX, `Note must be ${CUSTOMER_NOTE_MAX} characters or fewer`)
+      .optional()
+      .transform((value) => value || null),
   })
   .superRefine((booking, ctx) => {
     if (booking.fulfilmentType === FulfilmentType.PICKUP_DELIVERY && !booking.pickup) {

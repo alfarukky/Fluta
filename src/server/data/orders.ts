@@ -60,6 +60,8 @@ export interface NewOrderData {
   pickup: { date: Date; windowStart: string; windowEnd: string; status: PickupWindowStatus } | null;
   trackingTokenHash: string;
   internalNote: string | null;
+  // Online bookings only: the customer's "Anything else?" note. Never priced.
+  customerNote: string | null;
   payLater: boolean;
   // Online bookings only: the HMAC of the booking's IP address (booking limits).
   bookingIpHash: string | null;
@@ -189,6 +191,7 @@ async function createOrderRecords(tx: Prisma.TransactionClient, storeId: string,
       trackingTokenHash: data.trackingTokenHash,
       trackingTokenIssuedAt: data.now,
       internalNote: data.internalNote,
+      customerNote: data.customerNote,
       createdByUserId: data.actor.userId,
       bookingIpHash: data.bookingIpHash,
       createdAt: data.now,
@@ -432,6 +435,7 @@ export async function findOrderDetail(storeId: string, orderId: string) {
       scheduledWindowEnd: true,
       pickupWindowStatus: true,
       internalNote: true,
+      customerNote: true,
       createdAt: true,
       store: { select: { orderPrefix: true } },
       customer: { select: { name: true, phone: true, email: true } },

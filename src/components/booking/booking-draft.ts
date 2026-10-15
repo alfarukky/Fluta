@@ -3,7 +3,7 @@ import { getBookingPriceSummary, toBookingLineAmount, type BookingPriceSummary }
 import { lineTotalKobo } from "@/lib/money";
 import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY, parseHundredths } from "@/lib/quantity";
 import type { BookingRequest } from "@/schemas/booking";
-import { ADDRESS_MAX, CUSTOMER_NAME_MAX } from "@/schemas/field-limits";
+import { ADDRESS_MAX, CUSTOMER_NAME_MAX, CUSTOMER_NOTE_MAX } from "@/schemas/field-limits";
 import type { BookingOptions, BookingService, BookingStep } from "@/types/booking";
 
 // The booking form's answers, kept as typed so moving between steps never
@@ -13,6 +13,7 @@ import type { BookingOptions, BookingService, BookingStep } from "@/types/bookin
 export interface BookingDraft {
   // Chosen services in the order they were picked, with the amount as typed.
   lines: { serviceId: string; amount: string }[];
+  note: string; // "Anything else?", optional
   fulfilmentType: FulfilmentType | null;
   areaId: string;
   address: string;
@@ -25,6 +26,7 @@ export interface BookingDraft {
 
 export const EMPTY_DRAFT: BookingDraft = {
   lines: [],
+  note: "",
   fulfilmentType: null,
   areaId: "",
   address: "",
@@ -59,7 +61,7 @@ export function getSteps(draft: Pick<BookingDraft, "fulfilmentType">): BookingSt
 
 export type DraftErrors = Record<string, string>;
 
-// Field keys: "service.{id}", "services", "fulfilmentType", "areaId",
+// Field keys: "service.{id}", "services", "note", "fulfilmentType", "areaId",
 // "address", "date", "window", "name", "phone", "email".
 export function validateStep(step: BookingStep, draft: BookingDraft, options: BookingOptions): DraftErrors {
   switch (step) {
@@ -88,6 +90,7 @@ function validateServices(draft: BookingDraft, services: readonly BookingService
     const message = getAmountMessage(service, line.amount);
     if (message) errors[`service.${line.serviceId}`] = message;
   }
+  if (draft.note.trim().length > CUSTOMER_NOTE_MAX) errors.note = `Note must be ${CUSTOMER_NOTE_MAX} characters or fewer`;
   return errors;
 }
 
@@ -120,6 +123,19 @@ function validatePickup(draft: BookingDraft, options: BookingOptions): DraftErro
   return errors;
 }
 
+export const SHORT_ADDRESS_MIN_LENGTH = 20;
+export const SHORT_ADDRESS_MIN_WORDS = 3;
+
+// A typed address that probably can't be found: under 20 characters, or
+// fewer than three words. Only a warning: it never stops Continue (an empty
+// address is validatePickup's error instead).
+export function isShortAddress(address: string): boolean {
+  const text = address.trim();
+  if (!text) return false;
+  const words = text.split(/[\s,]+/).filter(Boolean).length;
+  return text.length < SHORT_ADDRESS_MIN_LENGTH || words < SHORT_ADDRESS_MIN_WORDS;
+}
+
 // The phone number and email are checked properly on the server, which
 // sends any problem back to this step.
 function validateDetails(draft: BookingDraft): DraftErrors {
@@ -149,6 +165,7 @@ export function toBookingRequest(draft: BookingDraft, clientRequestId: string): 
         ? { areaId: draft.areaId, address: draft.address, date: draft.date, windowStart: window.start, windowEnd: window.end }
         : null,
     customer: { name: draft.name, phone: draft.phone, email: draft.email },
+    customerNote: draft.note,
   };
 }
 
@@ -177,6 +194,8 @@ export function fromServerErrors(fieldErrors: Record<string, string>, draft: Boo
       name = index;
     } else if (group === "fulfilmentType") {
       name = "fulfilmentType";
+    } else if (group === "customerNote") {
+      name = "note";
     }
     if (name) errors[name] ??= message;
   }

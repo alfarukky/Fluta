@@ -1,7 +1,7 @@
 "use client";
 
-import { InfoIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { InfoIcon, TriangleAlertIcon } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { describedBy, FormField } from "@/components/settings/FormField";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { ADDRESS_MAX } from "@/schemas/field-limits";
 import type { BookingOptions } from "@/types/booking";
 
-import { windowKey, type BookingDraft, type DraftErrors } from "./booking-draft";
+import { isShortAddress, windowKey, type BookingDraft, type DraftErrors } from "./booking-draft";
 
 interface PickupStepProps {
   options: BookingOptions;
@@ -23,6 +23,10 @@ interface PickupStepProps {
   onChange: (patch: Partial<BookingDraft>) => void;
 }
 
+const ADDRESS_GUIDE = "Include house number, street, area, and a nearby landmark.";
+// How long typing must pause before the address is checked for length.
+const ADDRESS_CHECK_DELAY_MS = 700;
+
 const CHOICE_CLASS =
   "flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border bg-card px-3 py-2 has-data-checked:border-primary has-data-checked:bg-accent/40";
 
@@ -30,6 +34,15 @@ const CHOICE_CLASS =
 // The time is a request: the store confirms it.
 export function PickupStep({ options, draft, errors, onChange }: PickupStepProps) {
   const date = options.dates.find((option) => option.date === draft.date);
+  // The short-address warning follows the address once typing pauses, so it
+  // doesn't nag mid-word. Not on blur: the warning appearing as the customer
+  // taps the next field would move that field from under their finger.
+  const [settledAddress, setSettledAddress] = useState(draft.address);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledAddress(draft.address), ADDRESS_CHECK_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [draft.address]);
+  const shortAddress = !errors.address && isShortAddress(settledAddress);
 
   return (
     <div className="flex flex-col gap-form">
@@ -67,9 +80,28 @@ export function PickupStep({ options, draft, errors, onChange }: PickupStepProps
           onChange={(event) => onChange({ address: event.target.value })}
           maxLength={ADDRESS_MAX}
           rows={2}
+          placeholder="12 Admiralty Way, Lekki Phase 1, near Mega Plaza"
           aria-invalid={errors.address ? true : undefined}
-          aria-describedby={describedBy("pickup-address", "We'll pick up and deliver here.", errors.address)}
+          aria-describedby={[
+            describedBy("pickup-address", "We'll pick up and deliver here.", errors.address),
+            "pickup-address-guide",
+            shortAddress && "pickup-address-warning",
+          ]
+            .filter(Boolean)
+            .join(" ")}
         />
+        <p id="pickup-address-guide" className="type-caption text-muted-foreground">
+          {ADDRESS_GUIDE}
+        </p>
+        {/* A warning only: Continue still works. */}
+        <p aria-live="polite" className="empty:hidden">
+          {shortAddress && (
+            <span id="pickup-address-warning" className="type-caption flex items-start gap-1.5 text-foreground">
+              <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0 text-warning" aria-hidden />
+              This address looks short. Add a house number, street, or landmark so the store can find you.
+            </span>
+          )}
+        </p>
       </FormField>
 
       <ChoiceGroup id="pickup-date" legend="Preferred pickup date" error={errors.date}>

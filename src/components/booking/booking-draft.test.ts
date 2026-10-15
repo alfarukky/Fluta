@@ -7,6 +7,7 @@ import {
   EMPTY_DRAFT,
   fromServerErrors,
   getSteps,
+  isShortAddress,
   reviewBooking,
   toBookingRequest,
   validateStep,
@@ -83,6 +84,21 @@ describe("validateStep", () => {
     ).toEqual({ window: "Choose a pickup time" });
   });
 
+  it("allows an optional note of up to 300 characters", () => {
+    const lines = [{ serviceId: "shirt", amount: "1" }];
+    expect(validateStep("services", draft({ lines, note: "" }), OPTIONS)).toEqual({});
+    expect(validateStep("services", draft({ lines, note: `  ${"a".repeat(300)}  ` }), OPTIONS)).toEqual({});
+    expect(validateStep("services", draft({ lines, note: "a".repeat(301) }), OPTIONS)).toEqual({
+      note: "Note must be 300 characters or fewer",
+    });
+  });
+
+  it("never blocks Continue for a short address", () => {
+    const pickup = { areaId: "wuse", date: "2099-06-15", window: "10:00-12:00" };
+    expect(isShortAddress("Wuse 2")).toBe(true);
+    expect(validateStep("pickup", draft({ ...pickup, address: "Wuse 2" }), OPTIONS)).toEqual({});
+  });
+
   it("checks the name, phone, and optional email", () => {
     expect(validateStep("details", draft({ name: "A", phone: "", email: "nope" }), OPTIONS)).toEqual({
       name: "Name must be at least 2 characters",
@@ -115,7 +131,12 @@ describe("toBookingRequest", () => {
       fulfilmentType: "PICKUP_DELIVERY",
       pickup: { areaId: "wuse", address: "12 Test St", date: "2099-06-15", windowStart: "10:00", windowEnd: "12:00" },
       customer: { name: "Ada", phone: "0803", email: "" },
+      customerNote: "",
     });
+  });
+
+  it("sends the note as typed (the server trims it and stores blank as none)", () => {
+    expect(toBookingRequest(draft({ note: " 2 curtains, 1 rug " }), "id").customerNote).toBe(" 2 curtains, 1 rug ");
   });
 
   it("sends no pickup details for a drop-off", () => {
@@ -123,7 +144,33 @@ describe("toBookingRequest", () => {
   });
 });
 
+describe("isShortAddress", () => {
+  it("warns under 20 characters", () => {
+    expect(isShortAddress("12 Aminu Kano Cres")).toBe(true); // 18 characters, 4 words
+    expect(isShortAddress("12 Aminu Kano Cresc.")).toBe(false); // 20 characters
+    expect(isShortAddress("   12 Aminu Kano Cres   ")).toBe(true); // spaces around don't count
+  });
+
+  it("warns with fewer than three words", () => {
+    expect(isShortAddress("Plot1234AdmiraltyWay")).toBe(true);
+    expect(isShortAddress("Plot 1234AdmiraltyWayLekki")).toBe(true);
+    expect(isShortAddress("12 Admiralty Way, Lekki Phase 1, near Mega Plaza")).toBe(false);
+    expect(isShortAddress("12,Admiralty,WayLekkiPhase")).toBe(false); // commas separate words
+  });
+
+  it("says nothing about an empty address (that's the required-field error)", () => {
+    expect(isShortAddress("")).toBe(false);
+    expect(isShortAddress("   ")).toBe(false);
+  });
+});
+
 describe("fromServerErrors", () => {
+  it("maps the server's note error to the note field", () => {
+    expect(fromServerErrors({ customerNote: "Note must be 300 characters or fewer" }, draft({}))).toEqual({
+      note: "Note must be 300 characters or fewer",
+    });
+  });
+
   it("maps the server's fields onto this form's", () => {
     const lines = [
       { serviceId: "shirt", amount: "3" },

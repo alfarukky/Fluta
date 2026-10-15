@@ -2,11 +2,14 @@
 
 import { MinusIcon, PlusIcon } from "lucide-react";
 
+import { QuantityStepper } from "@/components/forms/QuantityStepper";
 import { describedBy, FormField } from "@/components/settings/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { formatServicePrice } from "@/lib/money";
 import { isWeighed } from "@/lib/quantity";
+import { CUSTOMER_NOTE_MAX } from "@/schemas/field-limits";
 import type { BookingService } from "@/types/booking";
 
 import type { BookingDraft, DraftErrors } from "./booking-draft";
@@ -14,13 +17,18 @@ import type { BookingDraft, DraftErrors } from "./booking-draft";
 interface ServicesStepProps {
   services: BookingService[];
   lines: BookingDraft["lines"];
+  note: string;
   errors: DraftErrors;
   onChange: (lines: BookingDraft["lines"]) => void;
+  onNoteChange: (note: string) => void;
 }
 
+const NOTE_HINT = "Optional. For example: 2 curtains, 1 rug, or please iron the shirts only.";
+
 // Active services with their prices. Added ones ask how many, or for an
-// estimated weight that the store weighs later.
-export function ServicesStep({ services, lines, errors, onChange }: ServicesStepProps) {
+// estimated weight that the store weighs later. Anything not listed goes in
+// the note, which the store reads and prices itself.
+export function ServicesStep({ services, lines, note, errors, onChange, onNoteChange }: ServicesStepProps) {
   const categories = groupByCategory(services);
 
   function add(service: BookingService) {
@@ -86,6 +94,17 @@ export function ServicesStep({ services, lines, errors, onChange }: ServicesStep
           </ul>
         </section>
       ))}
+      <FormField id="booking-note" label="Anything else? Other items or instructions" hint={NOTE_HINT} error={errors.note}>
+        <Textarea
+          id="booking-note"
+          value={note}
+          onChange={(event) => onNoteChange(event.target.value)}
+          maxLength={CUSTOMER_NOTE_MAX}
+          rows={3}
+          aria-invalid={errors.note ? true : undefined}
+          aria-describedby={describedBy("booking-note", NOTE_HINT, errors.note)}
+        />
+      </FormField>
     </div>
   );
 }
@@ -108,18 +127,31 @@ function AmountField({ service, value, error, onChange }: AmountFieldProps) {
       : undefined;
   return (
     <FormField id={id} label={label} hint={hint} error={error}>
-      <Input
-        id={id}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        inputMode={weighed ? "decimal" : "numeric"}
-        autoComplete="off"
-        maxLength={7}
-        placeholder={weighed ? "e.g. 2.5" : undefined}
-        className="max-w-40"
-        aria-invalid={error ? true : undefined}
-        aria-describedby={describedBy(id, hint, error)}
-      />
+      {weighed ? (
+        // Weights need decimals, so no stepper.
+        <Input
+          id={id}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          inputMode="decimal"
+          autoComplete="off"
+          maxLength={7}
+          placeholder="e.g. 2.5"
+          className="max-w-40"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy(id, hint, error)}
+        />
+      ) : (
+        <QuantityStepper
+          id={id}
+          value={value}
+          onChange={onChange}
+          label={`how many ${service.name}`}
+          maxLength={7}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy(id, hint, error)}
+        />
+      )}
     </FormField>
   );
 }

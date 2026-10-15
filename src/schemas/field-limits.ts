@@ -3,3 +3,5 @@
 // phone-number metadata that orders.ts brings in.
 export const CUSTOMER_NAME_MAX = 80;
 export const ADDRESS_MAX = 200;
+// The customer's "Anything else?" note on a booking (also a database CHECK).
+export const CUSTOMER_NOTE_MAX = 300;

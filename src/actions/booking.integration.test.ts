@@ -8,6 +8,7 @@ import { toMatchKey } from "@/lib/match-key";
 import type { BookingRequest } from "@/schemas/booking";
 import { getPrisma } from "@/server/data/client";
 import { loadBookingPage } from "@/server/services/booking";
+import { getOrderDetail } from "@/server/services/orders";
 import { createTestPrisma } from "@/test/integration/db";
 
 import { createBooking } from "./booking";
@@ -341,6 +342,64 @@ describe("creating an online order", () => {
       ["AREA_UNAVAILABLE", "pickup"],
     ]);
     expect(await orderCount()).toBe(before);
+  });
+});
+
+describe("the customer's note", () => {
+  it("saves the note trimmed, shows it on the staff order detail, and never changes the total", async () => {
+    const note = "  2 curtains, 1 rug\nplease iron the shirts only <b>thanks</b>  ";
+    const [withNote, without] = await Promise.all([book(dropOff(main, { customerNote: note })), book(dropOff())]);
+
+    expect(withNote.customerNote).toBe("2 curtains, 1 rug\nplease iron the shirts only <b>thanks</b>");
+    // The same lines, the same total, and still approved at once: nothing is priced from the note.
+    expect(withNote.lines).toEqual([expect.objectContaining({ description: "Shirt", lineTotal: 240_000 })]);
+    expect(withNote.quoteRevisions[0]).toMatchObject({ status: "APPROVED", total: without.quoteRevisions[0].total });
+    expect(withNote.quoteRevisions[0].total).toBe(240_000);
+
+    const detail = await getOrderDetail(main.id, withNote.id, "STAFF");
+    expect(detail?.order.customerNote).toBe(withNote.customerNote);
+    expect(detail?.order.approvedQuote?.total).toBe(240_000);
+  });
+
+  it("keeps a quote-required booking's estimate as it was", async () => {
+    const lines = [{ serviceId: main.wash, amount: "2.5" }];
+    const [withNote, without] = await Promise.all([
+      book(dropOff(main, { serviceLines: lines, customerNote: "Also 3 duvets" })),
+      book(dropOff(main, { serviceLines: lines })),
+    ]);
+    expect(withNote.customerNote).toBe("Also 3 duvets");
+    expect(withNote.quoteRevisions[0]).toMatchObject({ status: "PENDING", total: without.quoteRevisions[0].total });
+  });
+
+  it("stores an empty, whitespace-only, or missing note as NULL", async () => {
+    const orders = await Promise.all([
+      book(dropOff(main, { customerNote: "" })),
+      book(dropOff(main, { customerNote: "  \n\t  " })),
+      book(dropOff()),
+    ]);
+    expect(orders.map((order) => order.customerNote)).toEqual([null, null, null]);
+  });
+
+  it("accepts 300 characters and refuses 301, creating nothing", async () => {
+    const accepted = await book(dropOff(main, { customerNote: "a".repeat(300) }));
+    expect(accepted.customerNote).toHaveLength(300);
+
+    const before = await orderCount();
+    const result = await createBooking(main.slug, dropOff(main, { customerNote: "a".repeat(301) }));
+    expect(result).toMatchObject({
+      ok: false,
+      code: "INVALID_INPUT",
+      step: "services",
+      fieldErrors: { customerNote: "Note must be 300 characters or fewer" },
+    });
+    expect(await orderCount()).toBe(before);
+  });
+
+  it("is limited to 300 characters by the database too", async () => {
+    const order = await book(dropOff());
+    await expect(
+      prisma.order.update({ where: { id: order.id }, data: { customerNote: "a".repeat(301) } }),
+    ).rejects.toThrow(/Order_customerNote_length_check/);
   });
 });
 

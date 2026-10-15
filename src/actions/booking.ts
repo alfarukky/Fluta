@@ -60,6 +60,7 @@ const ERROR_STEPS: Partial<Record<BookingErrorCode, BookingStep>> = {
 // The first part of a field's path, as the step that shows it.
 const FIELD_STEPS: Record<string, BookingStep> = {
   serviceLines: "services",
+  customerNote: "services",
   fulfilmentType: "fulfilment",
   pickup: "pickup",
   customer: "details",

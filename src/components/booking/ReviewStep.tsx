@@ -20,6 +20,7 @@ interface ReviewStepProps {
 export function ReviewStep({ draft, options, review, onEdit }: ReviewStepProps) {
   const pickup = draft.fulfilmentType === "PICKUP_DELIVERY";
   const area = findArea(draft, options);
+  const note = draft.note.trim();
 
   return (
     <div className="flex flex-col gap-component">
@@ -34,6 +35,12 @@ export function ReviewStep({ draft, options, review, onEdit }: ReviewStepProps) 
             </li>
           ))}
         </ul>
+        {note && (
+          <div className="flex flex-col gap-0.5 border-t border-border pt-3">
+            <span className="type-caption text-muted-foreground">Your note</span>
+            <p className="type-body-sm break-words whitespace-pre-line text-foreground">{note}</p>
+          </div>
+        )}
       </ReviewSection>
 
       <ReviewSection title={pickup ? "Pickup and delivery" : "Drop-off"} onEdit={() => onEdit(pickup ? "pickup" : "fulfilment")}>
@@ -59,6 +66,7 @@ export function ReviewStep({ draft, options, review, onEdit }: ReviewStepProps) 
 
       <section className="flex flex-col gap-2 rounded-xl border border-border bg-card p-card" aria-label="Price">
         <PriceSummary review={review} />
+        {note && <p className="type-body-sm text-foreground">The store may update your price after reading your note.</p>}
         <p className="type-caption text-muted-foreground">No payment is needed now. You&apos;ll pay the store later.</p>
       </section>
     </div>
