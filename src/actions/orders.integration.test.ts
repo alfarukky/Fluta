@@ -301,7 +301,7 @@ describe("creating an order", () => {
     await expect(
       insertOrder(store.id, {
         clientRequestId,
-        customer: { kind: "new", name: "Rollback Test", phone, email: null },
+        customer: { kind: "new", name: "Rollback Test", phone, email: null, fillMissingEmail: false },
         channel: "COUNTER",
         fulfilmentType: "DROP_OFF",
         stage: "RECEIVED_BY_STORE",
@@ -314,6 +314,8 @@ describe("creating an order", () => {
         pickup: null,
         trackingTokenHash: randomUUID(),
         internalNote: null,
+        payLater: false,
+        bookingIpHash: null,
         lines: [
           {
             lineType: "SERVICE",

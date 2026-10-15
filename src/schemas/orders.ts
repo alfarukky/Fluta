@@ -9,10 +9,10 @@ import { parseClockTime } from "@/lib/pickup-schedule";
 import { parseHundredths } from "@/lib/quantity";
 import { parseDateKey } from "@/lib/time";
 
+import { ADDRESS_MAX, CUSTOMER_NAME_MAX } from "./field-limits";
 import { AREA_NAME_MAX, MAX_AREA_CHARGE } from "./fulfilment";
 
-export const CUSTOMER_NAME_MAX = 80;
-export const ADDRESS_MAX = 200;
+export { ADDRESS_MAX, CUSTOMER_NAME_MAX };
 export const INTERNAL_NOTE_MAX = 500;
 export const ADJUSTMENT_DESCRIPTION_MAX = 100;
 export const MAX_ADJUSTMENT = 100_000_000; // ₦1,000,000 in kobo

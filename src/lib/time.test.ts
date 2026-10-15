@@ -13,6 +13,7 @@ import {
   getGreeting,
   getHourInTimeZone,
   getLocalDateKey,
+  getMinutesInTimeZone,
   parseDateKey,
   resolveTimeZone,
   toTwelveHour,
@@ -201,5 +202,12 @@ describe("startOfLocalDay", () => {
     // London moves from BST (UTC+1) to GMT on 25 October 2026.
     expect(startOfLocalDay("2026-10-25", "Europe/London").toISOString()).toBe("2026-10-24T23:00:00.000Z");
     expect(startOfLocalDay("2026-10-26", "Europe/London").toISOString()).toBe("2026-10-26T00:00:00.000Z");
+  });
+});
+
+describe("getMinutesInTimeZone", () => {
+  it("gives minutes after midnight in the store's time zone", () => {
+    expect(getMinutesInTimeZone(new Date("2026-10-15T06:30:00Z"), "Africa/Lagos")).toBe(7 * 60 + 30);
+    expect(getMinutesInTimeZone(new Date("2026-10-15T23:15:00Z"), "Africa/Lagos")).toBe(15);
   });
 });

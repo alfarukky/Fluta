@@ -12,6 +12,10 @@ export class FakeObjectStorage implements ObjectStorage {
     this.objects.set(key, { body, contentType });
   }
 
+  async get(key: string): Promise<Uint8Array | null> {
+    return this.objects.get(key)?.body ?? null;
+  }
+
   async delete(key: string): Promise<void> {
     if (this.failDeletes) throw new Error("Fake R2: delete failed");
     this.objects.delete(key);

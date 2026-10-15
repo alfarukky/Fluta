@@ -49,21 +49,29 @@ export interface NewCustomerData {
   name: string;
   phone: string; // E.164
   email: string | null;
+  // Online bookings: an existing customer without an email gets this one.
+  fillMissingEmail: boolean;
 }
 
 // The store's customer with this phone number, created if there is none.
-// An existing customer is never changed (their name is not overwritten).
-// Part of the order transaction, which already holds the store row's lock,
-// so two orders for the same new number at once share one customer.
+// An existing customer's name, phone, and email are never overwritten, so
+// typing someone else's number can't redirect their receipts and links. The
+// one exception, for online bookings: a customer with no email yet gets the
+// one entered. Part of the order transaction, which already holds the store
+// row's lock, so two orders for the same new number at once share one customer.
 export async function upsertCustomerByPhone(
   tx: Prisma.TransactionClient,
   storeId: string,
   data: NewCustomerData,
 ): Promise<{ id: string }> {
-  return tx.customer.upsert({
+  const customer = await tx.customer.upsert({
     where: { storeId_phone: { storeId, phone: data.phone } },
     create: { storeId, name: data.name, phone: data.phone, email: data.email },
     update: {},
     select: { id: true },
   });
+  if (data.fillMissingEmail && data.email) {
+    await tx.customer.updateMany({ where: { storeId, id: customer.id, email: null }, data: { email: data.email } });
+  }
+  return customer;
 }

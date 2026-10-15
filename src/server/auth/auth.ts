@@ -4,6 +4,7 @@ import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 
+import { CLIENT_IP_HEADER } from "@/lib/client-ip";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@/schemas/users";
@@ -75,10 +76,11 @@ function createAuth() {
       },
     },
     advanced: {
-      // The client IP for rate limiting, as set by the hosting proxy (Railway
-      // sets X-Real-IP; confirm at deployment). Without it, every client would
-      // share the proxy's address and one rate-limit bucket.
-      ipAddress: { ipAddressHeaders: ["x-real-ip"] },
+      // The client IP for rate limiting: the one header set by the hosting
+      // proxy (src/lib/client-ip.ts), shared with the online booking limits.
+      // Without it, every client would share the proxy's address and one
+      // rate-limit bucket.
+      ipAddress: { ipAddressHeaders: [CLIENT_IP_HEADER] },
     },
     // Must be last: lets server actions (sign-out) set and clear cookies.
     plugins: [nextCookies()],

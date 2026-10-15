@@ -31,6 +31,16 @@ export interface BrandThemeProps {
   "data-brand-accent"?: "";
 }
 
+// Fluta's own primary (globals.css :root), for stores without a brand colour.
+export const FLUTA_PRIMARY: Hex = "#173C32";
+
+// A solid fill in the store's primary colour (Fluta's when none is set) with
+// readable text on it: home-screen icons and link-preview images.
+export function getBrandFill(colors: Pick<BrandColors, "primary">): { background: Hex; foreground: Hex } {
+  const background = parseHex(colors.primary) ?? FLUTA_PRIMARY;
+  return { background, foreground: readableTextOn(background) };
+}
+
 // Spread onto the branded root: <div {...getBrandTheme(colors)}>. A missing or
 // invalid colour leaves Fluta's own token in place.
 export function getBrandTheme(colors: BrandColors): BrandThemeProps {

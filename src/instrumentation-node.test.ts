@@ -61,4 +61,5 @@ function stubValidEnv(): void {
   vi.stubEnv("R2_PUBLIC_URL", "https://logos.example.com");
   vi.stubEnv("RESEND_API_KEY", "re_test_placeholder");
   vi.stubEnv("EMAIL_FROM", "Fluta <mailer@example.com>");
+  vi.stubEnv("BOOKING_IP_SECRET", "a-booking-ip-secret-of-at-least-32-characters");
 }

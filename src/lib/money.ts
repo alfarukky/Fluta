@@ -72,6 +72,13 @@ export function formatAreaCharge({ chargeType, fixedCharge }: AreaCharge): strin
   return fixedCharge === 0 ? "Free" : formatNaira(fixedCharge);
 }
 
+// The same charge in customer words: "₦1,500", "Free", or "The store will
+// confirm this price" (customers never see "Quote required").
+export function formatAreaChargeForCustomer(area: AreaCharge): string {
+  if (area.chargeType === "QUOTE_REQUIRED" || area.fixedCharge === null) return "The store will confirm this price";
+  return area.fixedCharge === 0 ? "Free" : formatNaira(area.fixedCharge);
+}
+
 // A service line's total: unit price (kobo) × quantity, where the quantity is
 // in hundredths (2.5 kg is 250; 3 items are 300). Rounded half up to the
 // nearest kobo, once, in whole-number arithmetic only, so 0.15 kg at ₦0.10/kg

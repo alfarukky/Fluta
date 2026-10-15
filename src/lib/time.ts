@@ -49,6 +49,18 @@ export function getHourInTimeZone(date: Date, timeZone: string): number {
   return Number(hour?.value);
 }
 
+// Minutes after midnight (0–1439) at `date` in `timeZone`.
+export function getMinutesInTimeZone(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    hour: "numeric",
+    minute: "numeric",
+    hourCycle: "h23",
+    timeZone: resolveTimeZone(timeZone),
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((p) => p.type === type)?.value);
+  return part("hour") * 60 + part("minute");
+}
+
 export type Greeting = "Good morning" | "Good afternoon" | "Good evening";
 
 // Morning until 12:00, afternoon until 17:00, evening otherwise.

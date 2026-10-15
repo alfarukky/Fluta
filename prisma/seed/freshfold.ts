@@ -55,6 +55,9 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
       { name: "Dress", category: "Wash & iron", pricingType: "PER_ITEM", price: 150_000 },
       { name: "Bedding", category: "Household", pricingType: "PER_PACKAGE", price: 250_000 },
       { name: "Laundry by weight", category: "Wash & fold", pricingType: "PER_KG", price: 150_000 },
+      // Priced after inspection: a starting price, and one shown as "Price on inspection".
+      { name: "Leather jacket", category: "Specialist care", pricingType: "PER_ITEM", price: 500_000, requiresQuote: true },
+      { name: "Wedding gown", category: "Specialist care", pricingType: "PER_ITEM", price: 0, requiresQuote: true },
     ],
     customers: [
       { name: "Chinedu Okafor", phone: CHINEDU, email: "chinedu.okafor@example.com" },

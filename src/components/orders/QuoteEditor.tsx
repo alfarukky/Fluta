@@ -16,6 +16,7 @@ import { InputWithPrefix } from "@/components/ui/input-with-prefix";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAreaCharge, formatNaira, formatServicePrice } from "@/lib/money";
+import { describeCustomerEstimate } from "@/lib/orders";
 import { isWeighed } from "@/lib/quantity";
 import { formatDifference, REVISION_REASON_MAX } from "@/lib/quotes";
 import { AREA_NAME_MAX } from "@/schemas/fulfilment";
@@ -30,7 +31,6 @@ import {
   CURRENT_AREA,
   initialQuoteDraft,
   isChargeEntered,
-  quantityInput,
   reviewQuoteDraft,
   toIssueRevisionRequest,
   type QuoteDraft,
@@ -329,8 +329,9 @@ function QuoteLineRow({ idPrefix, line, lineTotal, error, onChange, onRemove }: 
   const weighed = isWeighed(line.pricingType);
   const added = line.source.kind === "new";
   const price = formatServicePrice({ pricingType: line.pricingType, price: line.unitPrice, requiresQuote: false });
-  const hint =
-    weighed && line.estimate !== null ? `Customer's estimate ${quantityInput(line.estimate)} kg (not billed).` : undefined;
+  // Online bookings record the customer's count on items the store inspects,
+  // as well as estimated weights.
+  const hint = line.estimate !== null ? describeCustomerEstimate(line.estimate, line.pricingType) : undefined;
 
   return (
     <li className="flex flex-col gap-component rounded-lg border border-border p-card">

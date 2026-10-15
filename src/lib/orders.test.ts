@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { FulfilmentType, OrderChannel } from "@/generated/prisma/enums";
 
 import {
+  describeCustomerEstimate,
   formatOrderNumber,
   getActorLabel,
   getInitialStage,
@@ -134,5 +135,13 @@ describe("isAwaitingApproval", () => {
     expect(isAwaitingApproval({ ...revision, version: 1, status: "PENDING" })).toBe(false);
     expect(isAwaitingApproval({ ...revision, version: 2, status: "SUPERSEDED" })).toBe(false);
     expect(isAwaitingApproval({ version: 2, status: "APPROVED", approvedAt: new Date(), declinedAt: null })).toBe(false);
+  });
+});
+
+describe("describeCustomerEstimate", () => {
+  it("shows a weight or a count the same way", () => {
+    expect(describeCustomerEstimate(250, "PER_KG")).toBe("Customer's estimate: 2.5 kg (not billed)");
+    expect(describeCustomerEstimate(200, "PER_ITEM")).toBe("Customer's estimate: 2 (not billed)");
+    expect(describeCustomerEstimate(100, "PER_PACKAGE")).toBe("Customer's estimate: 1 (not billed)");
   });
 });

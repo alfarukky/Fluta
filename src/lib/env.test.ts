@@ -14,9 +14,17 @@ const VALID = {
   R2_PUBLIC_URL: "https://logos.example.com",
   RESEND_API_KEY: "re_test_placeholder",
   EMAIL_FROM: "Fluta <mailer@example.com>",
+  BOOKING_IP_SECRET: "a-booking-ip-secret-of-at-least-32-characters",
 };
 
 describe("parseServerEnv", () => {
+  it("requires a booking IP secret of at least 32 characters", () => {
+    expect(() => parseServerEnv({ ...VALID, BOOKING_IP_SECRET: "too-short" })).toThrow(
+      /BOOKING_IP_SECRET: must be at least 32 characters/,
+    );
+  });
+
+
   it("requires the Resend API key and the sender", () => {
     expect(() => parseServerEnv({ ...VALID, RESEND_API_KEY: "", EMAIL_FROM: "" })).toThrow(
       /RESEND_API_KEY: is required[\s\S]*EMAIL_FROM: is required/,

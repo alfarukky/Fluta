@@ -1,6 +1,6 @@
 import "server-only";
 
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DeleteObjectCommand, GetObjectCommand, NoSuchKey, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 import { getServerEnv } from "@/lib/env";
 
@@ -8,6 +8,8 @@ import { getServerEnv } from "@/lib/env";
 // replace it with the fake in src/test/fake-r2.ts.
 export interface ObjectStorage {
   put(key: string, body: Uint8Array, contentType: string): Promise<void>;
+  // The object's bytes, or null when there is no such object.
+  get(key: string): Promise<Uint8Array | null>;
   delete(key: string): Promise<void>;
 }
 
@@ -40,6 +42,15 @@ function createR2Storage(): ObjectStorage {
           CacheControl: "public, max-age=31536000, immutable",
         }),
       );
+    },
+    async get(key) {
+      try {
+        const object = await client.send(new GetObjectCommand({ Bucket: env.R2_BUCKET, Key: key }));
+        return object.Body ? await object.Body.transformToByteArray() : null;
+      } catch (error) {
+        if (error instanceof NoSuchKey) return null;
+        throw error;
+      }
     },
     async delete(key) {
       await client.send(new DeleteObjectCommand({ Bucket: env.R2_BUCKET, Key: key }));

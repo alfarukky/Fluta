@@ -161,6 +161,13 @@ export function getActorLabel(actorType: ActorType, staffName: string | null): s
   }
 }
 
+// "Customer's estimate: 2.5 kg (not billed)", "Customer's estimate: 2 (not
+// billed)": what the customer entered on a line the store still weighs or
+// counts. Staff screens only.
+export function describeCustomerEstimate(estimate: number, pricingType: PricingType): string {
+  return `Customer's estimate: ${formatQuantity(estimate, pricingType)} (not billed)`;
+}
+
 export interface SummaryLine {
   description: string;
   pricingType: PricingType | null;

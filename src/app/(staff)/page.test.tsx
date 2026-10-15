@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import Home from "@/app/page";
+import Home from "@/app/(staff)/page";
 
 afterEach(() => {
   vi.unstubAllEnvs();

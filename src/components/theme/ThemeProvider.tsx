@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 // never runs those), which happens when a not-found page re-renders the root
 // layout there. In the browser the script is marked as data so React stays
 // quiet; the server-rendered script is unchanged and still runs before paint.
-const SCRIPT_PROPS = typeof window === "undefined" ? undefined : { type: "application/json" };
+export const SCRIPT_PROPS = typeof window === "undefined" ? undefined : { type: "application/json" };
 
 interface ThemeProviderProps {
   children: ReactNode;

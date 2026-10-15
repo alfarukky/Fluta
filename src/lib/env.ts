@@ -33,6 +33,10 @@ const serverEnvSchema = z.object({
   RESEND_API_KEY: z.string().min(1, "is required"),
   // The sender on Resend's verified domain, e.g. "Fluta <noreply@yourdomain>".
   EMAIL_FROM: z.string().min(1, "is required"),
+  // Keys the HMAC of a booking's IP address (online booking limits). A plain
+  // hash isn't enough: every IP address can be guessed and hashed. Generate
+  // with `openssl rand -base64 32`.
+  BOOKING_IP_SECRET: z.string().min(32, "must be at least 32 characters"),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

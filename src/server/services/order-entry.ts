@@ -1,14 +1,17 @@
 import "server-only";
 
+import { getBookingDateOptions, isBookablePickup, toBookingLineAmount } from "@/lib/booking";
 import { formatNaira, lineTotalKobo } from "@/lib/money";
 import { formatOrderNumber } from "@/lib/orders";
 import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY, toDecimalString, type QuantityProblem } from "@/lib/quantity";
-import { fromDateKey, getLocalDateKey } from "@/lib/time";
+import { fromDateKey, getLocalDateKey, getMinutesInTimeZone } from "@/lib/time";
 import { generateToken, hashToken } from "@/lib/tokens";
+import type { BookingInput } from "@/schemas/booking";
 import type { CreateOrderInput, PickupInput } from "@/schemas/orders";
 import { findCustomer, findCustomerByPhone, searchCustomers, type CustomerRecord } from "@/server/data/customers";
 import { isUniqueViolation } from "@/server/data/errors";
 import {
+  countActiveServiceAreas,
   findActiveServiceArea,
   getFulfilmentOptionsAndSchedule,
   isClosedDate,
@@ -17,6 +20,7 @@ import {
 } from "@/server/data/fulfilment";
 import {
   findOrderByClientRequestId,
+  insertOnlineOrder,
   insertOrder,
   type CreatedOrder,
   type NewOrderData,
@@ -32,12 +36,15 @@ import {
   mergeServiceLines,
   type PickupProblem,
 } from "@/server/domain/orders";
+import { isPickupAvailable } from "@/server/domain/pickup-schedule";
 
-// Staff-entered orders (counter, phone, WhatsApp). storeId and the user
-// always come from the caller's membership (see src/actions/orders.ts); IDs
-// in the request are only used when they belong to that store. The browser
-// sends only services and quantities: every price comes from the catalogue
-// or the service area, here.
+// Creating an order, the one path for both staff-entered orders (counter,
+// phone, WhatsApp) and customers' online bookings. For staff, storeId and the
+// user come from the caller's membership (see src/actions/orders.ts); for a
+// booking, storeId comes from the booking page's slug (src/actions/booking.ts).
+// IDs in the request are only used when they belong to that store. The
+// browser sends only services and quantities: every price comes from the
+// catalogue or the service area, here.
 
 export type OrderEntryError =
   | "FULFILMENT_NOT_OFFERED"
@@ -81,7 +88,163 @@ export async function createStaffOrder(
   }
 }
 
-function created(order: CreatedOrder): CreateOrderResult {
+// ───────────── Online bookings ─────────────
+
+export interface OnlineBookingActor {
+  storeId: string;
+  timeZone: string;
+  // HMAC of the booking's IP address (src/lib/client-ip.ts).
+  ipHash: string;
+}
+
+export type OnlineOrderError = OrderEntryError | "BOOKING_LIMIT_REACHED" | "NO_ONLINE_BOOKING";
+
+export type CreateOnlineOrderResult =
+  | { ok: true; orderId: string; displayNumber: string }
+  | { ok: false; error: OnlineOrderError; fieldErrors: Record<string, string> };
+
+// A customer's booking: channel Online, no staff user, starting at Booked,
+// pay later. Created by insertOnlineOrder, which returns an order this
+// request already created, then applies the booking limits. Whether the
+// store accepts bookings at all is the caller's check (getStoreAccess).
+export async function createOnlineOrder(
+  actor: OnlineBookingActor,
+  input: BookingInput,
+  now: Date,
+): Promise<CreateOnlineOrderResult> {
+  // Loaded together: Neon round trips are slow, and a customer is waiting.
+  const [existing, context] = await Promise.all([
+    findOrderByClientRequestId(actor.storeId, input.clientRequestId),
+    loadOnlineContext(actor, input, now),
+  ]);
+  // A repeated booking returns its order even if the store has changed since.
+  if (existing) return created(existing);
+
+  const prepared = await prepareOnlineOrder(actor, input, context, now);
+  if (!prepared.ok) return prepared;
+
+  try {
+    const result = await insertOnlineOrder(actor.storeId, prepared.data);
+    if (result.kind === "limitReached") return { ok: false, error: "BOOKING_LIMIT_REACHED", fieldErrors: {} };
+    return created(result.order);
+  } catch (error) {
+    // The same request with a different phone number: the unique rule
+    // refused a second order, so return the first one.
+    if (!isUniqueViolation(error)) throw error;
+    const order = await findOrderByClientRequestId(actor.storeId, input.clientRequestId);
+    if (!order) throw error;
+    return created(order);
+  }
+}
+
+// What the booking is checked against, read in one go.
+interface OnlineContext {
+  settings: Awaited<ReturnType<typeof getFulfilmentOptionsAndSchedule>>;
+  activeAreaCount: number;
+  services: OrderableService[];
+  area: Awaited<ReturnType<typeof findActiveServiceArea>>;
+  closedDates: string[];
+}
+
+async function loadOnlineContext(actor: OnlineBookingActor, input: BookingInput, now: Date): Promise<OnlineContext> {
+  const today = getLocalDateKey(now, actor.timeZone);
+  const [settings, activeAreaCount, services, area, closedDates] = await Promise.all([
+    getFulfilmentOptionsAndSchedule(actor.storeId),
+    countActiveServiceAreas(actor.storeId),
+    listActiveServices(actor.storeId),
+    input.pickup ? findActiveServiceArea(actor.storeId, input.pickup.areaId) : null,
+    input.pickup ? listClosedDateKeys(actor.storeId, today) : [],
+  ]);
+  return { settings, activeAreaCount, services, area, closedDates };
+}
+
+// Everything the customer chose is checked again here: what the booking page
+// offered is only a convenience.
+async function prepareOnlineOrder(
+  actor: OnlineBookingActor,
+  input: BookingInput,
+  context: OnlineContext,
+  now: Date,
+): Promise<{ ok: true; data: NewOrderData } | Extract<CreateOnlineOrderResult, { ok: false }>> {
+  const { settings, services } = context;
+  const pickupAvailable = isPickupAvailable({ ...settings, activeAreaCount: context.activeAreaCount });
+  // No active services, or no way to get the laundry to the store.
+  if (services.length === 0 || (!settings.dropOffEnabled && !pickupAvailable)) {
+    return { ok: false, error: "NO_ONLINE_BOOKING", fieldErrors: {} };
+  }
+  const offered = input.fulfilmentType === "DROP_OFF" ? settings.dropOffEnabled : pickupAvailable;
+  if (!offered) return fail("FULFILMENT_NOT_OFFERED", "fulfilmentType", "This option isn't available any more.");
+
+  const serviceLines = await priceServiceLines(
+    actor.storeId,
+    input.serviceLines.map((line) => ({ serviceId: line.serviceId, quantity: line.amount, estimate: null })),
+    true,
+    services,
+  );
+  if (!serviceLines.ok) return serviceLines;
+
+  const fulfilment = input.pickup
+    ? resolveRequestedPickup(actor, context, input.pickup, now)
+    : ({ ok: true, fields: NO_PICKUP } as const);
+  if (!fulfilment.ok) return fulfilment;
+
+  return {
+    ok: true,
+    data: assembleOrder({
+      clientRequestId: input.clientRequestId,
+      customer: { kind: "new", ...input.customer, fillMissingEmail: true },
+      channel: "ONLINE",
+      fulfilmentType: input.fulfilmentType,
+      lines: serviceLines.lines,
+      fulfilment: fulfilment.fields,
+      internalNote: null,
+      // No online payment yet (Feature 17): every booking is paid later.
+      payLater: true,
+      bookingIpHash: actor.ipHash,
+      actor: { type: "CUSTOMER", userId: null },
+      now,
+    }),
+  };
+}
+
+// An active area of this store (its fixed charge, or none yet when the store
+// will confirm it), and a date and window the booking page would offer now:
+// within the next 15 dates, an active day, not closed, one of the store's
+// windows, starting at least 2 hours from now. The window is a request.
+function resolveRequestedPickup(
+  actor: OnlineBookingActor,
+  { settings, area, closedDates }: OnlineContext,
+  pickup: NonNullable<BookingInput["pickup"]>,
+  now: Date,
+): { ok: true; fields: FulfilmentFields } | Failure {
+  if (!area) return fail("AREA_UNAVAILABLE", "pickup.areaId", "This area isn't available any more. Choose another.");
+
+  const options = getBookingDateOptions(
+    { today: getLocalDateKey(now, actor.timeZone), minutes: getMinutesInTimeZone(now, actor.timeZone) },
+    settings,
+    new Set(closedDates),
+  );
+  if (!isBookablePickup(options, { date: pickup.date, start: pickup.windowStart, end: pickup.windowEnd })) {
+    return fail("PICKUP_NOT_AVAILABLE", "pickup.window", "That pickup time is no longer available. Please choose another.");
+  }
+
+  const fixed = area.chargeType === "FIXED" && area.fixedCharge !== null;
+  return {
+    ok: true,
+    fields: {
+      serviceAreaId: area.id,
+      serviceAreaName: area.name,
+      isOutOfArea: false,
+      isOutsideSchedule: false,
+      // A quote-required area's charge is left for staff to set (Feature 12).
+      fulfilmentCharge: fixed ? area.fixedCharge : null,
+      addressText: pickup.address,
+      pickup: { date: fromDateKey(pickup.date), windowStart: pickup.windowStart, windowEnd: pickup.windowEnd, status: "REQUESTED" },
+    },
+  };
+}
+
+function created(order: CreatedOrder): { ok: true; orderId: string; displayNumber: string } {
   return { ok: true, orderId: order.id, displayNumber: formatOrderNumber(order, order.orderNumber) };
 }
 
@@ -118,42 +281,64 @@ async function prepareOrder(
     return fail("NEGATIVE_TOTAL", "adjustments", `Discounts can't make the total less than ₦0 (it would be ${formatNaira(total)}).`);
   }
 
-  const fullyPriced = isOrderFullyPriced({
-    fulfilmentType: input.fulfilmentType,
-    lines: serviceLines.lines.map((line) => ({ requiresQuote: line.requiresQuote, quantity: line.quantityHundredths })),
-    fulfilmentCharge,
-  });
-  const snapshot = buildQuoteSnapshot(
-    [...serviceLines.lines, ...adjustmentLines].map((line) => ({
-      ...line,
-      quantity: line.quantityHundredths,
-      estimate: line.estimateHundredths,
-    })),
-    {
-      areaName: fulfilment.fields.serviceAreaName,
-      isOutOfArea: fulfilment.fields.isOutOfArea,
-      charge: fulfilmentCharge,
-    },
-  );
-
   return {
     ok: true,
-    data: {
+    data: assembleOrder({
       clientRequestId: input.clientRequestId,
       customer: customer.value,
       channel: input.channel,
       fulfilmentType: input.fulfilmentType,
-      stage: getInitialStage(input.channel, input.fulfilmentType),
-      ...fulfilment.fields,
-      // The raw token isn't shown or sent yet (tracking links are Feature 14);
-      // only its hash is ever stored.
-      trackingTokenHash: hashToken(generateToken()),
+      lines: [...serviceLines.lines, ...adjustmentLines],
+      fulfilment: fulfilment.fields,
       internalNote: input.internalNote,
-      lines: [...serviceLines.lines, ...adjustmentLines].map(toLineData),
-      revision: { ...snapshot, approved: fullyPriced },
+      payLater: false,
+      bookingIpHash: null,
       actor: { type: "STAFF", userId: actor.userId },
       now,
-    },
+    }),
+  };
+}
+
+type OrderParts = Pick<
+  NewOrderData,
+  | "clientRequestId"
+  | "customer"
+  | "channel"
+  | "fulfilmentType"
+  | "internalNote"
+  | "payLater"
+  | "bookingIpHash"
+  | "actor"
+  | "now"
+> & { lines: PricedLine[]; fulfilment: FulfilmentFields };
+
+// Version 1 and everything else the order needs, from its priced lines. A
+// fully priced order's version 1 is approved at once by whoever created it
+// (staff, or the customer confirming the booking); otherwise it is an
+// estimate and the priced quote comes later (Feature 12).
+function assembleOrder({ lines, fulfilment, ...order }: OrderParts): NewOrderData {
+  const fulfilmentCharge = fulfilment.fulfilmentCharge;
+  const fullyPriced = isOrderFullyPriced({
+    fulfilmentType: order.fulfilmentType,
+    lines: lines
+      .filter((line) => line.lineType === "SERVICE")
+      .map((line) => ({ requiresQuote: line.requiresQuote, quantity: line.quantityHundredths })),
+    fulfilmentCharge,
+  });
+  const snapshot = buildQuoteSnapshot(
+    lines.map((line) => ({ ...line, quantity: line.quantityHundredths, estimate: line.estimateHundredths })),
+    { areaName: fulfilment.serviceAreaName, isOutOfArea: fulfilment.isOutOfArea, charge: fulfilmentCharge },
+  );
+
+  return {
+    ...order,
+    stage: getInitialStage(order.channel, order.fulfilmentType),
+    ...fulfilment,
+    // The raw token isn't shown or sent yet (tracking links are Feature 14);
+    // only its hash is ever stored.
+    trackingTokenHash: hashToken(generateToken()),
+    lines: lines.map(toLineData),
+    revision: { ...snapshot, approved: fullyPriced },
   };
 }
 
@@ -165,7 +350,7 @@ async function resolveCustomer(
   storeId: string,
   customer: CreateOrderInput["customer"],
 ): Promise<{ ok: true; value: NewOrderData["customer"] } | Failure> {
-  if (customer.kind === "new") return { ok: true, value: customer };
+  if (customer.kind === "new") return { ok: true, value: { ...customer, fillMissingEmail: false } };
   const existing = await findCustomer(storeId, customer.customerId);
   if (!existing) return fail("CUSTOMER_NOT_FOUND", "customer", "We couldn't find this customer. Search again or add them.");
   return { ok: true, value: { kind: "existing", customerId: existing.id } };
@@ -192,17 +377,22 @@ const QUANTITY_MESSAGES: Record<"ITEMS" | "WEIGHT", Record<QuantityProblem | "RE
 };
 
 // Each line's name, price, pricing type, and quote flag come from the store's
-// own active service; repeated services become one line.
+// own active service; repeated services become one line. Online, the
+// customer's amount is billed only on a fixed-price line: on a quote-required
+// one it is an estimate (toBookingLineAmount), and the store weighs or counts
+// the items later.
 async function priceServiceLines(
   storeId: string,
   requested: CreateOrderInput["serviceLines"],
+  online = false,
+  // The store's active services, when the caller has already loaded them.
+  catalogue?: readonly OrderableService[],
 ): Promise<{ ok: true; lines: PricedLine[] } | Failure> {
   const merged = mergeServiceLines(
     requested.map((line) => ({ serviceId: line.serviceId, quantity: line.quantity, estimate: line.estimate })),
   );
-  const services = new Map(
-    (await findActiveServices(storeId, merged.map((line) => line.serviceId))).map((service) => [service.id, service]),
-  );
+  const active = catalogue ?? (await findActiveServices(storeId, merged.map((line) => line.serviceId)));
+  const services = new Map(active.map((service) => [service.id, service]));
 
   const fieldErrors: Record<string, string> = {};
   const lines: PricedLine[] = [];
@@ -212,12 +402,13 @@ async function priceServiceLines(
       fieldErrors[`serviceLines.${index}.serviceId`] = "This service isn't available any more. Remove it.";
       continue;
     }
-    const problem = getLineQuantityProblem(service, line.quantity, line.estimate);
+    const problem = online ? getBookingAmountProblem(service, line.quantity) : getLineQuantityProblem(service, line.quantity, line.estimate);
     if (problem) {
       fieldErrors[`serviceLines.${index}.${problem.field}`] = problem.message;
       continue;
     }
-    lines.push(toServiceLine(service, line.quantity, line.estimate));
+    const { quantity, estimate } = online ? toBookingLineAmount(service, line.quantity) : line;
+    lines.push(toServiceLine(service, quantity, estimate));
   }
 
   const keys = Object.keys(fieldErrors);
@@ -242,6 +433,18 @@ function getLineQuantityProblem(
   }
   const estimateProblem = estimate === null ? null : getQuantityProblem(estimate, service.pricingType);
   return estimateProblem ? { field: "estimate", message: messages[estimateProblem] } : null;
+}
+
+// A customer's amount: how many items or packages (required), or an
+// estimated weight (optional).
+function getBookingAmountProblem(
+  service: OrderableService,
+  amount: number | null,
+): { field: "quantity"; message: string } | null {
+  const messages = QUANTITY_MESSAGES[isWeighed(service.pricingType) ? "WEIGHT" : "ITEMS"];
+  if (amount === null) return isWeighed(service.pricingType) ? null : { field: "quantity", message: messages.REQUIRED };
+  const problem = getQuantityProblem(amount, service.pricingType);
+  return problem ? { field: "quantity", message: messages[problem] } : null;
 }
 
 function toServiceLine(service: OrderableService, quantity: number | null, estimate: number | null): PricedLine {

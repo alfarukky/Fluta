@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatNaira } from "@/lib/money";
 import {
+  describeCustomerEstimate,
   FULFILMENT_TYPE_LABELS,
   getActorLabel,
   getQuoteRevisionLabel,
@@ -142,11 +143,11 @@ function OrderSummarySection({ order, proposed }: { order: Order; proposed: Revi
               label={line.description}
               detail={
                 unweighed
-                  ? pricingType === "PER_KG"
-                    ? estimated === null
+                  ? estimated !== null
+                    ? describeCustomerEstimate(estimated, pricingType)
+                    : pricingType === "PER_KG"
                       ? "Not weighed yet"
-                      : `Customer's estimate ${formatQuantity(estimated, pricingType)} (an estimate, not billed)`
-                    : "To be inspected"
+                      : "To be inspected"
                   : `${formatQuantity(quantity, pricingType)} × ${formatNaira(line.unitPrice ?? 0)}`
               }
               amount={

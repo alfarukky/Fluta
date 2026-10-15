@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { AA_CONTRAST, contrastRatio, ensureContrast, getBrandTheme, readableTextOn } from "./brand-theme";
+import {
+  AA_CONTRAST,
+  contrastRatio,
+  ensureContrast,
+  FLUTA_PRIMARY,
+  getBrandFill,
+  getBrandTheme,
+  readableTextOn,
+} from "./brand-theme";
 
 describe("contrastRatio", () => {
   it("matches the WCAG reference values", () => {
@@ -78,5 +86,16 @@ describe("getBrandTheme", () => {
       const theme = getBrandTheme({ primary: value, accent: value });
       expect(theme).toEqual({ style: {} });
     }
+  });
+});
+
+describe("getBrandFill", () => {
+  it("uses the store's primary colour with readable text", () => {
+    expect(getBrandFill({ primary: "#ffd60a" })).toEqual({ background: "#FFD60A", foreground: "#000000" });
+  });
+
+  it("falls back to Fluta's primary for a missing or invalid colour", () => {
+    expect(getBrandFill({ primary: null })).toEqual({ background: FLUTA_PRIMARY, foreground: "#FFFFFF" });
+    expect(getBrandFill({ primary: "red; background: url(x)" })).toEqual({ background: FLUTA_PRIMARY, foreground: "#FFFFFF" });
   });
 });

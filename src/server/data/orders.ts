@@ -11,6 +11,12 @@ import {
   type PricingType,
 } from "@/generated/prisma/client";
 import { CLOSED_STAGES, type PaymentState } from "@/lib/orders";
+import {
+  IP_BOOKING_WINDOW_MS,
+  IP_HASH_RETENTION_MS,
+  isBookingLimitReached,
+  PHONE_BOOKING_WINDOW_MS,
+} from "@/server/domain/booking-limits";
 import type { OrderListQuery } from "@/types/orders";
 
 import { getPrisma } from "./client";
@@ -22,6 +28,9 @@ import { upsertCustomerByPhone, type NewCustomerData } from "./customers";
 
 // Neon round trips are slow from here; the order transaction makes several.
 const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 20_000 };
+// Online bookings from one phone or IP wait their turn (see insertOnlineOrder),
+// so the transaction may spend a while waiting before it starts its work.
+const ONLINE_TRANSACTION_OPTIONS = { maxWait: 20_000, timeout: 40_000 };
 
 export interface NewOrderLineData {
   lineType: OrderLineType;
@@ -37,6 +46,7 @@ export interface NewOrderLineData {
 
 export interface NewOrderData {
   clientRequestId: string;
+  // A "new" customer is found or created by phone (upsertCustomerByPhone).
   customer: { kind: "existing"; customerId: string } | ({ kind: "new" } & NewCustomerData);
   channel: OrderChannel;
   fulfilmentType: FulfilmentType;
@@ -50,6 +60,9 @@ export interface NewOrderData {
   pickup: { date: Date; windowStart: string; windowEnd: string; status: PickupWindowStatus } | null;
   trackingTokenHash: string;
   internalNote: string | null;
+  payLater: boolean;
+  // Online bookings only: the HMAC of the booking's IP address (booking limits).
+  bookingIpHash: string | null;
   lines: NewOrderLineData[];
   // Version 1 of the quote revision; approved at once when fully priced.
   revision: {
@@ -77,75 +90,146 @@ export interface CreatedOrder {
 // Throws Prisma's unique-constraint error (P2002) when the store already has
 // an order with this clientRequestId; the caller returns that order instead.
 export async function insertOrder(storeId: string, data: NewOrderData): Promise<CreatedOrder> {
+  return getPrisma().$transaction((tx) => createOrderRecords(tx, storeId, data), TRANSACTION_OPTIONS);
+}
+
+export type OnlineOrderInsert =
+  | { kind: "created" | "existing"; order: CreatedOrder }
+  | { kind: "limitReached" };
+
+// An online booking: insertOrder's transaction, after the booking checks, in
+// this order. First, an order already created by this request ID is returned
+// as it is. Then the booking limits: this phone's online bookings at this store
+// in 24 hours, and this IP's at any store in an hour. Then the order.
+//
+// Before counting, the transaction takes two locks held until it ends: one for
+// this store and phone number, one for this IP hash. Bookings from the same
+// phone or IP are counted one at a time, so simultaneous ones can't slip past
+// a limit, and different customers never wait on each other. The phone lock
+// comes first in every booking, so two bookings can't each hold the lock the
+// other is waiting for.
+//
+// It also clears the IP hash of this store's orders older than 24 hours.
+export async function insertOnlineOrder(storeId: string, data: NewOrderData): Promise<OnlineOrderInsert> {
+  if (data.customer.kind !== "new" || data.bookingIpHash === null) {
+    throw new Error("An online booking needs the customer's phone number and the IP hash.");
+  }
+  const { phone } = data.customer;
+  const ipHash = data.bookingIpHash;
+
   return getPrisma().$transaction(async (tx) => {
-    // Allocated first: the row lock it takes on the store queues other order
-    // creations for this store until this transaction ends.
-    const { orderNumber, orderPrefix } = await allocateOrderNumber(tx, storeId);
-    const customerId =
-      data.customer.kind === "existing"
-        ? data.customer.customerId
-        : (await upsertCustomerByPhone(tx, storeId, data.customer)).id;
+    await lockKeys(tx, `booking:phone:${storeId}:${phone}`, `booking:ip:${ipHash}`);
 
-    const { id } = await tx.order.create({
-      data: {
-        storeId,
-        orderNumber,
-        customerId,
-        clientRequestId: data.clientRequestId,
-        channel: data.channel,
-        fulfilmentType: data.fulfilmentType,
-        stage: data.stage,
-        serviceAreaId: data.serviceAreaId,
-        serviceAreaName: data.serviceAreaName,
-        isOutOfArea: data.isOutOfArea,
-        isOutsideSchedule: data.isOutsideSchedule,
-        fulfilmentCharge: data.fulfilmentCharge,
-        addressText: data.addressText,
-        ...pickupFields(data.pickup),
-        trackingTokenHash: data.trackingTokenHash,
-        trackingTokenIssuedAt: data.now,
-        internalNote: data.internalNote,
-        createdByUserId: data.actor.userId,
-        createdAt: data.now,
-      },
-      select: { id: true },
+    const existing = await tx.order.findUnique({
+      where: { storeId_clientRequestId: { storeId, clientRequestId: data.clientRequestId } },
+      select: { id: true, orderNumber: true, store: { select: { orderPrefix: true } } },
     });
-
-    await tx.orderLine.createMany({ data: data.lines.map((line) => ({ ...line, storeId, orderId: id })) });
-
-    const { approved, ...amounts } = data.revision;
-    const revision = await tx.quoteRevision.create({
-      data: {
-        storeId,
-        orderId: id,
-        version: 1,
-        ...amounts,
-        status: approved ? "APPROVED" : "PENDING",
-        createdByActor: data.actor.type,
-        createdByUserId: data.actor.userId,
-        createdAt: data.now,
-        approvedAt: approved ? data.now : null,
-        approvedByActor: approved ? data.actor.type : null,
-      },
-      select: { id: true },
-    });
-    if (approved) {
-      await tx.order.update({ where: { storeId_id: { storeId, id } }, data: { approvedQuoteId: revision.id } });
+    if (existing) {
+      return {
+        kind: "existing",
+        order: { id: existing.id, orderNumber: existing.orderNumber, orderPrefix: existing.store.orderPrefix },
+      };
     }
 
-    await tx.statusEvent.create({
-      data: {
+    const now = data.now.getTime();
+    const phoneCount = await tx.order.count({
+      where: {
         storeId,
-        orderId: id,
-        fromStage: null,
-        toStage: data.stage,
-        actorType: data.actor.type,
-        actorUserId: data.actor.userId,
-        createdAt: data.now,
+        channel: "ONLINE",
+        customer: { phone },
+        createdAt: { gt: new Date(now - PHONE_BOOKING_WINDOW_MS) },
       },
     });
-    return { id, orderNumber, orderPrefix };
-  }, TRANSACTION_OPTIONS);
+    const ipCount = await tx.order.count({
+      where: { bookingIpHash: ipHash, createdAt: { gt: new Date(now - IP_BOOKING_WINDOW_MS) } },
+    });
+    if (isBookingLimitReached({ phone: phoneCount, ip: ipCount })) return { kind: "limitReached" };
+
+    await tx.order.updateMany({
+      where: { storeId, bookingIpHash: { not: null }, createdAt: { lt: new Date(now - IP_HASH_RETENTION_MS) } },
+      data: { bookingIpHash: null },
+    });
+
+    return { kind: "created", order: await createOrderRecords(tx, storeId, data) };
+  }, ONLINE_TRANSACTION_OPTIONS);
+}
+
+// Locks on both keys until the transaction ends (pg_advisory_xact_lock), the
+// first before the second, in one round trip.
+async function lockKeys(tx: Prisma.TransactionClient, first: string, second: string): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${first}, 0)), pg_advisory_xact_lock(hashtextextended(${second}, 0))`;
+}
+
+async function createOrderRecords(tx: Prisma.TransactionClient, storeId: string, data: NewOrderData): Promise<CreatedOrder> {
+  // Allocated first: the row lock it takes on the store queues other order
+  // creations for this store until this transaction ends.
+  const { orderNumber, orderPrefix } = await allocateOrderNumber(tx, storeId);
+  const customerId =
+    data.customer.kind === "existing"
+      ? data.customer.customerId
+      : (await upsertCustomerByPhone(tx, storeId, data.customer)).id;
+
+  const { id } = await tx.order.create({
+    data: {
+      storeId,
+      orderNumber,
+      customerId,
+      clientRequestId: data.clientRequestId,
+      channel: data.channel,
+      fulfilmentType: data.fulfilmentType,
+      stage: data.stage,
+      serviceAreaId: data.serviceAreaId,
+      serviceAreaName: data.serviceAreaName,
+      isOutOfArea: data.isOutOfArea,
+      isOutsideSchedule: data.isOutsideSchedule,
+      fulfilmentCharge: data.fulfilmentCharge,
+      addressText: data.addressText,
+      ...pickupFields(data.pickup),
+      payLater: data.payLater,
+      trackingTokenHash: data.trackingTokenHash,
+      trackingTokenIssuedAt: data.now,
+      internalNote: data.internalNote,
+      createdByUserId: data.actor.userId,
+      bookingIpHash: data.bookingIpHash,
+      createdAt: data.now,
+    },
+    select: { id: true },
+  });
+
+  await tx.orderLine.createMany({ data: data.lines.map((line) => ({ ...line, storeId, orderId: id })) });
+
+  const { approved, ...amounts } = data.revision;
+  const revision = await tx.quoteRevision.create({
+    data: {
+      storeId,
+      orderId: id,
+      version: 1,
+      ...amounts,
+      status: approved ? "APPROVED" : "PENDING",
+      createdByActor: data.actor.type,
+      createdByUserId: data.actor.userId,
+      createdAt: data.now,
+      approvedAt: approved ? data.now : null,
+      approvedByActor: approved ? data.actor.type : null,
+    },
+    select: { id: true },
+  });
+  if (approved) {
+    await tx.order.update({ where: { storeId_id: { storeId, id } }, data: { approvedQuoteId: revision.id } });
+  }
+
+  await tx.statusEvent.create({
+    data: {
+      storeId,
+      orderId: id,
+      fromStage: null,
+      toStage: data.stage,
+      actorType: data.actor.type,
+      actorUserId: data.actor.userId,
+      createdAt: data.now,
+    },
+  });
+  return { id, orderNumber, orderPrefix };
 }
 
 // One UPDATE … RETURNING: the row lock serialises concurrent allocations, and
@@ -162,18 +246,23 @@ async function allocateOrderNumber(
   return { orderNumber: nextOrderNumber - 1, orderPrefix };
 }
 
-// Staff agree the window with the customer, so the requested and scheduled
-// windows are the same.
+// Staff agree the window with the customer (CONFIRMED), so the requested and
+// scheduled windows are the same. An online booking only requests one
+// (REQUESTED): staff confirm or propose a window later (Feature 14).
 function pickupFields(pickup: NewOrderData["pickup"]) {
   if (!pickup) return {};
-  return {
+  const requested = {
     requestedPickupDate: pickup.date,
     requestedWindowStart: pickup.windowStart,
     requestedWindowEnd: pickup.windowEnd,
+    pickupWindowStatus: pickup.status,
+  };
+  if (pickup.status !== "CONFIRMED") return requested;
+  return {
+    ...requested,
     scheduledPickupDate: pickup.date,
     scheduledWindowStart: pickup.windowStart,
     scheduledWindowEnd: pickup.windowEnd,
-    pickupWindowStatus: pickup.status,
   };
 }
 

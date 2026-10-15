@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatAreaCharge,
+  formatAreaChargeForCustomer,
   formatNaira,
   formatNairaInput,
   formatServicePrice,
@@ -145,5 +146,13 @@ describe("lineTotalKobo", () => {
     expect(() => lineTotalKobo(1.5, 100)).toThrow(RangeError);
     expect(() => lineTotalKobo(100, 2.5)).toThrow(RangeError);
     expect(() => lineTotalKobo(-100, 100)).toThrow(RangeError);
+  });
+});
+
+describe("formatAreaChargeForCustomer", () => {
+  it("says what the customer pays, in plain words", () => {
+    expect(formatAreaChargeForCustomer({ chargeType: "FIXED", fixedCharge: 150_000 })).toBe("₦1,500");
+    expect(formatAreaChargeForCustomer({ chargeType: "FIXED", fixedCharge: 0 })).toBe("Free");
+    expect(formatAreaChargeForCustomer({ chargeType: "QUOTE_REQUIRED", fixedCharge: null })).toBe("The store will confirm this price");
   });
 });

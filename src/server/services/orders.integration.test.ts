@@ -347,7 +347,7 @@ describe("store isolation", () => {
 
   it("shows a FreshFold member Order not found (404), not no access, for a CleanWave order", async () => {
     request.headers = await signInHeaders("kemi@freshfold.example");
-    const { default: OrderPage } = await import("@/app/(workspace)/orders/[id]/page");
+    const { default: OrderPage } = await import("@/app/(staff)/(workspace)/orders/[id]/page");
 
     const page = (id: string) => OrderPage({ params: Promise.resolve({ id }) } as PageProps<"/orders/[id]">);
     for (const id of [seeded.cleanWaveOrderId, "no-such-order"]) {
