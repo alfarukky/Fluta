@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, CircleCheckIcon, CircleXIcon, PhoneIcon, ReceiptTextIcon } from "lucide-react";
+import { ArrowLeftIcon, CalendarClockIcon, CircleCheckIcon, CircleXIcon, PhoneIcon, ReceiptTextIcon } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -26,7 +26,9 @@ import { cn } from "@/lib/utils";
 
 import { PaymentBadge, StageBadge } from "./OrderBadges";
 import { OrderStageActions } from "./OrderStageActions";
+import { PickupTimeCard, type PickupTimeOptions } from "./PickupTimeCard";
 import { QuoteBanner } from "./QuoteBanner";
+import { TrackingLinkButton } from "./TrackingLinkButton";
 
 type Order = OrderDetailData["order"];
 
@@ -35,13 +37,15 @@ interface OrderDetailProps {
   // False when the store can't work on existing orders: no moves are offered.
   canChangeStage: boolean;
   timeZone: string;
+  // The store's schedule for "Suggest another time", when it can be used.
+  pickupOptions: PickupTimeOptions | null;
 }
 
 // Everything about one order, from the order's own copies (never the current
 // service or area records), with the stage and quote actions this member may
 // take. Payment actions come in later features.
-export function OrderDetail({ detail, canChangeStage, timeZone }: OrderDetailProps) {
-  const { order, displayNumber, balance, quote } = detail;
+export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }: OrderDetailProps) {
+  const { order, displayNumber, balance, quote, pickupTime } = detail;
   const editQuoteHref = `/orders/${order.id}/quote`;
 
   return (
@@ -101,6 +105,23 @@ export function OrderDetail({ detail, canChangeStage, timeZone }: OrderDetailPro
         />
       )}
 
+      {canChangeStage && pickupTime && (
+        <PickupTimeCard
+          orderId={order.id}
+          status={pickupTime.status}
+          requested={formatPickup(order.requestedPickupDate, order.requestedWindowStart, order.requestedWindowEnd)}
+          suggested={
+            pickupTime.status === "PROPOSED_BY_STORE"
+              ? formatPickup(order.scheduledPickupDate, order.scheduledWindowStart, order.scheduledWindowEnd)
+              : null
+          }
+          canConfirm={pickupTime.canConfirm}
+          canSuggest={pickupTime.canSuggest}
+          blockedReason={pickupTime.blockedReason}
+          options={pickupOptions}
+        />
+      )}
+
       <div className="grid grid-cols-1 items-start gap-grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex min-w-0 flex-col gap-grid">
           <OrderSummarySection order={order} proposed={quote.pending ?? quote.declined} />
@@ -109,7 +130,7 @@ export function OrderDetail({ detail, canChangeStage, timeZone }: OrderDetailPro
           <QuoteHistorySection order={order} timeZone={timeZone} />
         </div>
         <div className="flex min-w-0 flex-col gap-grid">
-          <CustomerSection order={order} />
+          <CustomerSection order={order} canIssueTrackingLink={canChangeStage && detail.canIssueTrackingLink} />
           <FulfilmentSection order={order} />
           <InternalNoteSection note={order.internalNote} />
           <TimelineSection detail={detail} timeZone={timeZone} />
@@ -237,7 +258,7 @@ function OrderSummarySection({ order, proposed }: { order: Order; proposed: Revi
   );
 }
 
-function CustomerSection({ order }: { order: Order }) {
+function CustomerSection({ order, canIssueTrackingLink }: { order: Order; canIssueTrackingLink: boolean }) {
   const { name, phone, email } = order.customer;
   return (
     <Section title="Customer">
@@ -252,14 +273,25 @@ function CustomerSection({ order }: { order: Order }) {
         </Button>
       </div>
       {email && <Detail label="Email" value={email} />}
+      {canIssueTrackingLink && (
+        <div className="flex flex-col items-start gap-1 border-t border-border pt-component">
+          <TrackingLinkButton orderId={order.id} />
+          <p className="type-caption text-muted-foreground">The customer follows the order, approves prices, and accepts pickup times there.</p>
+        </div>
+      )}
     </Section>
   );
 }
 
+const PICKUP_STATUS_LABELS = {
+  REQUESTED: "Requested",
+  PROPOSED_BY_STORE: "Suggested by the store",
+  CONFIRMED: "Confirmed",
+} as const;
+
 function FulfilmentSection({ order }: { order: Order }) {
   const pickup = order.fulfilmentType === "PICKUP_DELIVERY";
-  const confirmed = order.pickupWindowStatus === "CONFIRMED";
-  const pickupDate = order.scheduledPickupDate ?? order.requestedPickupDate;
+  const status = order.pickupWindowStatus;
 
   return (
     <Section title="Fulfilment">
@@ -281,15 +313,23 @@ function FulfilmentSection({ order }: { order: Order }) {
             }
           />
           <Detail label="Address" value={order.addressText ?? "—"} />
-          <Detail label="Pickup date" value={pickupDate ? formatCalendarDate(toDateKey(pickupDate)) : "—"} />
+          <Detail label="Pickup time" value={status ? PICKUP_STATUS_LABELS[status] : "—"} />
           <Detail
-            label="Requested window"
-            value={formatWindow(order.requestedWindowStart, order.requestedWindowEnd) ?? "—"}
+            label="Customer asked for"
+            value={formatPickup(order.requestedPickupDate, order.requestedWindowStart, order.requestedWindowEnd)}
           />
+          {status === "PROPOSED_BY_STORE" && (
+            <Detail
+              label="Suggested by the store"
+              value={formatPickup(order.scheduledPickupDate, order.scheduledWindowStart, order.scheduledWindowEnd)}
+            />
+          )}
           <Detail
-            label="Confirmed window"
+            label="Confirmed pickup"
             value={
-              (confirmed && formatWindow(order.scheduledWindowStart, order.scheduledWindowEnd)) || "Not confirmed yet"
+              status === "CONFIRMED"
+                ? formatPickup(order.scheduledPickupDate, order.scheduledWindowStart, order.scheduledWindowEnd)
+                : "Not confirmed yet"
             }
           />
         </>
@@ -298,8 +338,11 @@ function FulfilmentSection({ order }: { order: Order }) {
   );
 }
 
-function formatWindow(start: string | null, end: string | null): string | null {
-  return start && end ? formatPickupWindow({ start, end }) : null;
+// "Tue, 20 Oct 2026 · 10:00 AM–12:00 PM", or "—" when there is none.
+function formatPickup(date: Date | null, start: string | null, end: string | null): string {
+  if (!date) return "—";
+  const day = formatCalendarDate(toDateKey(date));
+  return start && end ? `${day} · ${formatPickupWindow({ start, end })}` : day;
 }
 
 // What the customer wrote under "Anything else?" when booking online. Plain
@@ -340,6 +383,27 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
                 {formatDateTime(entry.at, timeZone)} · {getActorLabel(entry.event.actorType, staffName(entry.event.actorUserId))}
               </span>
               {entry.event.note && <span className="type-body-sm break-words text-foreground">{entry.event.note}</span>}
+            </li>
+          ) : entry.kind === "pickupSuggested" ? (
+            <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-warning/10 px-3 py-2.5">
+              <CalendarClockIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="type-label break-words text-foreground">
+                  Pickup time suggested: {formatCalendarDate(entry.suggestion.date)} ·{" "}
+                  {formatPickupWindow({ start: entry.suggestion.windowStart, end: entry.suggestion.windowEnd })}
+                </span>
+                <span className="type-caption text-muted-foreground">
+                  {formatDateTime(entry.at, timeZone)} · {getActorLabel("STAFF", staffName(entry.suggestion.actorUserId))}
+                </span>
+                {entry.suggestion.isOutsideSchedule && (
+                  <Badge variant="warning" className="self-start">
+                    Outside normal schedule
+                  </Badge>
+                )}
+                {entry.suggestion.note && (
+                  <span className="type-body-sm break-words text-foreground">Note: {entry.suggestion.note}</span>
+                )}
+              </div>
             </li>
           ) : (
             // Revision moments stand out with a soft tint and an icon, never colour alone.

@@ -44,7 +44,13 @@ export const findBookableStore = cache(async (slug: string, now: Date = new Date
   };
 });
 
-function toPublicStore(record: PublicStoreRecord): PublicStore {
+// What the store's customer pages show about it (booking and tracking).
+export type PublicStoreFields = Pick<
+  PublicStoreRecord,
+  "name" | "slug" | "description" | "phone" | "logoKey" | "brandPrimaryColor" | "brandAccentColor"
+>;
+
+export function toPublicStore(record: PublicStoreFields): PublicStore {
   return {
     name: record.name,
     slug: record.slug,

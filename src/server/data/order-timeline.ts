@@ -4,9 +4,10 @@ import type { ActorType, OrderStage, QuoteStatus } from "@/generated/prisma/clie
 
 import { AUDIT_ACTIONS } from "./quotes";
 
-// One timeline for an order: stage events and revision moments (issued,
-// approved, declined), newest first. The page shows it as it comes; it never
-// merges lists itself.
+// One timeline for an order: stage events, revision moments (issued,
+// approved, declined), and pickup times the store suggested, newest first.
+// The page shows it as it comes; it never merges lists itself. Staff only:
+// the tracking page has its own customer timeline (src/lib/tracking.ts).
 
 export interface TimelineStageEvent {
   id: string;
@@ -38,8 +39,21 @@ export interface TimelineAudit {
   targetId: string | null;
 }
 
+// A pickup time staff suggested to the customer (its AuditEvent).
+export interface TimelinePickupSuggestion {
+  id: string;
+  actorUserId: string | null;
+  createdAt: Date;
+  date: string; // "YYYY-MM-DD"
+  windowStart: string;
+  windowEnd: string;
+  isOutsideSchedule: boolean;
+  note: string | null;
+}
+
 export type TimelineEntry =
   | { kind: "stage"; key: string; at: Date; event: TimelineStageEvent }
+  | { kind: "pickupSuggested"; key: string; at: Date; suggestion: TimelinePickupSuggestion }
   | {
       kind: "revision";
       key: string;
@@ -62,6 +76,7 @@ export type TimelineEntry =
 // approved before the order returns from Quote awaiting approval.
 function rank(entry: TimelineEntry): number {
   if (entry.kind === "stage") return 2;
+  if (entry.kind === "pickupSuggested") return 1;
   return entry.moment === "ISSUED" ? 0 : 1;
 }
 
@@ -69,6 +84,7 @@ export function buildOrderTimeline(
   events: readonly TimelineStageEvent[],
   revisions: readonly TimelineRevision[],
   audits: readonly TimelineAudit[],
+  pickupSuggestions: readonly TimelinePickupSuggestion[] = [],
 ): TimelineEntry[] {
   const recorder = new Map<string, string | null>();
   for (const audit of audits) {
@@ -131,6 +147,10 @@ export function buildOrderTimeline(
         staffUserId,
       });
     }
+  }
+
+  for (const suggestion of pickupSuggestions) {
+    entries.push({ kind: "pickupSuggested", key: `pickup-${suggestion.id}`, at: suggestion.createdAt, suggestion });
   }
 
   return entries.sort((a, b) => b.at.getTime() - a.at.getTime() || rank(b) - rank(a) || b.key.localeCompare(a.key));

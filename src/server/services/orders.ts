@@ -18,10 +18,13 @@ import {
   type OrderListRecord,
 } from "@/server/data/orders";
 import { buildOrderTimeline, type TimelineEntry } from "@/server/data/order-timeline";
+import { findPickupSuggestions } from "@/server/data/pickup-times";
 import { findRevisionAudits } from "@/server/data/quotes";
 import { getBalance, type Balance } from "@/server/domain/balance";
 import { getAvailableTransitions, getStageOrderState, type AvailableTransitions } from "@/server/domain/order-stages";
 import { buildOrderListQuery, ORDER_LIST_PAGE_SIZE } from "@/server/domain/order-list";
+import { getPickupTimeRefusal } from "@/server/services/pickup-times";
+import { canIssueTrackingLink } from "@/server/services/tracking-links";
 import type { OrderListCursor, OrderListPage, OrderListRow } from "@/types/orders";
 
 // Reading a store's orders: the orders list, the order detail, and the
@@ -94,6 +97,18 @@ export interface OrderDetail {
   // Stage events and revision moments, newest first.
   timeline: TimelineEntry[];
   quote: OrderQuoteState;
+  // A pickup order whose time is Requested or Suggested: what staff may do.
+  pickupTime: OrderPickupTimeState | null;
+  // "Get tracking link" is offered only when the new link would work.
+  canIssueTrackingLink: boolean;
+}
+
+export interface OrderPickupTimeState {
+  status: "REQUESTED" | "PROPOSED_BY_STORE";
+  canConfirm: boolean;
+  canSuggest: boolean;
+  // Why neither is possible right now (a pickup charge awaiting approval).
+  blockedReason: string | null;
 }
 
 type DetailRevision = OrderDetailRecord["quoteRevisions"][number];
@@ -116,17 +131,26 @@ export async function isStoreOrder(storeId: string, orderId: string): Promise<bo
 }
 
 // Null for an order that isn't this store's, exactly as for one that doesn't exist.
-export async function getOrderDetail(storeId: string, orderId: string, role: StoreRole): Promise<OrderDetail | null> {
+export async function getOrderDetail(
+  storeId: string,
+  orderId: string,
+  role: StoreRole,
+  now: Date = new Date(),
+): Promise<OrderDetail | null> {
   const order = await findOrderDetail(storeId, orderId);
   if (!order) return null;
 
-  const audits = await findRevisionAudits(
-    storeId,
-    order.quoteRevisions.map((revision) => revision.id),
-  );
-  const timeline = buildOrderTimeline(order.statusEvents, order.quoteRevisions, audits);
+  const [audits, pickupSuggestions] = await Promise.all([
+    findRevisionAudits(
+      storeId,
+      order.quoteRevisions.map((revision) => revision.id),
+    ),
+    findPickupSuggestions(storeId, orderId),
+  ]);
+  const timeline = buildOrderTimeline(order.statusEvents, order.quoteRevisions, audits, pickupSuggestions);
   const actorIds = timeline.flatMap((entry) => {
-    const id = entry.kind === "stage" ? entry.event.actorUserId : entry.staffUserId;
+    const id =
+      entry.kind === "stage" ? entry.event.actorUserId : entry.kind === "pickupSuggested" ? entry.suggestion.actorUserId : entry.staffUserId;
     return id ? [id] : [];
   });
   const pending = findPendingRevision(order.quoteRevisions);
@@ -144,6 +168,22 @@ export async function getOrderDetail(storeId: string, orderId: string, role: Sto
       pending,
       declined: findDeclinedRevision(order.quoteRevisions),
     },
+    pickupTime: getPickupTimeState(order, pending !== null),
+    canIssueTrackingLink: canIssueTrackingLink(order, now),
+  };
+}
+
+function getPickupTimeState(order: OrderDetailRecord, pickupChargeWaiting: boolean): OrderPickupTimeState | null {
+  const status = order.pickupWindowStatus;
+  if (order.fulfilmentType !== "PICKUP_DELIVERY") return null;
+  if (status !== "REQUESTED" && status !== "PROPOSED_BY_STORE") return null;
+  if (order.stage !== "BOOKED" && order.stage !== "QUOTE_AWAITING_APPROVAL") return null;
+  const refusal = getPickupTimeRefusal(order, pickupChargeWaiting);
+  return {
+    status,
+    canConfirm: refusal === null && status === "REQUESTED",
+    canSuggest: refusal === null,
+    blockedReason: refusal,
   };
 }
 

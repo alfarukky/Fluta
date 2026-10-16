@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildOrderTimeline, type TimelineRevision, type TimelineStageEvent } from "./order-timeline";
+import { buildOrderTimeline, type TimelineEntry, type TimelineRevision, type TimelineStageEvent } from "./order-timeline";
 
 const at = (minute: number) => new Date(Date.UTC(2026, 9, 12, 9, minute));
 
@@ -36,9 +36,16 @@ describe("buildOrderTimeline", () => {
   const events = [stage("e1", 0, null, "RECEIVED_BY_STORE"), stage("e2", 5, "RECEIVED_BY_STORE", "IN_PROGRESS")];
   const audits = [{ action: "QUOTE_APPROVAL_RECORDED", actorUserId: "kemi", targetId: "r2" }];
 
+  const label = (entry: TimelineEntry) =>
+    entry.kind === "stage"
+      ? `stage ${entry.event.toStage}`
+      : entry.kind === "pickupSuggested"
+        ? `pickup ${entry.suggestion.date} ${entry.suggestion.windowStart}`
+        : `v${entry.version} ${entry.moment}`;
+
   it("merges stage events and revision moments, newest first", () => {
     const timeline = buildOrderTimeline(events, revisions, audits);
-    expect(timeline.map((entry) => (entry.kind === "stage" ? `stage ${entry.event.toStage}` : `v${entry.version} ${entry.moment}`))).toEqual([
+    expect(timeline.map(label)).toEqual([
       "v3 DECLINED",
       "v3 ISSUED",
       "v2 APPROVED",
@@ -46,6 +53,30 @@ describe("buildOrderTimeline", () => {
       "stage IN_PROGRESS",
       "stage RECEIVED_BY_STORE",
     ]);
+  });
+
+  it("adds each pickup time the store suggested, so a replaced one stays in the history", () => {
+    const suggestion = (id: string, minute: number, windowStart: string, isOutsideSchedule: boolean) => ({
+      id,
+      actorUserId: "kemi",
+      createdAt: at(minute),
+      date: "2026-10-20",
+      windowStart,
+      windowEnd: "12:00",
+      isOutsideSchedule,
+      note: isOutsideSchedule ? "Customer asked for early pickup" : null,
+    });
+    const timeline = buildOrderTimeline(events, [], [], [suggestion("s1", 2, "10:00", false), suggestion("s2", 7, "07:00", true)]);
+    expect(timeline.map(label)).toEqual([
+      "pickup 2026-10-20 07:00",
+      "stage IN_PROGRESS",
+      "pickup 2026-10-20 10:00",
+      "stage RECEIVED_BY_STORE",
+    ]);
+    expect(timeline[0]).toMatchObject({
+      kind: "pickupSuggested",
+      suggestion: { isOutsideSchedule: true, note: "Customer asked for early pickup", actorUserId: "kemi" },
+    });
   });
 
   it("gives each moment its difference, reason, and who decided", () => {

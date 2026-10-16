@@ -436,6 +436,8 @@ export async function findOrderDetail(storeId: string, orderId: string) {
       pickupWindowStatus: true,
       internalNote: true,
       customerNote: true,
+      completedAt: true,
+      cancelledAt: true,
       createdAt: true,
       store: { select: { orderPrefix: true } },
       customer: { select: { name: true, phone: true, email: true } },

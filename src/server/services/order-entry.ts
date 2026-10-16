@@ -26,6 +26,7 @@ import {
   type NewOrderData,
   type NewOrderLineData,
 } from "@/server/data/orders";
+import { replaceBookingTrackingToken } from "@/server/data/tracking";
 import { findActiveServices, listActiveServices, type OrderableService } from "@/server/data/services";
 import {
   buildQuoteSnapshot,
@@ -100,7 +101,9 @@ export interface OnlineBookingActor {
 export type OnlineOrderError = OrderEntryError | "BOOKING_LIMIT_REACHED" | "NO_ONLINE_BOOKING";
 
 export type CreateOnlineOrderResult =
-  | { ok: true; orderId: string; displayNumber: string }
+  // The raw tracking token, for the confirmation's link (shown once, never
+  // stored). Null only if a repeated booking's order can't be given a new one.
+  | { ok: true; orderId: string; displayNumber: string; trackingToken: string | null }
   | { ok: false; error: OnlineOrderError; fieldErrors: Record<string, string> };
 
 // A customer's booking: channel Online, no staff user, starting at Booked,
@@ -118,7 +121,7 @@ export async function createOnlineOrder(
     loadOnlineContext(actor, input, now),
   ]);
   // A repeated booking returns its order even if the store has changed since.
-  if (existing) return created(existing);
+  if (existing) return repeatedBooking(actor, input, existing, now);
 
   const prepared = await prepareOnlineOrder(actor, input, context, now);
   if (!prepared.ok) return prepared;
@@ -126,15 +129,31 @@ export async function createOnlineOrder(
   try {
     const result = await insertOnlineOrder(actor.storeId, prepared.data);
     if (result.kind === "limitReached") return { ok: false, error: "BOOKING_LIMIT_REACHED", fieldErrors: {} };
-    return created(result.order);
+    if (result.kind === "existing") return repeatedBooking(actor, input, result.order, now);
+    return { ...created(result.order), trackingToken: prepared.trackingToken };
   } catch (error) {
     // The same request with a different phone number: the unique rule
     // refused a second order, so return the first one.
     if (!isUniqueViolation(error)) throw error;
     const order = await findOrderByClientRequestId(actor.storeId, input.clientRequestId);
     if (!order) throw error;
-    return created(order);
+    return repeatedBooking(actor, input, order, now);
   }
+}
+
+// The same booking sent again (a retry after a lost response): the customer
+// never saw the first link, and only its hash was kept, so the order gets a
+// fresh token for the confirmation. The booking page sends one request at a
+// time, so the link it shows is always the latest.
+async function repeatedBooking(
+  actor: OnlineBookingActor,
+  input: BookingInput,
+  order: CreatedOrder,
+  now: Date,
+): Promise<CreateOnlineOrderResult> {
+  const token = generateToken();
+  const replaced = await replaceBookingTrackingToken(actor.storeId, input.clientRequestId, hashToken(token), now);
+  return { ...created(order), trackingToken: replaced ? token : null };
 }
 
 // What the booking is checked against, read in one go.
@@ -165,7 +184,7 @@ async function prepareOnlineOrder(
   input: BookingInput,
   context: OnlineContext,
   now: Date,
-): Promise<{ ok: true; data: NewOrderData } | Extract<CreateOnlineOrderResult, { ok: false }>> {
+): Promise<{ ok: true; data: NewOrderData; trackingToken: string } | Extract<CreateOnlineOrderResult, { ok: false }>> {
   const { settings, services } = context;
   const pickupAvailable = isPickupAvailable({ ...settings, activeAreaCount: context.activeAreaCount });
   // No active services, or no way to get the laundry to the store.
@@ -188,10 +207,14 @@ async function prepareOnlineOrder(
     : ({ ok: true, fields: NO_PICKUP } as const);
   if (!fulfilment.ok) return fulfilment;
 
+  // Shown once on the confirmation; only its hash is stored.
+  const trackingToken = generateToken();
   return {
     ok: true,
+    trackingToken,
     data: assembleOrder({
       clientRequestId: input.clientRequestId,
+      trackingTokenHash: hashToken(trackingToken),
       customer: { kind: "new", ...input.customer, fillMissingEmail: true },
       channel: "ONLINE",
       fulfilmentType: input.fulfilmentType,
@@ -286,6 +309,9 @@ async function prepareOrder(
     ok: true,
     data: assembleOrder({
       clientRequestId: input.clientRequestId,
+      // Staff share a link later with "Get tracking link", which issues a
+      // fresh token; this one is never shown.
+      trackingTokenHash: hashToken(generateToken()),
       customer: customer.value,
       channel: input.channel,
       fulfilmentType: input.fulfilmentType,
@@ -304,6 +330,7 @@ async function prepareOrder(
 type OrderParts = Pick<
   NewOrderData,
   | "clientRequestId"
+  | "trackingTokenHash"
   | "customer"
   | "channel"
   | "fulfilmentType"
@@ -337,9 +364,6 @@ function assembleOrder({ lines, fulfilment, ...order }: OrderParts): NewOrderDat
     ...order,
     stage: getInitialStage(order.channel, order.fulfilmentType),
     ...fulfilment,
-    // The raw token isn't shown or sent yet (tracking links are Feature 14);
-    // only its hash is ever stored.
-    trackingTokenHash: hashToken(generateToken()),
     lines: lines.map(toLineData),
     revision: { ...snapshot, approved: fullyPriced },
   };

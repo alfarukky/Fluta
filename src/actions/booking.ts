@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 
 import { getClientIp, hashClientIp } from "@/lib/client-ip";
 import { logger } from "@/lib/logger";
+import { getTrackingUrl } from "@/lib/tracking-link";
 import { BOOKING_EXPIRED_MESSAGE, bookingRequestSchema, storeSlugSchema } from "@/schemas/booking";
 import { submitBooking, type SubmitBookingResult } from "@/server/services/booking";
 import type { BookingStep } from "@/types/booking";
@@ -19,7 +20,9 @@ export type BookingErrorCode =
   | "CREATE_FAILED";
 
 export type BookingActionResult =
-  | { ok: true; displayNumber: string }
+  // The tracking link, shown once on the confirmation (null only if a
+  // repeated booking couldn't be given a new one).
+  | { ok: true; displayNumber: string; trackingUrl: string | null }
   | {
       ok: false;
       code: BookingErrorCode;
@@ -88,7 +91,10 @@ export async function createBooking(slug: unknown, request: unknown): Promise<Bo
   try {
     const ipHash = hashClientIp(getClientIp(await headers()));
     const result = await submitBooking(store.data, parsed.data, ipHash, new Date());
-    if (result.ok) return { ok: true, displayNumber: result.displayNumber };
+    if (result.ok) {
+      const trackingUrl = result.trackingToken ? getTrackingUrl(result.trackingToken) : null;
+      return { ok: true, displayNumber: result.displayNumber, trackingUrl };
+    }
     return {
       ok: false,
       code: result.error,

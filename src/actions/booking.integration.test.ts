@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { PrismaClient } from "@/generated/prisma/client";
 import { CLIENT_IP_HEADER, hashClientIp } from "@/lib/client-ip";
 import { toMatchKey } from "@/lib/match-key";
+import { hashToken } from "@/lib/tokens";
 import type { BookingRequest } from "@/schemas/booking";
 import { getPrisma } from "@/server/data/client";
 import { loadBookingPage } from "@/server/services/booking";
@@ -493,10 +494,44 @@ describe("repeated submissions", () => {
     const [a, b] = await Promise.all([createBooking(main.slug, booking), createBooking(main.slug, booking)]);
 
     expect(first.ok && first.displayNumber).toBeTruthy();
-    for (const result of [again, a, b]) expect(result).toEqual(first);
+    const displayNumber = first.ok ? first.displayNumber : null;
+    for (const result of [again, a, b]) expect(result).toMatchObject({ ok: true, displayNumber });
     expect(await prisma.order.count({ where: { storeId: main.id, clientRequestId: booking.clientRequestId } })).toBe(1);
+
+    // Each response carries a fresh link (the first was never seen), and only
+    // the one stored last opens the order.
+    const { trackingTokenHash } = await prisma.order.findFirstOrThrow({
+      where: { storeId: main.id, clientRequestId: booking.clientRequestId },
+      select: { trackingTokenHash: true },
+    });
+    const hashes = [first, again, a, b].map((result) => (result.ok && result.trackingUrl ? hashToken(tokenOf(result.trackingUrl)) : null));
+    expect(hashes.every((hash) => hash !== null)).toBe(true);
+    expect(hashes.filter((hash) => hash === trackingTokenHash)).toHaveLength(1);
+    expect(hashes[0]).not.toBe(trackingTokenHash);
   });
 });
+
+describe("tracking link", () => {
+  it("shows a link that opens the new order, storing only the token's hash", async () => {
+    const result = await createBooking(main.slug, dropOff());
+    if (!result.ok || !result.trackingUrl) throw new Error("The booking should succeed with a link");
+    const url = new URL(result.trackingUrl);
+    expect(url.pathname).toMatch(/^\/o\/[A-Za-z0-9_-]{43}$/);
+
+    const token = tokenOf(result.trackingUrl);
+    const order = await prisma.order.findFirstOrThrow({
+      where: { trackingTokenHash: hashToken(token) },
+      select: { orderNumber: true, trackingTokenHash: true, store: { select: { orderPrefix: true } } },
+    });
+    expect(`${order.store.orderPrefix}-${order.orderNumber}`).toBe(result.displayNumber);
+    expect(order.trackingTokenHash).not.toContain(token);
+    expect(await prisma.order.count({ where: { trackingTokenHash: token } })).toBe(0);
+  });
+});
+
+function tokenOf(trackingUrl: string): string {
+  return new URL(trackingUrl).pathname.split("/").at(-1) ?? "";
+}
 
 describe("booking limits", () => {
   it("refuses the 6th booking from one phone at one store in 24 hours, creating nothing", async () => {

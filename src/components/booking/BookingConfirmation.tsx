@@ -1,9 +1,11 @@
 "use client";
 
-import { CircleCheckIcon } from "lucide-react";
+import { CircleCheckIcon, ExternalLinkIcon } from "lucide-react";
 import type { RefObject } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { CopyLinkButton } from "@/components/workspace/CopyLinkButton";
 import type { BookingOptions } from "@/types/booking";
 
 import type { BookingDraft, BookingReview } from "./booking-draft";
@@ -13,17 +15,20 @@ interface BookingConfirmationProps {
   headingRef: RefObject<HTMLHeadingElement | null>;
   storeName: string;
   displayNumber: string;
+  // Shown here once: only its hash is stored.
+  trackingUrl: string | null;
   draft: BookingDraft;
   review: BookingReview;
   options: BookingOptions;
   onStartAgain: () => void;
 }
 
-// The order number, a short summary, and what happens next.
+// The order number, the tracking link, a short summary, and what happens next.
 export function BookingConfirmation({
   headingRef,
   storeName,
   displayNumber,
+  trackingUrl,
   draft,
   review,
   options,
@@ -51,6 +56,28 @@ export function BookingConfirmation({
         <span className="type-h2 text-card-foreground">{displayNumber}</span>
         <span className="type-body-sm text-muted-foreground">Keep this number in case you need to contact the store.</span>
       </div>
+
+      {trackingUrl && (
+        <div className="flex flex-col gap-3 rounded-xl border border-primary/40 bg-card p-card">
+          <div className="flex flex-col gap-1">
+            <h3 className="type-label text-card-foreground">Save this link to follow your order</h3>
+            <p className="type-body-sm text-muted-foreground">
+              See where your order is, approve price changes, and accept pickup times. Anyone with the link can see your order,
+              so keep it private.
+            </p>
+          </div>
+          <Input value={trackingUrl} readOnly aria-label="Your tracking link" onFocus={(event) => event.currentTarget.select()} />
+          <div className="flex flex-wrap gap-2">
+            <CopyLinkButton url={trackingUrl} variant="primary" copiedMessage="Link copied" />
+            <Button asChild variant="outline">
+              <a href={trackingUrl}>
+                <ExternalLinkIcon data-icon="inline-start" aria-hidden />
+                View your order
+              </a>
+            </Button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-card">
         <h3 className="type-label text-muted-foreground">Summary</h3>

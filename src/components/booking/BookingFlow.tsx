@@ -46,11 +46,12 @@ export function BookingFlow({ slug, storeName, options }: BookingFlowProps) {
   const [step, setStep] = useState<BookingStep>("services");
   const [errors, setErrors] = useState<DraftErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState<{ displayNumber: string; draft: BookingDraft } | null>(null);
+  const [confirmed, setConfirmed] = useState<{ displayNumber: string; trackingUrl: string | null; draft: BookingDraft } | null>(null);
   const [pending, startTransition] = useTransition();
   // Made once when the page opens: sending the same booking again (a double
   // tap, a retry after a lost connection) returns the same order.
   const requestId = useRef<string | null>(null);
+  const submitting = useRef(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const { ref: formRef, scrollToFirstError } = useScrollToFirstError<HTMLFormElement>();
   const stepChanged = useRef(false);
@@ -100,6 +101,10 @@ export function BookingFlow({ slug, storeName, options }: BookingFlowProps) {
   }
 
   function handleSubmit() {
+    // One request at a time: sending the same booking again gives its order a
+    // new tracking link, so only the latest response's link works.
+    if (submitting.current) return;
+    submitting.current = true;
     const id = requestId.current ?? crypto.randomUUID();
     requestId.current = id;
     setFormError(null);
@@ -109,10 +114,12 @@ export function BookingFlow({ slug, storeName, options }: BookingFlowProps) {
         result = await createBooking(slug, toBookingRequest(draft, id));
       } catch {
         result = { ok: false, code: "CREATE_FAILED", message: "We couldn't send your booking. Check your connection and try again." };
+      } finally {
+        submitting.current = false;
       }
       if (result.ok) {
         stepChanged.current = true;
-        setConfirmed({ displayNumber: result.displayNumber, draft });
+        setConfirmed({ displayNumber: result.displayNumber, trackingUrl: result.trackingUrl, draft });
         return;
       }
       // Back to the step with the problem, with every answer kept.
@@ -140,6 +147,7 @@ export function BookingFlow({ slug, storeName, options }: BookingFlowProps) {
         headingRef={headingRef}
         storeName={storeName}
         displayNumber={confirmed.displayNumber}
+        trackingUrl={confirmed.trackingUrl}
         draft={confirmed.draft}
         review={reviewBooking(confirmed.draft, options)}
         options={options}

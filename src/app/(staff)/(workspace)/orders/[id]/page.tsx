@@ -9,6 +9,7 @@ import { OrderDetailSkeleton } from "@/components/orders/OrderDetailSkeleton";
 import { orderIdSchema } from "@/schemas/orders";
 import { requireStoreMember } from "@/server/auth/session";
 import { getOrderDetail, isStoreOrder } from "@/server/services/orders";
+import { loadPickupTimeOptions } from "@/server/services/pickup-times";
 
 export const metadata: Metadata = { title: "Order · Fluta" };
 
@@ -43,7 +44,10 @@ interface OrderDetailContentProps {
 }
 
 async function OrderDetailContent({ storeId, orderId, role, canChangeStage, timeZone }: OrderDetailContentProps) {
-  const detail = await getOrderDetail(storeId, orderId, role);
+  const now = new Date();
+  const detail = await getOrderDetail(storeId, orderId, role, now);
   if (!detail) notFound();
-  return <OrderDetail detail={detail} canChangeStage={canChangeStage} timeZone={timeZone} />;
+  const pickupOptions =
+    canChangeStage && detail.pickupTime?.canSuggest ? await loadPickupTimeOptions(storeId, timeZone, now) : null;
+  return <OrderDetail detail={detail} canChangeStage={canChangeStage} timeZone={timeZone} pickupOptions={pickupOptions} />;
 }

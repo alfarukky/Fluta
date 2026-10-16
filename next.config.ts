@@ -7,11 +7,20 @@ import { readR2PublicUrl } from "./src/lib/env";
 const r2PublicUrl = readR2PublicUrl();
 
 // Pages whose URL carries a secret token (staff invitations, password
-// resets): never cached, and never sent on as a referrer.
-const PRIVATE_LINK_HEADERS = [
+// resets, order tracking links): never cached, never indexed, and never sent
+// on as a referrer. Server Actions post to the page's own URL, so a tracking
+// page's actions get the same headers.
+export const PRIVATE_LINK_HEADERS = [
   { key: "Referrer-Policy", value: "no-referrer" },
   { key: "Cache-Control", value: "no-store" },
   { key: "X-Robots-Tag", value: "noindex, nofollow" },
+];
+
+export const PRIVATE_LINK_SOURCES = [
+  "/invite/:token",
+  "/reset-password",
+  "/api/auth/reset-password/:token",
+  "/o/:token/:path*",
 ];
 
 const nextConfig: NextConfig = {
@@ -19,16 +28,17 @@ const nextConfig: NextConfig = {
     remotePatterns: r2PublicUrl ? [new URL(`${r2PublicUrl.origin}/**`)] : [],
   },
   async headers() {
-    return ["/invite/:token", "/reset-password", "/api/auth/reset-password/:token"].map((source) => ({
+    return PRIVATE_LINK_SOURCES.map((source) => ({
       source,
       headers: PRIVATE_LINK_HEADERS,
     }));
   },
-  // Development request logs would print token URLs; leave those requests out.
+  // Development request logs would print token URLs; leave those requests out
+  // (the tracking link's /o/{token} too).
   // Server Action calls are logged with their arguments, which carry customer
   // phone numbers and addresses (order entry); leave them out too.
   logging: {
-    incomingRequests: { ignore: [/\/invite\//, /\/reset-password/] },
+    incomingRequests: { ignore: [/\/invite\//, /\/reset-password/, /\/o\//] },
     serverFunctions: false,
   },
 };
