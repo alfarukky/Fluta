@@ -16,6 +16,8 @@ const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 20_000 };
 export const TRACKING_AUDIT_ACTIONS = {
   linkIssued: "TRACKING_LINK_ISSUED",
   pickupSuggested: "PICKUP_TIME_SUGGESTED",
+  // A pickup order stepped back to Booked: its time goes back to Requested.
+  pickupReset: "PICKUP_TIME_RESET",
 } as const;
 
 // ───────────── The tracking page ─────────────

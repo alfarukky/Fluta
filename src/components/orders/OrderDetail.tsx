@@ -20,7 +20,7 @@ import { formatPickupWindow } from "@/lib/pickup-schedule";
 import { formatQuantity, fromDecimalString } from "@/lib/quantity";
 import { describeRevisionMoment } from "@/lib/quotes";
 import { ADJUSTMENT_KIND_LABELS } from "@/schemas/orders";
-import { formatCalendarDate, formatDateTime, toDateKey } from "@/lib/time";
+import { formatCalendarDate, formatDateTime, fromDateKey, toDateKey } from "@/lib/time";
 import type { OrderDetail as OrderDetailData } from "@/server/services/orders";
 import { cn } from "@/lib/utils";
 
@@ -383,6 +383,22 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
                 {formatDateTime(entry.at, timeZone)} · {getActorLabel(entry.event.actorType, staffName(entry.event.actorUserId))}
               </span>
               {entry.event.note && <span className="type-body-sm break-words text-foreground">{entry.event.note}</span>}
+            </li>
+          ) : entry.kind === "pickupReset" ? (
+            <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-warning/10 px-3 py-2.5">
+              <CalendarClockIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="type-label break-words text-foreground">Pickup time back to the customer&apos;s request</span>
+                <span className="type-caption text-muted-foreground">
+                  {formatDateTime(entry.at, timeZone)} · {getActorLabel("STAFF", staffName(entry.reset.actorUserId))}
+                </span>
+                {entry.reset.date && (
+                  <span className="type-body-sm break-words text-foreground">
+                    Cleared: {formatPickup(fromDateKey(entry.reset.date), entry.reset.windowStart, entry.reset.windowEnd)}
+                    {entry.reset.isOutsideSchedule && " (outside normal schedule)"}
+                  </span>
+                )}
+              </div>
             </li>
           ) : entry.kind === "pickupSuggested" ? (
             <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-warning/10 px-3 py-2.5">

@@ -9,12 +9,14 @@ import { TrackingOrder } from "@/components/tracking/TrackingOrder";
 import { toMatchKey } from "@/lib/match-key";
 import { generateToken, hashToken } from "@/lib/tokens";
 import { getPrisma } from "@/server/data/client";
+import { canTransition, getStageOrderState, toContext } from "@/server/domain/order-stages";
 import { getOrderDetail } from "@/server/services/orders";
 import { loadTrackingPage } from "@/server/services/tracking";
 import { signInHeaders } from "@/test/integration/auth";
 import { createTestPrisma } from "@/test/integration/db";
 import nextConfig, { PRIVATE_LINK_HEADERS } from "../../next.config";
 
+import { changeOrderStage } from "./order-stages";
 import { confirmPickupTime, suggestPickupTime } from "./pickup-times";
 import { issueRevision, recordDecision } from "./quotes";
 import { acceptPickupTime, decidePriceUpdate } from "./tracking";
@@ -781,5 +783,119 @@ describe("pickup times", () => {
         suggestPickupTime({ orderId: cleanWave.id, date: "2026-12-05", outsideSchedule: false, windowStart: "08:00", windowEnd: "10:00" }),
       ),
     ).toEqual({ ok: false, message: "Order not found." });
+  });
+});
+
+// ───────────── Stepping a pickup order back to Booked ─────────────
+
+describe("stepping a pickup order back to Booked", () => {
+  it("returns the pickup time to the customer's request, records it, and offers Confirm or Suggest again", async () => {
+    const order = await makeOrder({ fulfilmentType: "PICKUP_DELIVERY", path: ["BOOKED"], pickup: "REQUESTED" });
+    await asStaff(() =>
+      suggestPickupTime({ orderId: order.id, date: "2026-12-07", outsideSchedule: true, windowStart: "07:00", windowEnd: "08:00", note: "Before work" }),
+    );
+    const suggested = await loadTrackingPage(order.token);
+    const suggestionId = suggested.kind === "VALID" ? (suggested.view.pickupSuggestion?.suggestionId ?? "") : "";
+    expect(await acceptPickupTime(order.token, { suggestionId })).toMatchObject({ ok: true });
+    expect(await readOrder(order.id)).toMatchObject({ stage: "PICKUP_SCHEDULED", pickupWindowStatus: "CONFIRMED", isOutsideSchedule: true });
+
+    expect(
+      await asStaff(() =>
+        changeOrderStage({ orderId: order.id, from: "PICKUP_SCHEDULED", to: "BOOKED", note: "Driver couldn't reach the customer" }),
+      ),
+    ).toEqual({ ok: true, message: "Order moved to Booked" });
+
+    // One transaction: the stage, the time back to Requested, and the cleared time recorded.
+    const after = await readOrder(order.id);
+    expect(after).toMatchObject({
+      stage: "BOOKED",
+      pickupWindowStatus: "REQUESTED",
+      scheduledPickupDate: null,
+      scheduledWindowStart: null,
+      scheduledWindowEnd: null,
+      isOutsideSchedule: false,
+      requestedPickupDate: REQUESTED_DATE,
+      requestedWindowStart: "10:00",
+      requestedWindowEnd: "12:00",
+    });
+    expect(after.statusEvents.at(-1)).toEqual({ fromStage: "PICKUP_SCHEDULED", toStage: "BOOKED", actorType: "STAFF", actorUserId: staff.id });
+    const resets = await prisma.auditEvent.findMany({ where: { storeId, targetId: order.id, action: "PICKUP_TIME_RESET" } });
+    expect(resets).toHaveLength(1);
+    expect(resets[0]).toMatchObject({
+      actorType: "STAFF",
+      actorUserId: staff.id,
+      targetType: "Order",
+      metadata: { date: "2026-12-07", windowStart: "07:00", windowEnd: "08:00", isOutsideSchedule: true },
+    });
+
+    // Staff: the card offers Confirm requested time and Suggest again, and the
+    // timeline shows the reset after the step back.
+    const detail = await getOrderDetail(storeId, order.id, "STAFF");
+    expect(detail?.pickupTime).toEqual({ status: "REQUESTED", canConfirm: true, canSuggest: true, blockedReason: null });
+    expect(detail?.timeline[0]).toMatchObject({
+      kind: "pickupReset",
+      reset: { date: "2026-12-07", windowStart: "07:00", windowEnd: "08:00", isOutsideSchedule: true, actorUserId: staff.id },
+    });
+    expect(detail?.timeline[1]).toMatchObject({ kind: "stage", event: { fromStage: "PICKUP_SCHEDULED", toStage: "BOOKED" } });
+
+    // Staff can confirm the requested time again.
+    expect(await asStaff(() => confirmPickupTime({ orderId: order.id }))).toEqual({ ok: true, message: "Pickup time confirmed" });
+    expect(await readOrder(order.id)).toMatchObject({ stage: "PICKUP_SCHEDULED", pickupWindowStatus: "CONFIRMED", scheduledWindowStart: "10:00" });
+  });
+
+  it("shows the customer their requested time again, with nothing to accept", async () => {
+    const order = await makeOrder({ fulfilmentType: "PICKUP_DELIVERY", path: ["BOOKED"], pickup: "REQUESTED" });
+    await asStaff(() =>
+      suggestPickupTime({ orderId: order.id, date: "2026-12-08", outsideSchedule: false, windowStart: "14:00", windowEnd: "16:00" }),
+    );
+    const suggested = await loadTrackingPage(order.token);
+    const suggestionId = suggested.kind === "VALID" ? (suggested.view.pickupSuggestion?.suggestionId ?? "") : "";
+    await acceptPickupTime(order.token, { suggestionId });
+    await asStaff(() => changeOrderStage({ orderId: order.id, from: "PICKUP_SCHEDULED", to: "BOOKED", note: "Wrong day" }));
+
+    const page = await loadTrackingPage(order.token);
+    if (page.kind !== "VALID") throw new Error("The link should work");
+    expect(page.view).toMatchObject({
+      stageLabel: "Booking received",
+      pickup: { area: "Wuse 2", date: "Tue, 1 Dec 2026", time: "10:00 AM–12:00 PM", status: "Requested" },
+      pickupSuggestion: null,
+      priceUpdate: null,
+    });
+    expect(page.view.timeline.slice(0, 2).map((step) => `${step.state} ${step.label}`)).toEqual([
+      "current Booking received",
+      "upcoming Pickup scheduled",
+    ]);
+    // The suggestion it accepted before can't be accepted again.
+    expect(await acceptPickupTime(order.token, { suggestionId })).toEqual({ ok: false, message: CHANGED });
+    expect(await readOrder(order.id)).toMatchObject({ stage: "BOOKED", pickupWindowStatus: "REQUESTED" });
+  });
+
+  it("leaves a drop-off order's step back to Booked as it was", async () => {
+    const order = await makeOrder({ path: ["BOOKED", "RECEIVED_BY_STORE"] });
+    expect(
+      await asStaff(() => changeOrderStage({ orderId: order.id, from: "RECEIVED_BY_STORE", to: "BOOKED", note: "Not dropped off yet" })),
+    ).toMatchObject({ ok: true });
+    expect(await readOrder(order.id)).toMatchObject({ stage: "BOOKED", pickupWindowStatus: null });
+    expect(await prisma.auditEvent.count({ where: { storeId, targetId: order.id, action: "PICKUP_TIME_RESET" } })).toBe(0);
+  });
+
+  it("never lets the seeded phone pickup order step back to Booked: it starts at Pickup scheduled", async () => {
+    const seeded = await prisma.order.findFirstOrThrow({
+      where: { store: { slug: "freshfold-laundry" }, channel: "PHONE", fulfilmentType: "PICKUP_DELIVERY" },
+      select: {
+        stage: true,
+        fulfilmentType: true,
+        stageBeforeQuote: true,
+        pickupWindowStatus: true,
+        approvedQuoteId: true,
+        quoteRevisions: { select: { version: true, status: true, approvedAt: true, declinedAt: true } },
+        statusEvents: { select: { id: true, fromStage: true, toStage: true, createdAt: true } },
+      },
+    });
+    const state = getStageOrderState(seeded);
+    expect(state.startingStage).toBe("PICKUP_SCHEDULED");
+    expect(canTransition("PICKUP_SCHEDULED", "BOOKED", toContext({ ...state, stage: "PICKUP_SCHEDULED" }, "OWNER", "note", false))).toMatchObject({
+      allowed: false,
+    });
   });
 });

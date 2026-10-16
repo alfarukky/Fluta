@@ -3,6 +3,8 @@ import "server-only";
 import type { OrderStage, Prisma } from "@/generated/prisma/client";
 
 import { getPrisma } from "./client";
+import { ORDER_AUDIT_TARGET } from "./quotes";
+import { TRACKING_AUDIT_ACTIONS } from "./tracking";
 
 // Changing an order's stage. storeId always comes from the caller's
 // membership and is part of every where clause, so another store's order
@@ -16,6 +18,10 @@ const STAGE_RECORD_SELECT = {
   fulfilmentType: true,
   stageBeforeQuote: true,
   pickupWindowStatus: true,
+  scheduledPickupDate: true,
+  scheduledWindowStart: true,
+  scheduledWindowEnd: true,
+  isOutsideSchedule: true,
   approvedQuoteId: true,
   quoteRevisions: { select: { version: true, status: true, approvedAt: true, declinedAt: true } },
   statusEvents: { select: { id: true, fromStage: true, toStage: true, createdAt: true } },
@@ -32,6 +38,10 @@ export interface StageChange {
   completedAt: "set" | "clear" | "keep";
   // Cancelling sets cancelledAt and cancelNote.
   cancel: boolean;
+  // A pickup order stepped back from Pickup scheduled to Booked: its time goes
+  // back to the customer's request (Requested, scheduled date and window
+  // cleared, not outside the schedule), so staff confirm or suggest again.
+  resetPickupTime: boolean;
 }
 
 export type StageChangeOutcome<T> =
@@ -68,6 +78,13 @@ export async function changeOrderStage<T>(
         ...(change.completedAt === "set" && { completedAt: now }),
         ...(change.completedAt === "clear" && { completedAt: null }),
         ...(change.cancel && { cancelledAt: now, cancelNote: change.note }),
+        ...(change.resetPickupTime && {
+          pickupWindowStatus: "REQUESTED",
+          scheduledPickupDate: null,
+          scheduledWindowStart: null,
+          scheduledWindowEnd: null,
+          isOutsideSchedule: false,
+        }),
       },
     });
     if (count === 0) return { status: "CONFLICT" };
@@ -84,6 +101,26 @@ export async function changeOrderStage<T>(
         createdAt: now,
       },
     });
+    // The time that was cleared, for the staff timeline.
+    if (change.resetPickupTime) {
+      await tx.auditEvent.create({
+        data: {
+          storeId,
+          actorType: "STAFF",
+          actorUserId: change.actorUserId,
+          action: TRACKING_AUDIT_ACTIONS.pickupReset,
+          targetType: ORDER_AUDIT_TARGET,
+          targetId: orderId,
+          metadata: {
+            date: order.scheduledPickupDate?.toISOString().slice(0, 10) ?? null,
+            windowStart: order.scheduledWindowStart,
+            windowEnd: order.scheduledWindowEnd,
+            isOutsideSchedule: order.isOutsideSchedule,
+          },
+          createdAt: now,
+        },
+      });
+    }
     return { status: "CHANGED" };
   }, TRANSACTION_OPTIONS);
 }

@@ -51,9 +51,22 @@ export interface TimelinePickupSuggestion {
   note: string | null;
 }
 
+// A pickup order stepped back to Booked: its time went back to the customer's
+// request. The date and window are the scheduled time that was cleared.
+export interface TimelinePickupReset {
+  id: string;
+  actorUserId: string | null;
+  createdAt: Date;
+  date: string | null; // "YYYY-MM-DD"
+  windowStart: string | null;
+  windowEnd: string | null;
+  isOutsideSchedule: boolean;
+}
+
 export type TimelineEntry =
   | { kind: "stage"; key: string; at: Date; event: TimelineStageEvent }
   | { kind: "pickupSuggested"; key: string; at: Date; suggestion: TimelinePickupSuggestion }
+  | { kind: "pickupReset"; key: string; at: Date; reset: TimelinePickupReset }
   | {
       kind: "revision";
       key: string;
@@ -75,6 +88,9 @@ export type TimelineEntry =
 // Within the same moment: a revision is issued before the stage moves, and
 // approved before the order returns from Quote awaiting approval.
 function rank(entry: TimelineEntry): number {
+  // A pickup time reset is written with the step back that caused it, and
+  // follows it.
+  if (entry.kind === "pickupReset") return 3;
   if (entry.kind === "stage") return 2;
   if (entry.kind === "pickupSuggested") return 1;
   return entry.moment === "ISSUED" ? 0 : 1;
@@ -85,6 +101,7 @@ export function buildOrderTimeline(
   revisions: readonly TimelineRevision[],
   audits: readonly TimelineAudit[],
   pickupSuggestions: readonly TimelinePickupSuggestion[] = [],
+  pickupResets: readonly TimelinePickupReset[] = [],
 ): TimelineEntry[] {
   const recorder = new Map<string, string | null>();
   for (const audit of audits) {
@@ -151,6 +168,9 @@ export function buildOrderTimeline(
 
   for (const suggestion of pickupSuggestions) {
     entries.push({ kind: "pickupSuggested", key: `pickup-${suggestion.id}`, at: suggestion.createdAt, suggestion });
+  }
+  for (const reset of pickupResets) {
+    entries.push({ kind: "pickupReset", key: `pickup-reset-${reset.id}`, at: reset.createdAt, reset });
   }
 
   return entries.sort((a, b) => b.at.getTime() - a.at.getTime() || rank(b) - rank(a) || b.key.localeCompare(a.key));

@@ -153,6 +153,8 @@ export function OrderStageActions({ orderId, stage, fulfilmentType, moves, quote
           // A fresh dialog for each move, so no note carries over.
           key={`${dialogMove.kind}-${stage}`}
           move={dialogMove}
+          // Only a pickup order steps back from Pickup scheduled to Booked.
+          resetsPickupTime={stage === "PICKUP_SCHEDULED" && dialogMove.to === "BOOKED"}
           pending={pending}
           onOpenChange={(open) => !open && !pending && setDialogMove(null)}
           onConfirm={(note) => move(dialogMove, note, () => setDialogMove(null))}
@@ -199,12 +201,17 @@ export function CancelOrderButton({ orderId, stage, move }: { orderId: string; s
 
 interface StageNoteDialogProps {
   move: StageMove;
+  // Stepping a pickup order back to Booked returns its time to the customer's request.
+  resetsPickupTime?: boolean;
   pending: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (note: string | null) => void;
 }
 
-function getDialogText(move: StageMove): { title: string; description: string; confirm: string; dismiss: string } {
+function getDialogText(
+  move: StageMove,
+  resetsPickupTime: boolean,
+): { title: string; description: string; confirm: string; dismiss: string } {
   const target = ORDER_STAGE_LABELS[move.to];
   switch (move.kind) {
     case "COLLECTED_INSTEAD":
@@ -217,7 +224,9 @@ function getDialogText(move: StageMove): { title: string; description: string; c
     case "STEP_BACK":
       return {
         title: `Step back to ${target}`,
-        description: "Use this to fix a mistake. The order moves back one stage, and the timeline keeps both changes.",
+        description: resetsPickupTime
+          ? "Use this to fix a mistake. The pickup time goes back to the customer's request, so you can confirm it or suggest another. The timeline keeps both changes."
+          : "Use this to fix a mistake. The order moves back one stage, and the timeline keeps both changes.",
         confirm: "Step back",
         dismiss: "Back",
       };
@@ -239,10 +248,10 @@ function getDialogText(move: StageMove): { title: string; description: string; c
   }
 }
 
-function StageNoteDialog({ move, pending, onOpenChange, onConfirm }: StageNoteDialogProps) {
+function StageNoteDialog({ move, resetsPickupTime = false, pending, onOpenChange, onConfirm }: StageNoteDialogProps) {
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const text = getDialogText(move);
+  const text = getDialogText(move, resetsPickupTime);
   const id = "stage-note";
   const hint = move.noteRequired ? "Required. Staff see it in the timeline." : "Optional. Staff see it in the timeline.";
 

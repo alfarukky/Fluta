@@ -18,7 +18,7 @@ import {
   type OrderListRecord,
 } from "@/server/data/orders";
 import { buildOrderTimeline, type TimelineEntry } from "@/server/data/order-timeline";
-import { findPickupSuggestions } from "@/server/data/pickup-times";
+import { findPickupTimeEvents } from "@/server/data/pickup-times";
 import { findRevisionAudits } from "@/server/data/quotes";
 import { getBalance, type Balance } from "@/server/domain/balance";
 import { getAvailableTransitions, getStageOrderState, type AvailableTransitions } from "@/server/domain/order-stages";
@@ -140,17 +140,29 @@ export async function getOrderDetail(
   const order = await findOrderDetail(storeId, orderId);
   if (!order) return null;
 
-  const [audits, pickupSuggestions] = await Promise.all([
+  const [audits, pickupTimes] = await Promise.all([
     findRevisionAudits(
       storeId,
       order.quoteRevisions.map((revision) => revision.id),
     ),
-    findPickupSuggestions(storeId, orderId),
+    findPickupTimeEvents(storeId, orderId),
   ]);
-  const timeline = buildOrderTimeline(order.statusEvents, order.quoteRevisions, audits, pickupSuggestions);
+  const timeline = buildOrderTimeline(
+    order.statusEvents,
+    order.quoteRevisions,
+    audits,
+    pickupTimes.suggestions,
+    pickupTimes.resets,
+  );
   const actorIds = timeline.flatMap((entry) => {
     const id =
-      entry.kind === "stage" ? entry.event.actorUserId : entry.kind === "pickupSuggested" ? entry.suggestion.actorUserId : entry.staffUserId;
+      entry.kind === "stage"
+        ? entry.event.actorUserId
+        : entry.kind === "pickupSuggested"
+          ? entry.suggestion.actorUserId
+          : entry.kind === "pickupReset"
+            ? entry.reset.actorUserId
+            : entry.staffUserId;
     return id ? [id] : [];
   });
   const pending = findPendingRevision(order.quoteRevisions);

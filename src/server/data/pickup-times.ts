@@ -293,10 +293,50 @@ function toSuggestion(event: { id: string; actorUserId: string | null; createdAt
   return [{ id: event.id, actorUserId: event.actorUserId, createdAt: event.createdAt, ...metadata.data }];
 }
 
-// Every suggestion for the order, newest first (the staff timeline).
-export async function findPickupSuggestions(storeId: string, orderId: string): Promise<PickupSuggestionRecord[]> {
-  const events = await getPrisma().auditEvent.findMany({ where: suggestionsWhere(storeId, orderId), ...SUGGESTION_READ });
-  return events.flatMap(toSuggestion);
+const resetMetadataSchema = z.object({
+  date: z.string().nullable(),
+  windowStart: z.string().nullable(),
+  windowEnd: z.string().nullable(),
+  isOutsideSchedule: z.boolean(),
+});
+
+// A pickup order stepped back to Booked, its time returned to Requested.
+// The date and window are the scheduled time that was cleared.
+export interface PickupResetRecord {
+  id: string;
+  actorUserId: string | null;
+  createdAt: Date;
+  date: string | null; // "YYYY-MM-DD"
+  windowStart: string | null;
+  windowEnd: string | null;
+  isOutsideSchedule: boolean;
+}
+
+// Every suggestion and reset for the order, newest first, in one query (the
+// staff timeline).
+export async function findPickupTimeEvents(
+  storeId: string,
+  orderId: string,
+): Promise<{ suggestions: PickupSuggestionRecord[]; resets: PickupResetRecord[] }> {
+  const events = await getPrisma().auditEvent.findMany({
+    where: {
+      storeId,
+      targetType: ORDER_AUDIT_TARGET,
+      targetId: orderId,
+      action: { in: [TRACKING_AUDIT_ACTIONS.pickupSuggested, TRACKING_AUDIT_ACTIONS.pickupReset] },
+    },
+    select: { ...SUGGESTION_READ.select, action: true },
+    orderBy: SUGGESTION_READ.orderBy,
+  });
+  return {
+    suggestions: events.filter((event) => event.action === TRACKING_AUDIT_ACTIONS.pickupSuggested).flatMap(toSuggestion),
+    resets: events.flatMap((event) => {
+      if (event.action !== TRACKING_AUDIT_ACTIONS.pickupReset) return [];
+      const metadata = resetMetadataSchema.safeParse(event.metadata);
+      if (!metadata.success) return [];
+      return [{ id: event.id, actorUserId: event.actorUserId, createdAt: event.createdAt, ...metadata.data }];
+    }),
+  };
 }
 
 // The newest suggestion only: the one the customer may accept.

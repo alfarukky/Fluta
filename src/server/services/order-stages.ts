@@ -63,6 +63,7 @@ export async function changeStage(
         actorUserId: actor.userId,
         completedAt: to === "COMPLETED" ? "set" : from === "COMPLETED" ? "clear" : "keep",
         cancel: to === "CANCELLED",
+        resetPickupTime: order.fulfilmentType === "PICKUP_DELIVERY" && from === "PICKUP_SCHEDULED" && to === "BOOKED",
       };
       return { ok: true, change };
     },

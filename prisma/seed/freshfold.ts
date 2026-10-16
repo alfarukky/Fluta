@@ -240,7 +240,8 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
           },
         ],
       },
-      // Returning customer by phone; store proposed a later window, customer accepted.
+      // Returning customer by phone: staff agreed the window with them, so it
+      // starts at Pickup scheduled like every staff-entered pickup order.
       {
         customerPhone: CHINEDU,
         channel: "PHONE",
@@ -249,8 +250,8 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
         addressText: "3 Marina View Close, Lekki Phase 1, Lagos",
         createdHoursAgo: 2 * 24,
         payLater: true,
-        pickup: { requestedInDays: 1, window: ["08:00", "10:00"], status: "CONFIRMED", scheduledWindow: ["14:00", "16:00"] },
-        stages: ["BOOKED", "PICKUP_SCHEDULED", "PICKED_UP"],
+        pickup: { requestedInDays: 1, window: ["14:00", "16:00"], status: "CONFIRMED" },
+        stages: ["PICKUP_SCHEDULED", "PICKED_UP"],
         revisions: [
           {
             lines: [{ service: "Shirt", quantity: "5" }, { service: "Trousers", quantity: "3" }],

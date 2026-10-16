@@ -17,6 +17,7 @@ import { lineTotalKobo } from "@/lib/money";
 import { parseHundredths } from "@/lib/quantity";
 
 import { hoursAfter, hoursBefore, lagosDate, seedTrackingTokenHash } from "./helpers";
+import { getSeedStartProblem } from "./order-start";
 import type { SeedLine, SeedOrder, SeedRevision, SeedStoreContext } from "./types";
 
 type Tx = Prisma.TransactionClient;
@@ -46,6 +47,8 @@ export async function createSeedOrder(
   ctx: SeedStoreContext,
   spec: SeedOrder,
 ): Promise<number> {
+  const startProblem = getSeedStartProblem(spec);
+  if (startProblem) throw new Error(startProblem);
   return prisma.$transaction(
     async (tx) => {
       const orderNumber = await allocateOrderNumber(tx, ctx.storeId);

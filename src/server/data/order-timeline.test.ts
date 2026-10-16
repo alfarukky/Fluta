@@ -41,7 +41,9 @@ describe("buildOrderTimeline", () => {
       ? `stage ${entry.event.toStage}`
       : entry.kind === "pickupSuggested"
         ? `pickup ${entry.suggestion.date} ${entry.suggestion.windowStart}`
-        : `v${entry.version} ${entry.moment}`;
+        : entry.kind === "pickupReset"
+          ? `reset ${entry.reset.date} ${entry.reset.windowStart}`
+          : `v${entry.version} ${entry.moment}`;
 
   it("merges stage events and revision moments, newest first", () => {
     const timeline = buildOrderTimeline(events, revisions, audits);
@@ -77,6 +79,26 @@ describe("buildOrderTimeline", () => {
       kind: "pickupSuggested",
       suggestion: { isOutsideSchedule: true, note: "Customer asked for early pickup", actorUserId: "kemi" },
     });
+  });
+
+  it("puts a pickup time reset right after the step back that caused it", () => {
+    const pickupEvents = [
+      stage("p1", 0, null, "BOOKED"),
+      stage("p2", 5, "BOOKED", "PICKUP_SCHEDULED"),
+      stage("p3", 9, "PICKUP_SCHEDULED", "BOOKED"),
+    ];
+    const reset = {
+      id: "x1",
+      actorUserId: "kemi",
+      createdAt: at(9),
+      date: "2026-10-21",
+      windowStart: "14:00",
+      windowEnd: "16:00",
+      isOutsideSchedule: false,
+    };
+    const timeline = buildOrderTimeline(pickupEvents, [], [], [], [reset]);
+    expect(timeline.map(label)).toEqual(["reset 2026-10-21 14:00", "stage BOOKED", "stage PICKUP_SCHEDULED", "stage BOOKED"]);
+    expect(timeline[0]).toMatchObject({ kind: "pickupReset", reset: { actorUserId: "kemi", isOutsideSchedule: false } });
   });
 
   it("gives each moment its difference, reason, and who decided", () => {
