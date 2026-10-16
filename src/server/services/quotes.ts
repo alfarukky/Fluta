@@ -52,6 +52,8 @@ export type QuoteError =
   | "LINE_UNAVAILABLE"
   | "SERVICE_UNAVAILABLE"
   | "INVALID_QUANTITY"
+  | "INVALID_PRICE"
+  | "PRICE_NOT_ALLOWED"
   | "NO_SERVICES"
   | "AREA_UNAVAILABLE"
   | "CHARGE_REQUIRED"
@@ -216,8 +218,12 @@ function planRevision(
   );
   const priced = priceRevisionLines(existing, catalogue, { lines: input.lines, adjustments: input.adjustments });
   if (!priced.ok) {
+    // A price for a fixed-price line only comes from a stale or altered
+    // page: the editor shows no price field for one.
     const message =
-      priced.problem === "LINE_UNAVAILABLE" ? ORDER_CHANGED_MESSAGE : "Check the highlighted lines and try again.";
+      priced.problem === "LINE_UNAVAILABLE" || priced.problem === "PRICE_NOT_ALLOWED"
+        ? ORDER_CHANGED_MESSAGE
+        : "Check the highlighted lines and try again.";
     return refuse(fail(priced.problem, message, priced.fieldErrors));
   }
 

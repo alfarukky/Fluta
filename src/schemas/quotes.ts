@@ -12,10 +12,12 @@ import {
   outOfAreaNameSchema,
   quantityText,
   recordId,
+  unitPriceText,
 } from "./orders";
 
-// Quotes and revisions. The browser sends IDs, quantities, Others lines, and
-// the area choice; every price is built on the server.
+// Quotes and revisions. The browser sends IDs, quantities, Others lines, the
+// area choice, and unit prices for quote-required lines; every total is built
+// on the server, which also decides which lines may take a price.
 
 export const DECISION_NOTE_MAX = 300;
 export const CUSTOMER_MESSAGE_MAX = 500;
@@ -31,11 +33,13 @@ const optionalText = (max: number, label: string) =>
 const requiredText = (max: number, label: string, missing: string) =>
   z.string().trim().min(1, missing).max(max, `${label} must be ${max} characters or fewer`);
 
+// unitPrice: only for a quote-required line (the server refuses it on any
+// other); missing or blank keeps the line's price.
 const revisionLineSchema = z.discriminatedUnion("kind", [
-  // A line already on the order keeps the unit price it was added at.
-  z.object({ kind: z.literal("existing"), lineId: recordId, quantity: quantityText }),
-  // A new line is priced from today's catalogue.
-  z.object({ kind: z.literal("new"), serviceId: recordId, quantity: quantityText }),
+  // A line already on the order keeps the unit price it was added at, unless priced here.
+  z.object({ kind: z.literal("existing"), lineId: recordId, quantity: quantityText, unitPrice: unitPriceText.optional() }),
+  // A new line starts at today's catalogue price.
+  z.object({ kind: z.literal("new"), serviceId: recordId, quantity: quantityText, unitPrice: unitPriceText.optional() }),
 ]);
 
 export const issueRevisionSchema = z.object({

@@ -5,13 +5,17 @@ import { lineTotalKobo } from "@/lib/money";
 import { getOrderTotal, isOrderFullyPriced, mergeServiceLines } from "@/lib/order-pricing";
 import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY } from "@/lib/quantity";
 import { isRevisionReasonRequired } from "@/lib/quotes";
+import { MAX_SERVICE_PRICE } from "@/schemas/services";
 
 import { buildQuoteSnapshot, type PricedOrderLine, type QuoteSnapshot, type SnapshotFulfilment } from "./orders";
 
 // Pricing a quote revision. Pure: the caller loads the order's lines, the
 // catalogue, and the area. Existing service lines keep the unit price they
-// were added at; only newly added lines use today's catalogue price. The
-// browser sends IDs, quantities, and Others lines, never a price.
+// were added at; newly added lines use today's catalogue price. The browser
+// sends IDs, quantities, and Others lines, and a unit price only for a
+// quote-required line (one the store prices after inspecting or weighing):
+// whether a line is quote-required comes from the order's line or the
+// catalogue, never from the request. Every total is built here.
 
 // A service line already on the order (its working copy).
 export interface ExistingOrderLine {
@@ -34,9 +38,10 @@ export interface CatalogueServicePrice {
   requiresQuote: boolean;
 }
 
+// unitPrice (kobo): null or missing keeps the line's price.
 export type RevisionLineRequest =
-  | { kind: "existing"; lineId: string; quantity: number | null }
-  | { kind: "new"; serviceId: string; quantity: number | null };
+  | { kind: "existing"; lineId: string; quantity: number | null; unitPrice?: number | null }
+  | { kind: "new"; serviceId: string; quantity: number | null; unitPrice?: number | null };
 
 export interface RevisionLinesRequest {
   lines: readonly RevisionLineRequest[];
@@ -44,7 +49,13 @@ export interface RevisionLinesRequest {
   adjustments: readonly { description: string; amount: number }[];
 }
 
-export type RevisionProblem = "LINE_UNAVAILABLE" | "SERVICE_UNAVAILABLE" | "INVALID_QUANTITY" | "NO_SERVICES";
+export type RevisionProblem =
+  | "LINE_UNAVAILABLE"
+  | "SERVICE_UNAVAILABLE"
+  | "INVALID_QUANTITY"
+  | "INVALID_PRICE"
+  | "PRICE_NOT_ALLOWED"
+  | "NO_SERVICES";
 
 export type PricedRevisionLines =
   | { ok: true; lines: PricedOrderLine[] }
@@ -62,6 +73,24 @@ function getQuantityMessage(pricingType: PricingType, quantity: number | null): 
   if (quantity === null) return QUANTITY_REQUIRED[kind];
   const problem = getQuantityProblem(quantity, pricingType);
   return problem ? QUANTITY_MESSAGES[kind][problem] : null;
+}
+
+// The unit price a line goes out at: the one sent for a quote-required line,
+// otherwise its own. A price for any other line is refused (fixed prices
+// never change), as is one that isn't whole kobo from ₦0 to ₦10,000,000.
+function resolveUnitPrice(
+  requiresQuote: boolean,
+  current: number,
+  requested: number | null | undefined,
+): { ok: true; unitPrice: number } | { ok: false; problem: "INVALID_PRICE" | "PRICE_NOT_ALLOWED"; message: string } {
+  if (requested === null || requested === undefined) return { ok: true, unitPrice: current };
+  if (!requiresQuote) {
+    return { ok: false, problem: "PRICE_NOT_ALLOWED", message: "This service has a fixed price. Reload the page and try again." };
+  }
+  if (!Number.isSafeInteger(requested) || requested < 0 || requested > MAX_SERVICE_PRICE) {
+    return { ok: false, problem: "INVALID_PRICE", message: "Enter a price from ₦0 to ₦10,000,000" };
+  }
+  return { ok: true, unitPrice: requested };
 }
 
 export function priceRevisionLines(
@@ -82,10 +111,16 @@ export function priceRevisionLines(
   const used = new Set<string>();
   const kept: PricedOrderLine[] = [];
   const added: { index: number; serviceId: string; quantity: number | null; estimate: null }[] = [];
+  // A new line's price, by service: the first one sent wins when the same
+  // service is added twice (those lines become one).
+  const addedPrices = new Map<string, { index: number; unitPrice: number }>();
 
   for (const [index, line] of request.lines.entries()) {
     if (line.kind === "new") {
       added.push({ index, serviceId: line.serviceId, quantity: line.quantity, estimate: null });
+      if (line.unitPrice !== null && line.unitPrice !== undefined && !addedPrices.has(line.serviceId)) {
+        addedPrices.set(line.serviceId, { index, unitPrice: line.unitPrice });
+      }
       continue;
     }
     const current = existingById.get(line.lineId);
@@ -95,22 +130,26 @@ export function priceRevisionLines(
       continue;
     }
     used.add(line.lineId);
+    // The price the line was added at, whatever the catalogue says now,
+    // unless staff priced this quote-required line.
+    const price = resolveUnitPrice(current.requiresQuote, current.unitPrice, line.unitPrice);
+    if (!price.ok) report(`lines.${index}.unitPrice`, price.message, price.problem);
     const message = getQuantityMessage(current.pricingType, line.quantity);
     if (message || line.quantity === null) {
       report(`lines.${index}.quantity`, message ?? QUANTITY_REQUIRED.items, "INVALID_QUANTITY");
       continue;
     }
+    if (!price.ok) continue;
     kept.push({
       lineType: "SERVICE",
       serviceId: current.serviceId,
       description: current.description,
       pricingType: current.pricingType,
       requiresQuote: current.requiresQuote,
-      // The price the line was added at, whatever the catalogue says now.
-      unitPrice: current.unitPrice,
+      unitPrice: price.unitPrice,
       quantity: line.quantity,
       estimate: current.estimate,
-      lineTotal: lineTotalKobo(current.unitPrice, line.quantity),
+      lineTotal: lineTotalKobo(price.unitPrice, line.quantity),
     });
   }
 
@@ -125,21 +164,26 @@ export function priceRevisionLines(
       report(`lines.${index}.serviceId`, "This service isn't available any more. Remove it.", "SERVICE_UNAVAILABLE");
       continue;
     }
+    // Today's catalogue price, unless staff priced this quote-required service.
+    const sent = addedPrices.get(line.serviceId);
+    const price = resolveUnitPrice(service.requiresQuote, service.price, sent?.unitPrice);
+    if (!price.ok) report(`lines.${sent?.index ?? index}.unitPrice`, price.message, price.problem);
     const message = getQuantityMessage(service.pricingType, line.quantity);
     if (message || line.quantity === null) {
       report(`lines.${index}.quantity`, message ?? QUANTITY_REQUIRED.items, "INVALID_QUANTITY");
       continue;
     }
+    if (!price.ok) continue;
     fresh.push({
       lineType: "SERVICE",
       serviceId: service.id,
       description: service.name,
       pricingType: service.pricingType,
       requiresQuote: service.requiresQuote,
-      unitPrice: service.price,
+      unitPrice: price.unitPrice,
       quantity: line.quantity,
       estimate: null,
-      lineTotal: lineTotalKobo(service.price, line.quantity),
+      lineTotal: lineTotalKobo(price.unitPrice, line.quantity),
     });
   }
 

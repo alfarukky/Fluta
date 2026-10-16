@@ -33,6 +33,7 @@ import {
   isChargeEntered,
   reviewQuoteDraft,
   toIssueRevisionRequest,
+  validateQuotePrices,
   type QuoteDraft,
   type QuoteLineDraft,
 } from "./quote-draft";
@@ -65,6 +66,16 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
 
   function updateLine(key: string, update: Partial<QuoteLineDraft>) {
     change({ lines: draft.lines.map((line) => (line.key === key ? { ...line, ...update } : line)) });
+    // Retyping a price clears its message (checked again on send).
+    if ("price" in update) {
+      const field = `lines.${draft.lines.findIndex((line) => line.key === key)}.unitPrice`;
+      setErrors((current) => {
+        if (!(field in current)) return current;
+        const next = { ...current };
+        delete next[field];
+        return next;
+      });
+    }
   }
 
   function pick(serviceId: string) {
@@ -76,6 +87,12 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
+    const priceErrors = validateQuotePrices(draft);
+    if (Object.keys(priceErrors).length > 0) {
+      setErrors(priceErrors);
+      scrollToFirstError();
+      return;
+    }
     const request = toIssueRevisionRequest(draft, editor, areas);
     startTransition(async () => {
       const result = await issueRevision(request);
@@ -107,7 +124,10 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
         </p>
       )}
 
-      <OrderSection title="Lines" description="Lines already on the order keep their price. Added services use today's price.">
+      <OrderSection
+        title="Lines"
+        description="Fixed prices stay as they are. Set the price of items the store inspects or weighs. Added services start at today's price."
+      >
         {draft.lines.length === 0 ? (
           <p id={`${id}-lines-error`} className={errors.lines ? "type-body-sm text-error" : "type-body-sm text-muted-foreground"}>
             {errors.lines ?? "No services. Add at least one."}
@@ -121,6 +141,7 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
                 line={line}
                 lineTotal={review.lineTotals.get(line.key) ?? null}
                 error={errors[`lines.${index}.quantity`] ?? errors[`lines.${index}.serviceId`] ?? errors[`lines.${index}`]}
+                priceError={errors[`lines.${index}.unitPrice`]}
                 onChange={(update) => updateLine(line.key, update)}
                 onRemove={() => change({ lines: draft.lines.filter((other) => other.key !== line.key) })}
               />
@@ -285,7 +306,7 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
         </dl>
         {!review.fullyPriced && (
           <p className="type-caption text-muted-foreground">
-            Enter every weight and quantity{editor.pickup ? ", and the pickup & delivery charge," : ""} before sending.
+            Enter every weight, quantity, and price{editor.pickup ? ", and the pickup & delivery charge," : ""} before sending.
           </p>
         )}
         <p className="type-caption text-muted-foreground">
@@ -321,14 +342,18 @@ interface QuoteLineRowProps {
   line: QuoteLineDraft;
   lineTotal: number | null;
   error?: string;
+  priceError?: string;
   onChange: (update: Partial<QuoteLineDraft>) => void;
   onRemove: () => void;
 }
 
-function QuoteLineRow({ idPrefix, line, lineTotal, error, onChange, onRemove }: QuoteLineRowProps) {
+function QuoteLineRow({ idPrefix, line, lineTotal, error, priceError, onChange, onRemove }: QuoteLineRowProps) {
   const weighed = isWeighed(line.pricingType);
   const added = line.source.kind === "new";
-  const price = formatServicePrice({ pricingType: line.pricingType, price: line.unitPrice, requiresQuote: false });
+  // A quote-required line shows the price it came with ("from ₦5,000 / item",
+  // "Price on inspection"); any other line its fixed price.
+  const price = formatServicePrice({ pricingType: line.pricingType, price: line.unitPrice, requiresQuote: line.requiresQuote });
+  const priceLabel = weighed ? "Price per kg" : "Price per item";
   // Online bookings record the customer's count on items the store inspects,
   // as well as estimated weights.
   const hint = line.estimate !== null ? describeCustomerEstimate(line.estimate, line.pricingType) : undefined;
@@ -363,6 +388,22 @@ function QuoteLineRow({ idPrefix, line, lineTotal, error, onChange, onRemove }: 
             aria-describedby={describedBy(`${idPrefix}-quantity`, hint, error)}
           />
         </FormField>
+        {line.requiresQuote && (
+          <FormField id={`${idPrefix}-price`} label={priceLabel} error={priceError}>
+            <InputWithPrefix
+              id={`${idPrefix}-price`}
+              prefix="₦"
+              value={line.price}
+              onChange={(event) => onChange({ price: event.target.value })}
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="0"
+              maxLength={20}
+              aria-invalid={priceError ? true : undefined}
+              aria-describedby={describedBy(`${idPrefix}-price`, undefined, priceError)}
+            />
+          </FormField>
+        )}
       </div>
       <div className="flex items-center justify-between gap-component">
         {weighed && line.quantity.trim() === "" ? <Badge variant="warning">Not weighed yet</Badge> : <span />}

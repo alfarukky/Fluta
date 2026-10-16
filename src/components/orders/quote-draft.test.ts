@@ -3,7 +3,15 @@ import { describe, expect, it } from "vitest";
 import type { OrderEntryArea, OrderEntryService, QuoteEditorData } from "@/types/orders";
 
 import { OUT_OF_AREA } from "./order-draft";
-import { addQuoteService, CURRENT_AREA, initialQuoteDraft, reviewQuoteDraft, toIssueRevisionRequest } from "./quote-draft";
+import {
+  addQuoteService,
+  CURRENT_AREA,
+  initialQuoteDraft,
+  reviewQuoteDraft,
+  toIssueRevisionRequest,
+  validateQuotePrices,
+  type QuoteDraft,
+} from "./quote-draft";
 
 const EDITOR: QuoteEditorData = {
   orderId: "o1",
@@ -23,6 +31,12 @@ const EDITOR: QuoteEditorData = {
   reasonRequired: true,
 };
 const SHIRT: OrderEntryService = { id: "shirt", name: "Shirt", category: null, pricingType: "PER_ITEM", price: 80_000, requiresQuote: false };
+const GOWN: OrderEntryService = { id: "gown", name: "Wedding gown", category: null, pricingType: "PER_ITEM", price: 0, requiresQuote: true };
+
+// The draft with one line changed.
+function withLine(draft: QuoteDraft, key: string, update: Partial<QuoteDraft["lines"][number]>): QuoteDraft {
+  return { ...draft, lines: draft.lines.map((line) => (line.key === key ? { ...line, ...update } : line)) };
+}
 const AREAS: OrderEntryArea[] = [
   { id: "maitama", name: "Maitama", chargeType: "QUOTE_REQUIRED", fixedCharge: null },
   { id: "garki", name: "Garki", chargeType: "FIXED", fixedCharge: 100_000 },
@@ -61,7 +75,7 @@ describe("the edit-quote draft", () => {
     expect(reviewQuoteDraft({ ...weighed, areaChoice: "maitama", charge: "" }, EDITOR, AREAS)).toMatchObject({ charge: null, fullyPriced: false });
   });
 
-  it("sends IDs, quantities, and the area choice, never a price", () => {
+  it("sends IDs, quantities, the area choice, and a price only for quote-required lines", () => {
     const draft = { ...initialQuoteDraft(EDITOR), areaChoice: OUT_OF_AREA, outOfAreaName: "Kubwa", charge: "3,000", reason: "Moved house" };
     const lines = addQuoteService(draft.lines, SHIRT, "k1");
     expect(toIssueRevisionRequest({ ...draft, lines }, EDITOR, AREAS)).toEqual({
@@ -69,7 +83,7 @@ describe("the edit-quote draft", () => {
       basedOnVersion: 2,
       lines: [
         { kind: "existing", lineId: "l1", quantity: "3" },
-        { kind: "existing", lineId: "l2", quantity: "" },
+        { kind: "existing", lineId: "l2", quantity: "", unitPrice: "1,500" },
         { kind: "new", serviceId: "shirt", quantity: "1" },
       ],
       adjustments: [{ description: "Loyalty discount", kind: "DISCOUNT", amount: "200" }],
@@ -79,5 +93,56 @@ describe("the edit-quote draft", () => {
     });
     // A fixed area: no charge is sent at all.
     expect(toIssueRevisionRequest({ ...draft, areaChoice: CURRENT_AREA }, EDITOR, AREAS).charge).toBe("");
+  });
+
+  describe("pricing quote-required lines", () => {
+    it("pre-fills a quote-required line's price, and leaves fixed-price lines without one", () => {
+      const draft = initialQuoteDraft(EDITOR);
+      expect(draft.lines.map((line) => [line.name, line.requiresQuote, line.price])).toEqual([
+        ["Shirt", false, ""],
+        ["Wash & fold", true, "1,500"],
+      ]);
+      // "Price on inspection" starts at ₦0.
+      const gown = addQuoteService(draft.lines, GOWN, "k1").at(-1);
+      expect(gown).toMatchObject({ requiresQuote: true, unitPrice: 0, price: "0", quantity: "1" });
+    });
+
+    it("previews line and order totals from the typed price, per item and per kg", () => {
+      const weighed = withLine(initialQuoteDraft(EDITOR), "l2", { quantity: "4.2", price: "₦2,000" });
+      const draft = { ...weighed, lines: addQuoteService(weighed.lines, GOWN, "k1") };
+      const priced = withLine(draft, "k1", { price: "45,000" });
+      const review = reviewQuoteDraft(priced, EDITOR, AREAS);
+      // 4.2 kg × ₦2,000 = ₦8,400; gown ₦45,000. ₦2,100 + ₦8,400 + ₦45,000 − ₦200 + ₦1,500 = ₦56,800.
+      expect(review.lineTotals.get("l2")).toBe(840_000);
+      expect(review.lineTotals.get("k1")).toBe(4_500_000);
+      expect(review).toMatchObject({ total: 5_680_000, fullyPriced: true });
+      // A fixed line ignores anything typed into its (hidden) price.
+      expect(reviewQuoteDraft(withLine(priced, "l1", { price: "1" }), EDITOR, AREAS).lineTotals.get("l1")).toBe(210_000);
+    });
+
+    it("treats a missing or invalid price as not priced yet", () => {
+      const weighed = withLine(initialQuoteDraft(EDITOR), "l2", { quantity: "4.2" });
+      for (const price of ["", "abc", "-5", "10,000,000.01"]) {
+        const review = reviewQuoteDraft(withLine(weighed, "l2", { price }), EDITOR, AREAS);
+        expect(review.lineTotals.get("l2")).toBeNull();
+        expect(review.fullyPriced).toBe(false);
+      }
+    });
+
+    it("checks typed prices before sending, keyed like the server's errors", () => {
+      const draft = initialQuoteDraft(EDITOR);
+      expect(validateQuotePrices(draft)).toEqual({});
+      expect(validateQuotePrices(withLine(draft, "l2", { price: "0" }))).toEqual({});
+      expect(validateQuotePrices(withLine(draft, "l2", { price: "10,000,000" }))).toEqual({});
+      expect(validateQuotePrices(withLine(draft, "l2", { price: " " }))).toEqual({ "lines.1.unitPrice": "Enter the price, or 0" });
+      expect(validateQuotePrices(withLine(draft, "l2", { price: "-500" }))).toEqual({
+        "lines.1.unitPrice": "Enter an amount in Naira, like 500 or 1,500.50",
+      });
+      expect(validateQuotePrices(withLine(draft, "l2", { price: "10,000,000.01" }))).toEqual({
+        "lines.1.unitPrice": "Price must be ₦10,000,000 or less",
+      });
+      // A fixed-price line is never checked: it has no price field.
+      expect(validateQuotePrices(withLine(draft, "l1", { price: "nonsense" }))).toEqual({});
+    });
   });
 });

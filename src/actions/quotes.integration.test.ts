@@ -299,6 +299,14 @@ async function currentBody(orderId: string, quantities: Record<string, number | 
   };
 }
 
+// The body with unit prices typed on some of the existing lines, by line ID.
+function withPrices(body: Body, prices: Record<string, string>): Body {
+  return {
+    ...body,
+    lines: body.lines.map((line) => (line.kind === "existing" && line.lineId in prices ? { ...line, unitPrice: prices[line.lineId] } : line)),
+  };
+}
+
 async function issue(orderId: string, body: Body, options: { as?: Headers; basedOnVersion?: number } = {}) {
   const order = await readOrder(orderId);
   request.headers = options.as ?? users.staff.headers;
@@ -473,7 +481,7 @@ describe("revising an approved order", () => {
     expect(order.approvedQuoteId).toBe(order.quoteRevisions[0].id);
   });
 
-  it("keeps an existing line's original price, and ignores prices or a fixed charge sent by the browser", async () => {
+  it("keeps an existing line's original price, and ignores totals or a fixed charge sent by the browser", async () => {
     // Added when shirts were ₦700; the catalogue now says ₦800.
     const orderId = await makeOrder({
       fulfilmentType: "PICKUP_DELIVERY",
@@ -484,8 +492,8 @@ describe("revising an approved order", () => {
     const tampered = {
       ...body,
       lines: [
-        { ...body.lines[0], unitPrice: 1 },
-        { kind: "new" as const, serviceId: ids.shirt, quantity: "1", unitPrice: 1, lineTotal: 1 },
+        { ...body.lines[0], lineTotal: 1 },
+        { kind: "new" as const, serviceId: ids.shirt, quantity: "1", lineTotal: 1 },
       ],
       area: { kind: "current" as const },
       charge: "1",
@@ -529,6 +537,71 @@ describe("revising an approved order", () => {
 });
 
 // ───────────── Declining ─────────────
+
+describe("pricing quote-required lines", () => {
+  it("issues a revision with the new unit price, and moves the balance only on approval", async () => {
+    // 2 kg weighed at the ₦1,500 "from" price and approved: ₦3,000.
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "wash", quantity: 200 }, { service: "shirt", quantity: 100 }] });
+    const balance = async () => (await getOrderDetail(storeId, orderId, "STAFF"))?.balance;
+    expect(await balance()).toMatchObject({ balanceKobo: 300_000 + SHIRT_PRICE });
+
+    const washId = (await readOrder(orderId)).lines.find((line) => line.serviceId === ids.wash)!.id;
+    const body = withPrices(await currentBody(orderId), { [washId]: "₦2,250.50" });
+    expect(await issue(orderId, { ...body, reason: "Heavy items, priced after inspection" })).toMatchObject({ ok: true });
+
+    const order = await readOrder(orderId);
+    const latest = order.quoteRevisions.at(-1);
+    // 2 kg × ₦2,250.50 = ₦4,501, plus the shirt at its fixed ₦800.
+    expect(latest).toMatchObject({ version: 2, status: "PENDING", total: 450_100 + SHIRT_PRICE });
+    const snapshot = latest?.linesSnapshot as { lines: { serviceId: string; unitPrice: number; lineTotal: number }[] };
+    expect(snapshot.lines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ serviceId: ids.wash, unitPrice: 225_050, lineTotal: 450_100 }),
+        expect.objectContaining({ serviceId: ids.shirt, unitPrice: SHIRT_PRICE, lineTotal: SHIRT_PRICE }),
+      ]),
+    );
+    // The working line carries the new price once issued; the revision before it is untouched.
+    expect(order.lines.find((line) => line.serviceId === ids.wash)).toMatchObject({ unitPrice: 225_050, lineTotal: 450_100 });
+    expect(order.quoteRevisions[0]).toMatchObject({ status: "APPROVED", total: 300_000 + SHIRT_PRICE });
+    expect(await balance()).toMatchObject({ balanceKobo: 300_000 + SHIRT_PRICE });
+
+    expect(await approve(orderId, await latestRevisionId(orderId))).toMatchObject({ ok: true });
+    expect(await balance()).toMatchObject({ balanceKobo: 450_100 + SHIRT_PRICE });
+  });
+
+  it("keeps a quote-required line's price when none is sent", async () => {
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "wash", quantity: null }], approved: false });
+    expect(await issue(orderId, await currentBody(orderId, { wash: 300 }))).toMatchObject({ ok: true });
+    const order = await readOrder(orderId);
+    expect(order.lines[0]).toMatchObject({ unitPrice: WASH_PRICE, lineTotal: 450_000 });
+    expect(order.quoteRevisions.at(-1)?.total).toBe(450_000);
+  });
+
+  it("refuses a price for a fixed-price line, or an invalid price, creating nothing", async () => {
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "wash", quantity: 200 }, { service: "shirt", quantity: 100 }] });
+    const before = await readOrder(orderId);
+    const body = { ...(await currentBody(orderId)), reason: "Repriced" };
+    const shirtId = before.lines.find((line) => line.serviceId === ids.shirt)!.id;
+    const washId = before.lines.find((line) => line.serviceId === ids.wash)!.id;
+
+    // Even the shirt's current price, alongside a valid quote-required price.
+    expect(await issue(orderId, withPrices(body, { [shirtId]: "800", [washId]: "2,000" }))).toMatchObject({
+      ok: false,
+      code: "PRICE_NOT_ALLOWED",
+      message: CHANGED,
+    });
+    // A new fixed-price service can't be priced either.
+    expect(
+      await issue(orderId, { ...body, lines: [...body.lines, { kind: "new", serviceId: ids.shirt, quantity: "1", unitPrice: "1" }] }),
+    ).toMatchObject({ ok: false, code: "PRICE_NOT_ALLOWED" });
+    for (const price of ["-5", "10,000,000.01", "1.234", "two thousand"]) {
+      const index = body.lines.findIndex((line) => line.kind === "existing" && line.lineId === washId);
+      const result = await issue(orderId, withPrices(body, { [washId]: price }));
+      expect(result).toMatchObject({ ok: false, fieldErrors: { [`lines.${index}.unitPrice`]: expect.any(String) } });
+    }
+    expect(await readOrder(orderId)).toEqual(before);
+  });
+});
 
 describe("recording a decline", () => {
   it("stores the customer's reason and the audit note separately, keeps the order where it is, and allows a new revision", async () => {
@@ -622,9 +695,34 @@ describe("store isolation", () => {
     if (cleanWave.revisionId) {
       expect(await approve(cleanWave.orderId, cleanWave.revisionId, freshFoldStaff)).toMatchObject({ ok: false, code: "NOT_FOUND" });
     }
+    // Nor price a CleanWave line, even by sending the line's own ID.
+    const cleanWaveLines = await prisma.orderLine.findMany({
+      where: { orderId: cleanWave.orderId, lineType: "SERVICE" },
+      select: { id: true },
+    });
+    expect(
+      await issueRevision({
+        orderId: cleanWave.orderId,
+        basedOnVersion: cleanWave.version,
+        lines: cleanWaveLines.map((line) => ({ kind: "existing", lineId: line.id, quantity: "1", unitPrice: "1" })),
+        adjustments: [],
+        reason: "x",
+      }),
+    ).toEqual({ ok: false, code: "NOT_FOUND", message: "Order not found." });
     // A FreshFold order ID with a CleanWave revision ID matches nothing either.
     const own = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "shirt", quantity: 100 }] });
     if (cleanWave.revisionId) expect(await approve(own, cleanWave.revisionId)).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    // A FreshFold order sent with a CleanWave line ID and a price: that line isn't this order's.
+    request.headers = users.staff.headers;
+    expect(
+      await issueRevision({
+        orderId: own,
+        basedOnVersion: 1,
+        lines: cleanWaveLines.slice(0, 1).map((line) => ({ kind: "existing", lineId: line.id, quantity: "1", unitPrice: "1" })),
+        adjustments: [],
+        reason: "x",
+      }),
+    ).toMatchObject({ ok: false, code: "LINE_UNAVAILABLE" });
     expect(await readOrder(cleanWave.orderId)).toEqual(before);
   });
 });

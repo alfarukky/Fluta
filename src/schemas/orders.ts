@@ -11,6 +11,7 @@ import { parseDateKey } from "@/lib/time";
 
 import { ADDRESS_MAX, CUSTOMER_NAME_MAX } from "./field-limits";
 import { AREA_NAME_MAX, MAX_AREA_CHARGE } from "./fulfilment";
+import { MAX_SERVICE_PRICE } from "./services";
 
 export { ADDRESS_MAX, CUSTOMER_NAME_MAX };
 export const INTERNAL_NOTE_MAX = 500;
@@ -132,6 +133,14 @@ export const chargeText = z
   .max(40, AMOUNT_FORMAT_MESSAGE)
   .transform((value) => value.trim())
   .pipe(z.union([z.literal("").transform(() => null), nairaAmount(MAX_AREA_CHARGE, "Charge")]));
+
+// A quote-required line's unit price as staff typed it when pricing: blank
+// is null (keep the line's price), ₦0 allowed, up to ₦10,000,000.
+export const unitPriceText = z
+  .string()
+  .max(40, AMOUNT_FORMAT_MESSAGE)
+  .transform((value) => value.trim())
+  .pipe(z.union([z.literal("").transform(() => null), nairaAmount(MAX_SERVICE_PRICE, "Price")]));
 
 // An out-of-area name, kept on the order only.
 export const outOfAreaNameSchema = z
