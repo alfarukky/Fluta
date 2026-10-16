@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { getInitials } from "@/lib/names";
 import { cn } from "@/lib/utils";
 
-import { getNavItems, isNavItemActive, ROLE_LABELS, type NavItem } from "./nav-items";
+import { getNavItem, getNavItems, getWorkspaceHome, isNavItemActive, ROLE_LABELS, type NavItem } from "./nav-items";
 import type { NavCounts, WorkspaceMember } from "./types";
 
 interface SidebarContentProps {
@@ -24,12 +24,13 @@ export function SidebarContent({ member, navCounts, onNavigate }: SidebarContent
   const pathname = usePathname();
   const items = getNavItems(member.role);
   const roleLabel = ROLE_LABELS[member.role];
+  const home = getNavItem(getWorkspaceHome(member.role));
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto p-4">
       <Link
-        href="/overview"
-        aria-label="Fluta, go to Overview"
+        href={home.href}
+        aria-label={`Fluta, go to ${home.label}`}
         onClick={onNavigate}
         className="flex h-11 items-center rounded-md px-3 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >

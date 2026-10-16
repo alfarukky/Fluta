@@ -5,6 +5,10 @@ import type { Prisma, PrismaClient, StoreRole } from "@/generated/prisma/client"
 // Neon round trips are slow from here; the default 5s can expire mid-write.
 const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 20_000 };
 
+// The members an owner can deactivate and reactivate: staff and riders, never
+// owners, so an owner can't lock themselves or another owner out.
+export const TEAM_ROLE_FILTER = { in: ["STAFF", "RIDER"] } as const satisfies Prisma.EnumStoreRoleFilter;
+
 export type CreateMembershipResult =
   | { success: true; membershipId: string }
   | { success: false; code: "ACTIVE_MEMBERSHIP_EXISTS" };
@@ -42,7 +46,7 @@ export type ReactivateMembershipResult =
   | { success: true; userId: string }
   | { success: false; code: "NOT_FOUND" | "ACTIVE_MEMBERSHIP_EXISTS" };
 
-// Turns a deactivated staff membership of this store back on, unless the user
+// Turns a deactivated staff or rider membership of this store back on, unless the user
 // has an active membership anywhere (the one-membership rule). Owners are
 // never changed here.
 export async function reactivateStaffMembership(
@@ -51,14 +55,14 @@ export async function reactivateStaffMembership(
   tx: Prisma.TransactionClient,
 ): Promise<ReactivateMembershipResult> {
   const membership = await tx.membership.findFirst({
-    where: { id: membershipId, storeId, role: "STAFF", isActive: false },
+    where: { id: membershipId, storeId, role: TEAM_ROLE_FILTER, isActive: false },
     select: { userId: true },
   });
   if (!membership) return { success: false, code: "NOT_FOUND" };
   if (await hasActiveMembership(membership.userId, tx)) return { success: false, code: "ACTIVE_MEMBERSHIP_EXISTS" };
 
   const { count } = await tx.membership.updateMany({
-    where: { id: membershipId, storeId, role: "STAFF", isActive: false },
+    where: { id: membershipId, storeId, role: TEAM_ROLE_FILTER, isActive: false },
     data: { isActive: true, deactivatedAt: null },
   });
   return count === 1 ? { success: true, userId: membership.userId } : { success: false, code: "NOT_FOUND" };

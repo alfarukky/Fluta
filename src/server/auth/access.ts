@@ -35,8 +35,15 @@ export type StoreMemberAccess =
 
 export type FlutaAdminAccess = { allowed: true; user: SessionUser } | AccessDenied;
 
-// Owners can do everything staff can.
-const ROLE_RANK: Record<StoreRole, number> = { STAFF: 0, OWNER: 1 };
+// The workspace roles. Owners can do everything staff can. Riders aren't
+// ranked: they never meet a role requirement and are refused by default.
+type WorkspaceRole = Exclude<StoreRole, "RIDER">;
+const ROLE_RANK: Record<WorkspaceRole, number> = { STAFF: 0, OWNER: 1 };
+
+// What a caller requires. With no options, owners and staff are allowed and
+// riders refused, so every page, action, and API route refuses riders unless
+// it opts in with allowRider (only the Deliveries view and its actions do).
+export type StoreMemberOptions = { role?: WorkspaceRole; allowRider?: never } | { role?: never; allowRider: true };
 
 export async function getSessionFromHeaders(requestHeaders: Headers) {
   return getAuth().api.getSession({ headers: requestHeaders });
@@ -68,7 +75,7 @@ export async function lookupStoreMembership(requestHeaders: Headers): Promise<St
 // Lookup → role → getStoreAccess, for one caller's required role.
 export function checkStoreMember(
   lookup: StoreMembershipLookup,
-  options: { role?: StoreRole } = {},
+  options: StoreMemberOptions = {},
   now = new Date(),
 ): StoreMemberAccess {
   if (!lookup.found) {
@@ -78,15 +85,18 @@ export function checkStoreMember(
   }
 
   const { user, membership } = lookup;
-  if (options.role && ROLE_RANK[membership.role] < ROLE_RANK[options.role]) {
-    return { allowed: false, status: 403, reason: "ROLE_NOT_PERMITTED" };
-  }
+  if (!isRolePermitted(membership.role, options)) return { allowed: false, status: 403, reason: "ROLE_NOT_PERMITTED" };
 
   const { subscription, ...store } = membership.store;
   const access = getStoreAccess(store, subscription, now);
   if (!access.canWorkOnExistingOrders) return { allowed: false, status: 403, reason: "STORE_UNAVAILABLE" };
 
   return { allowed: true, user, membership: { id: membership.id, role: membership.role }, store, access };
+}
+
+function isRolePermitted(role: StoreRole, options: StoreMemberOptions): boolean {
+  if (role === "RIDER") return options.allowRider === true;
+  return !options.role || ROLE_RANK[role] >= ROLE_RANK[options.role];
 }
 
 // For every owner editing operation (Server Action or API route): an owner of
@@ -119,7 +129,7 @@ export async function authorizeOwnerCanEdit(requestHeaders: Headers, now = new D
 
 export async function authorizeStoreMember(
   requestHeaders: Headers,
-  options: { role?: StoreRole } = {},
+  options: StoreMemberOptions = {},
   now = new Date(),
 ): Promise<StoreMemberAccess> {
   return checkStoreMember(await lookupStoreMembership(requestHeaders), options, now);

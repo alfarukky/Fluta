@@ -6,7 +6,7 @@ import { FormAlert } from "@/components/auth/FormAlert";
 import { JoinStoreButton } from "@/components/invitations/JoinStoreButton";
 import { NewAccountForm } from "@/components/invitations/NewAccountForm";
 import { ROLE_LABELS } from "@/components/workspace/nav-items";
-import { INVITATION_MESSAGES } from "@/schemas/staff";
+import { describeInvitedRole, INVITATION_MESSAGES } from "@/schemas/staff";
 import { SIGN_IN_PATH } from "@/server/auth/session";
 import { invitedEmailCantJoin, findUserIdByEmail } from "@/server/data/invitations";
 import { findUsableInvitation } from "@/server/services/invitations";
@@ -40,7 +40,7 @@ export default async function InvitationPage({ params }: PageProps<"/invite/[tok
     <AuthPageShell
       eyebrow="Store invitation"
       title={`Join ${storeName}`}
-      description="You've been invited to the store's Fluta workspace."
+      description={`You've been invited to join ${storeName} as ${describeInvitedRole(invitation.role)}.`}
     >
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 rounded-xl border border-border bg-card p-card">
         <dt className="type-body-sm text-muted-foreground">Store</dt>

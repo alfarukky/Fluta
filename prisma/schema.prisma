@@ -15,9 +15,12 @@ enum PlatformRole {
   FLUTA_ADMIN
 }
 
+// RIDER: the store's own delivery riders. They can use the Deliveries view
+// and its three moves, nothing else in the workspace.
 enum StoreRole {
   OWNER
   STAFF
+  RIDER
 }
 
 // Operational status, set only by Fluta admins. Independent of billing.

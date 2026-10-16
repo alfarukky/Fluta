@@ -3,13 +3,13 @@ import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 
 import { getPrisma } from "./client";
-import { reactivateStaffMembership } from "./memberships";
+import { reactivateStaffMembership, TEAM_ROLE_FILTER } from "./memberships";
 
 // Store members for the staff page, and deactivation and reactivation. Always
 // for one store: storeId comes from the owner's membership, and a membership
 // ID from the client is acted on only if it belongs to that store. Owners
-// can't be deactivated (role STAFF only), so an owner can't lock themselves
-// or another owner out.
+// can't be deactivated (staff and riders only, TEAM_ROLE_FILTER), so an owner
+// can't lock themselves or another owner out.
 
 // Neon round trips are slow from here; the default 5s can expire mid-write.
 const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 20_000 };
@@ -32,7 +32,7 @@ export type MembershipChangeResult =
   | { ok: true; userId: string }
   | { ok: false; code: "NOT_FOUND" | "ACTIVE_MEMBERSHIP_EXISTS" };
 
-// Deactivates an active staff membership of this store and records it. The
+// Deactivates an active staff or rider membership of this store and records it. The
 // person's orders and history are untouched. Their sessions are revoked by
 // the caller, through Better Auth, after this commits.
 export async function deactivateStaffMembership(
@@ -43,13 +43,13 @@ export async function deactivateStaffMembership(
 ): Promise<MembershipChangeResult> {
   return getPrisma().$transaction(async (tx) => {
     const membership = await tx.membership.findFirst({
-      where: { id: membershipId, storeId, role: "STAFF", isActive: true },
+      where: { id: membershipId, storeId, role: TEAM_ROLE_FILTER, isActive: true },
       select: { userId: true },
     });
     if (!membership) return { ok: false, code: "NOT_FOUND" };
 
     const { count } = await tx.membership.updateMany({
-      where: { id: membershipId, storeId, role: "STAFF", isActive: true },
+      where: { id: membershipId, storeId, role: TEAM_ROLE_FILTER, isActive: true },
       data: { isActive: false, deactivatedAt: now },
     });
     if (count !== 1) return { ok: false, code: "NOT_FOUND" };

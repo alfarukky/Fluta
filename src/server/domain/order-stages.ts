@@ -11,8 +11,9 @@ import type { AvailableTransitions, StageMove, StageMoveKind } from "@/types/ord
 // canTransition first.
 
 // Who is making the move. OWNER and STAFF are store members pressing a
-// button; CUSTOMER acts through a tracking link; SYSTEM is a move another
-// action makes automatically (issuing or approving a quote).
+// button; RIDER is a store rider using the Deliveries view (three moves
+// only, see RIDER_MOVES); CUSTOMER acts through a tracking link; SYSTEM is a
+// move another action makes automatically (issuing or approving a quote).
 export type StageActor = StoreRole | "CUSTOMER" | "SYSTEM";
 
 export interface TransitionContext {
@@ -69,11 +70,24 @@ const deny = (reason: string): TransitionResult => ({ allowed: false, code: "NOT
 const NOTE_REQUIRED: TransitionResult = { allowed: false, code: "NOTE_REQUIRED", reason: "Add a note to explain this change." };
 
 const isMember = (actor: StageActor) => actor === "OWNER" || actor === "STAFF";
+
+// The only moves a rider may make. Anything else, including any stage move
+// added later, is refused for riders unless it is deliberately added here
+// (and to the Deliveries actions, with tests).
+export const RIDER_MOVES = [
+  { from: "PICKUP_SCHEDULED", to: "PICKED_UP" },
+  { from: "READY", to: "OUT_FOR_DELIVERY" },
+  { from: "OUT_FOR_DELIVERY", to: "COMPLETED" },
+] as const satisfies readonly { from: OrderStage; to: OrderStage }[];
+
+const isRiderMove = (from: OrderStage, to: OrderStage) =>
+  RIDER_MOVES.some((move) => move.from === from && move.to === to);
 const AWAITING_REVISION = "Waiting for the customer to approve the revised total.";
 
 export function canTransition(from: OrderStage, to: OrderStage, context: TransitionContext): TransitionResult {
   if (from === "CANCELLED") return deny("This order is cancelled. Cancelled orders can't be changed.");
   if (from === to) return deny("The order is already at this stage.");
+  if (context.actor === "RIDER" && !isRiderMove(from, to)) return deny("Riders can't make this change.");
 
   const pickup = context.fulfilmentType === "PICKUP_DELIVERY";
 
@@ -139,6 +153,9 @@ function checkForward(
       return memberOnly(actor);
 
     case "PICKUP_SCHEDULED>PICKED_UP":
+      if (!pickup) return deny("Only pickup orders are picked up.");
+      return memberOrRider(actor);
+
     case "PICKED_UP>RECEIVED_BY_STORE":
       if (!pickup) return deny("Only pickup orders are picked up.");
       return memberOnly(actor);
@@ -154,7 +171,7 @@ function checkForward(
 
     case "READY>OUT_FOR_DELIVERY":
       if (!pickup) return deny("Only pickup orders go out for delivery.");
-      return memberOnly(actor);
+      return memberOrRider(actor);
 
     case "READY>COMPLETED":
       if (!isMember(actor)) return deny("Only the store can complete an order.");
@@ -165,7 +182,7 @@ function checkForward(
 
     case "OUT_FOR_DELIVERY>COMPLETED":
       if (!pickup) return deny("Only pickup orders go out for delivery.");
-      if (!isMember(actor)) return deny("Only the store can complete an order.");
+      if (!isMember(actor) && actor !== "RIDER") return deny("Only the store can complete an order.");
       if (context.hasRevisionAwaitingApproval) return deny(AWAITING_REVISION);
       return allow();
   }
@@ -181,6 +198,10 @@ function checkForward(
 
 function memberOnly(actor: StageActor): TransitionResult {
   return isMember(actor) ? allow() : deny("Only the store can make this change.");
+}
+
+function memberOrRider(actor: StageActor): TransitionResult {
+  return isMember(actor) || actor === "RIDER" ? allow() : deny("Only the store can make this change.");
 }
 
 // ───────────── The moves offered on an order ─────────────

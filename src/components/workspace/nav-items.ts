@@ -1,4 +1,5 @@
 import {
+  BikeIcon,
   ChartColumnIcon,
   ClipboardListIcon,
   LayoutGridIcon,
@@ -23,12 +24,14 @@ export interface NavItem {
 
 const ANY_MEMBER = ["OWNER", "STAFF"] as const;
 const OWNER_ONLY = ["OWNER"] as const;
+const DELIVERIES_ROLES = ["OWNER", "STAFF", "RIDER"] as const;
 
 // The only list of workspace pages, in sidebar order. Hiding an item is UX
 // only: every page checks the member's role itself.
 const NAV = {
   "/overview": { label: "Overview", icon: LayoutGridIcon, roles: ANY_MEMBER, section: "main" },
   "/orders": { label: "Orders", icon: ClipboardListIcon, roles: ANY_MEMBER, section: "main" },
+  "/deliveries": { label: "Deliveries", icon: BikeIcon, roles: DELIVERIES_ROLES, section: "main" },
   "/customers": { label: "Customers", icon: UsersIcon, roles: ANY_MEMBER, section: "main" },
   "/payments": { label: "Payments", icon: WalletIcon, roles: ANY_MEMBER, section: "main" },
   "/services": { label: "Services", icon: ShirtIcon, roles: OWNER_ONLY, section: "main" },
@@ -56,4 +59,11 @@ export function isNavItemActive(item: Pick<NavItem, "href">, pathname: string): 
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-export const ROLE_LABELS: Record<StoreRole, string> = { OWNER: "Owner", STAFF: "Staff" };
+// A member's home page in the workspace: riders' is Deliveries, everyone
+// else's Overview. Used by getHomePath (where people land after signing in)
+// and the sidebar logo.
+export function getWorkspaceHome(role: StoreRole | null): NavHref {
+  return role === "RIDER" ? "/deliveries" : "/overview";
+}
+
+export const ROLE_LABELS: Record<StoreRole, string> = { OWNER: "Owner", STAFF: "Staff", RIDER: "Rider" };

@@ -7,7 +7,7 @@ import { formatCalendarDate, getLocalDateKey } from "@/lib/time";
 import { requireStoreMember } from "@/server/auth/session";
 import { getStaffList } from "@/server/services/staff";
 
-export const metadata: Metadata = { title: "Staff · Fluta" };
+export const metadata: Metadata = { title: "Team · Fluta" };
 
 export default async function StaffPage() {
   const member = await requireStoreMember({ role: "OWNER" });

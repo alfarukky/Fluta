@@ -7,6 +7,10 @@ import { describedBy, FormField } from "@/components/settings/FormField";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { ROLE_LABELS } from "@/components/workspace/nav-items";
+import { INVITABLE_ROLES, type InvitableRole } from "@/schemas/staff";
 
 import { InviteLinkPanel } from "./InviteLinkPanel";
 
@@ -19,10 +23,16 @@ interface InviteDialogProps {
 
 type Sent = Extract<InvitationActionResult, { ok: true }>;
 
-// Invite by email (always as Staff). Afterwards the dialog shows the link once.
-// Rendered with a fresh key each time it opens, so nothing carries over.
+const ROLE_HINTS: Record<InvitableRole, string> = {
+  STAFF: "Takes and updates orders in the workspace.",
+  RIDER: "Sees only Deliveries: today's pickups and deliveries.",
+};
+
+// Invite by email as Staff or Rider. Afterwards the dialog shows the link
+// once. Rendered with a fresh key each time it opens, so nothing carries over.
 export function InviteDialog({ open, onOpenChange, onResent }: InviteDialogProps) {
   const [email, setEmail] = useState("");
+  const [role, setRole] = useState<InvitableRole>("STAFF");
   const [error, setError] = useState<string | null>(null);
   const [pendingInvitationId, setPendingInvitationId] = useState<string | null>(null);
   const [sent, setSent] = useState<Sent | null>(null);
@@ -41,6 +51,7 @@ export function InviteDialog({ open, onOpenChange, onResent }: InviteDialogProps
     event.preventDefault();
     const formData = new FormData();
     formData.set("email", email);
+    formData.set("role", role);
     setError(null);
     setPendingInvitationId(null);
     startTransition(async () => show(await inviteStaff(formData)));
@@ -62,11 +73,11 @@ export function InviteDialog({ open, onOpenChange, onResent }: InviteDialogProps
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{sent ? "Invitation ready" : "Invite staff"}</DialogTitle>
+          <DialogTitle>{sent ? "Invitation ready" : "Invite to your team"}</DialogTitle>
           <DialogDescription>
             {sent
               ? "Share this link with the person you invited. They'll set their name and password."
-              : "They'll get an email with a private link to join your store as staff."}
+              : "They'll get an email with a private link to join your store."}
           </DialogDescription>
         </DialogHeader>
 
@@ -97,7 +108,24 @@ export function InviteDialog({ open, onOpenChange, onResent }: InviteDialogProps
                 autoFocus
               />
             </FormField>
-            <p className="type-caption text-muted-foreground">Role: Staff</p>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="type-label mb-2 text-foreground">Role</legend>
+              <RadioGroup value={role} onValueChange={(value) => setRole(value as InvitableRole)} className="gap-2">
+                {INVITABLE_ROLES.map((option) => (
+                  <Label
+                    key={option}
+                    htmlFor={`invite-role-${option}`}
+                    className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-border p-3 has-data-checked:border-primary has-data-checked:bg-accent/40"
+                  >
+                    <RadioGroupItem id={`invite-role-${option}`} value={option} className="mt-0.5" />
+                    <span className="flex flex-col gap-0.5">
+                      <span className="type-label text-foreground">{ROLE_LABELS[option]}</span>
+                      <span className="type-caption font-normal text-muted-foreground">{ROLE_HINTS[option]}</span>
+                    </span>
+                  </Label>
+                ))}
+              </RadioGroup>
+            </fieldset>
             {pendingInvitationId && (
               <Button type="button" variant="outline" onClick={resendPending} disabled={pending}>
                 Resend invitation

@@ -1,11 +1,28 @@
 import { z } from "zod";
 
+import type { StoreRole } from "@/generated/prisma/enums";
+
 import { emailSchema, passwordSchema } from "./users";
 
 // How long an invite link works (shown to owners, so not server-only).
 export const INVITATION_VALID_DAYS = 7;
 
-export const inviteStaffSchema = z.object({ email: emailSchema });
+// Owners invite staff or riders. Owners themselves are added only by Fluta
+// admins, so OWNER is never accepted here.
+export const INVITABLE_ROLES = ["STAFF", "RIDER"] as const satisfies readonly StoreRole[];
+export type InvitableRole = (typeof INVITABLE_ROLES)[number];
+
+export const inviteStaffSchema = z.object({
+  email: emailSchema,
+  role: z.enum(INVITABLE_ROLES, { error: "Choose Staff or Rider" }).default("STAFF"),
+});
+
+// "You've been invited to join {store} as …"
+const INVITED_AS: Record<StoreRole, string> = { OWNER: "the Owner", STAFF: "Staff", RIDER: "a Rider" };
+
+export function describeInvitedRole(role: StoreRole): string {
+  return INVITED_AS[role];
+}
 
 export const acceptInvitationSchema = z.object({
   name: z.string().trim().min(1, "Enter your name").max(100, "Use at most 100 characters"),

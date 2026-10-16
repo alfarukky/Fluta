@@ -42,6 +42,7 @@ export interface SeedStoreResult {
 export interface SeedStoreMembers {
   ownerUserId: string;
   staffUserIds: string[];
+  riderUserIds?: string[];
 }
 
 export async function seedStore(
@@ -100,6 +101,7 @@ async function seedMemberships(prisma: PrismaClient, storeId: string, members: S
   const roles = [
     { userId: members.ownerUserId, role: StoreRole.OWNER },
     ...members.staffUserIds.map((userId) => ({ userId, role: StoreRole.STAFF })),
+    ...(members.riderUserIds ?? []).map((userId) => ({ userId, role: StoreRole.RIDER })),
   ];
   for (const member of roles) {
     const result = await createMembership(storeId, member, prisma);

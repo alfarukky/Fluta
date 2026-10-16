@@ -12,6 +12,8 @@ import {
 import { deactivateStaffMembership, listStoreMembers, reactivateStaff as reactivate } from "@/server/data/staff";
 import { getExpiredListingCutoff, getInvitationExpiry, getInvitationStatus, getInvitationUrl } from "@/server/domain/invitations";
 import { generateToken, hashToken } from "@/lib/tokens";
+import type { StoreRole } from "@/generated/prisma/client";
+import type { InvitableRole } from "@/schemas/staff";
 import type { StaffListEntry } from "@/types/staff";
 
 import { buildInvitationEmail, trySendEmail } from "./emails";
@@ -37,17 +39,23 @@ export type InviteResult =
   | { ok: false; code: "EMAIL_IN_USE" }
   | { ok: false; code: "PENDING_INVITATION_EXISTS"; invitationId: string };
 
-export async function inviteStaff(inviter: Inviter, email: string, now = new Date()): Promise<InviteResult> {
+export async function inviteStaff(
+  inviter: Inviter,
+  email: string,
+  role: InvitableRole,
+  now = new Date(),
+): Promise<InviteResult> {
   const token = generateToken();
   const expiresAt = getInvitationExpiry(now);
   const result = await createStaffInvitation(
     inviter.storeId,
     email,
+    role,
     { tokenHash: hashToken(token), invitedByUserId: inviter.userId, expiresAt },
     now,
   );
   if (!result.ok) return result;
-  return sendInvitation(inviter, result.invitationId, result.email, token, expiresAt);
+  return sendInvitation(inviter, result.invitationId, result.email, role, token, expiresAt);
 }
 
 export type ResendResult = InvitationSent | { ok: false; code: "NOT_FOUND" | "EMAIL_IN_USE" };
@@ -62,7 +70,7 @@ export async function resendInvitation(inviter: Inviter, invitationId: string, n
     now,
   );
   if (!result.ok) return result;
-  return sendInvitation(inviter, result.invitationId, result.email, token, expiresAt);
+  return sendInvitation(inviter, result.invitationId, result.email, result.role, token, expiresAt);
 }
 
 export async function revokeInvitation(storeId: string, invitationId: string, now = new Date()): Promise<boolean> {
@@ -142,6 +150,7 @@ async function sendInvitation(
   inviter: Inviter,
   invitationId: string,
   email: string,
+  role: StoreRole,
   token: string,
   expiresAt: Date,
 ): Promise<InvitationSent> {
@@ -151,6 +160,7 @@ async function sendInvitation(
       to: email,
       storeName: inviter.storeName,
       inviterName: inviter.userName,
+      role,
       url: inviteUrl,
       expiresAt,
       timeZone: inviter.timeZone,

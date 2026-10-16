@@ -42,6 +42,7 @@ describe("buildInvitationEmail", () => {
     to: "new@x.example",
     storeName: "FreshFold Laundry",
     inviterName: "Ada Okafor",
+    role: "STAFF",
     url: URL_WITH_QUERY,
     expiresAt: new Date("2026-10-15T12:00:00Z"),
     timeZone: "Africa/Lagos",
@@ -56,8 +57,22 @@ describe("buildInvitationEmail", () => {
   it("has an HTML part with the store as heading, an Accept button, and the expiry", () => {
     expect(email.html).toContain(">FreshFold Laundry</h1>");
     expect(email.html).toContain(">Accept invitation</a>");
-    expect(email.html).toContain("Ada Okafor invited you to join FreshFold Laundry on Fluta as staff.");
+    expect(email.html).toContain("Ada Okafor invited you to join FreshFold Laundry on Fluta as Staff.");
     expect(email.html).toContain("expires in 7 days, on Thursday, 15 October 2026");
+  });
+
+  it("names the Rider role for a rider invitation", () => {
+    const rider = buildInvitationEmail({
+      to: "rider@x.example",
+      storeName: "FreshFold Laundry",
+      inviterName: "Ada Okafor",
+      role: "RIDER",
+      url: URL_WITH_QUERY,
+      expiresAt: new Date("2026-10-15T12:00:00Z"),
+      timeZone: "Africa/Lagos",
+    });
+    expect(rider.text).toContain("Ada Okafor invited you to join FreshFold Laundry on Fluta as a Rider.");
+    expect(rider.html).toContain("pickups and deliveries");
   });
 });
 

@@ -83,7 +83,7 @@ describe("seed data", () => {
     expect(new Set(customers.map((customer) => customer.storeId)).size).toBe(2);
   });
 
-  it("seeds real users: two FreshFold members, one CleanWave owner, and a Fluta admin with no store", async () => {
+  it("seeds real users: three FreshFold members, one CleanWave owner, and a Fluta admin with no store", async () => {
     const users = await prisma.user.findMany({ include: { memberships: { include: { store: true } } } });
     const byEmail = new Map(users.map((user) => [user.email, user]));
     const memberships = (email: string) =>
@@ -92,6 +92,7 @@ describe("seed data", () => {
     expect(byEmail.get("ada@freshfold.example")?.name).toBe("Ada Okafor");
     expect(memberships("ada@freshfold.example")).toEqual([["freshfold-laundry", "OWNER", true]]);
     expect(memberships("kemi@freshfold.example")).toEqual([["freshfold-laundry", "STAFF", true]]);
+    expect(memberships("tayo@freshfold.example")).toEqual([["freshfold-laundry", "RIDER", true]]);
     expect(memberships("musa@cleanwave.example")).toEqual([["cleanwave-laundry", "OWNER", true]]);
     expect(byEmail.get("admin@fluta.example")).toMatchObject({ platformRole: "FLUTA_ADMIN", memberships: [] });
   });

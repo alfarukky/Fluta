@@ -11,7 +11,7 @@ import {
 const NOW = new Date("2026-10-05T10:00:00Z");
 
 function lookupFor(
-  role: "OWNER" | "STAFF",
+  role: "OWNER" | "STAFF" | "RIDER",
   storeStatus: "ACTIVE" | "PAUSED" | "DEACTIVATED" = "ACTIVE",
   cancelledAt: Date | null = null,
 ): StoreMembershipLookup {
@@ -54,6 +54,31 @@ describe("checkStoreMember", () => {
       reason: "ROLE_NOT_PERMITTED",
     });
     expect(checkStoreMember(lookupFor("OWNER"), { role: "OWNER" }, NOW)).toMatchObject({ allowed: true });
+  });
+
+  it("refuses riders by default and for any role requirement", () => {
+    const rider = lookupFor("RIDER");
+    const refused = { allowed: false, status: 403, reason: "ROLE_NOT_PERMITTED" };
+    expect(checkStoreMember(rider, {}, NOW)).toMatchObject(refused);
+    expect(checkStoreMember(rider, { role: "STAFF" }, NOW)).toMatchObject(refused);
+    expect(checkStoreMember(rider, { role: "OWNER" }, NOW)).toMatchObject(refused);
+    expect(checkOwnerCanEdit(rider, NOW)).toMatchObject(refused);
+  });
+
+  it("lets riders, owners, and staff in only where the caller opts in to riders", () => {
+    for (const role of ["RIDER", "STAFF", "OWNER"] as const) {
+      expect(checkStoreMember(lookupFor(role), { allowRider: true }, NOW)).toMatchObject({
+        allowed: true,
+        membership: { role },
+      });
+    }
+  });
+
+  it("still refuses an unavailable store to a rider who is let in", () => {
+    expect(checkStoreMember(lookupFor("RIDER", "DEACTIVATED"), { allowRider: true }, NOW)).toMatchObject({
+      allowed: false,
+      reason: "STORE_UNAVAILABLE",
+    });
   });
 
   it("turns a failed lookup into 401 or 403", () => {

@@ -40,14 +40,18 @@ export async function inviteStaff(formData: FormData): Promise<InvitationActionR
   const member = await requireOwnerCanEdit();
   if (!member.allowed) return { ok: false, message: ownerEditRefusalMessage(member, NOT_OWNER) };
 
-  const parsed = inviteStaffSchema.safeParse({ email: formData.get("email") ?? "" });
+  const parsed = inviteStaffSchema.safeParse({
+    email: formData.get("email") ?? "",
+    role: formData.get("role") ?? undefined,
+  });
   if (!parsed.success) {
-    const message = parsed.error.issues[0]?.message ?? "Enter a valid email address";
-    return { ok: false, message, fieldErrors: { email: message } };
+    const issue = parsed.error.issues[0];
+    const message = issue?.message ?? "Enter a valid email address";
+    return { ok: false, message, fieldErrors: { [issue?.path[0] === "role" ? "role" : "email"]: message } };
   }
 
   return run("inviting staff", async () => {
-    const result = await invite(inviter(member), parsed.data.email);
+    const result = await invite(inviter(member), parsed.data.email, parsed.data.role);
     if (!result.ok) {
       return result.code === "EMAIL_IN_USE"
         ? { ok: false, message: STAFF_MESSAGES.emailInUse, fieldErrors: { email: STAFF_MESSAGES.emailInUse } }

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 const LINKS = [
   { href: "/settings", label: "Store" },
-  { href: "/settings/staff", label: "Staff" },
+  { href: "/settings/staff", label: "Team" },
 ] as const;
 
 // Switches between the settings pages. Both are owner-only and check that

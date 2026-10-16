@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { logger } from "@/lib/logger";
 import { acceptInvitationSchema, INVITATION_MESSAGES } from "@/schemas/staff";
 import { getAuth } from "@/server/auth/auth";
-import { getSession, WORKSPACE_HOME_PATH } from "@/server/auth/session";
+import { getHomePath, getSession } from "@/server/auth/session";
 import type { AcceptInvitationResult } from "@/server/data/invitations";
 import { acceptAsExistingAccount, acceptAsNewUser } from "@/server/services/invitations";
 
@@ -65,7 +65,8 @@ export async function acceptInvitation(token: string, formData: FormData): Promi
     logFailure("signing in after accepting", error);
     return { ok: true, email: result.email, someoneElseSignedIn: false };
   }
-  redirect(WORKSPACE_HOME_PATH);
+  // Signed in now: to their home page (a rider's is Deliveries).
+  redirect(await getHomePath(result.userId));
 }
 
 // Existing account: "Join" adds the membership without signing in; the page

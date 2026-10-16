@@ -154,6 +154,25 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
           { amount: 650_000, source: "ONLINE", method: "PAYSTACK", atStep: 0, payerEmail: "funmi.ogunleye@example.com" },
         ],
       },
+      // Ready to deliver: washed and ironed, not yet sent out (Deliveries view).
+      {
+        customerPhone: TUNDE,
+        channel: "PHONE",
+        fulfilmentType: "PICKUP_DELIVERY",
+        area: LEKKI,
+        addressText: "27 Freedom Way, Lekki Phase 1, Lagos",
+        createdHoursAgo: 6 * 24 + 12,
+        payLater: true,
+        pickup: { requestedInDays: 1, window: ["10:00", "12:00"], status: "CONFIRMED" },
+        stages: ["PICKUP_SCHEDULED", "PICKED_UP", "RECEIVED_BY_STORE", "IN_PROGRESS", "READY"],
+        revisions: [
+          {
+            lines: [{ service: "Shirt", quantity: "4" }, { service: "Trousers", quantity: "2" }],
+            status: "APPROVED",
+            approvedBy: "STAFF",
+          },
+        ],
+      },
       // Refund owed: paid ₦6,100 by POS, then revised down to ₦4,600 and approved.
       {
         customerPhone: NGOZI,
@@ -269,7 +288,8 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
         addressText: "9 Orchid Lane, Lekki Phase 1, Lagos",
         createdHoursAgo: 26,
         payLater: true,
-        pickup: { requestedInDays: 2, window: ["10:00", "12:00"], status: "CONFIRMED" },
+        // Picked up today (or overdue just after midnight): on the Deliveries view.
+        pickup: { requestedInDays: 1, window: ["10:00", "12:00"], status: "CONFIRMED" },
         stages: ["BOOKED", "PICKUP_SCHEDULED"],
         revisions: [
           {

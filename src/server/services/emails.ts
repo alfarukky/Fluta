@@ -2,7 +2,8 @@ import "server-only";
 
 import { logger } from "@/lib/logger";
 import { formatLongDate } from "@/lib/time";
-import { INVITATION_VALID_DAYS } from "@/schemas/staff";
+import type { StoreRole } from "@/generated/prisma/client";
+import { describeInvitedRole, INVITATION_VALID_DAYS } from "@/schemas/staff";
 import { getMailer, type EmailMessage } from "@/server/integrations/email";
 
 import { renderEmailHtml } from "./email-layout";
@@ -17,11 +18,12 @@ export function buildInvitationEmail(input: {
   to: string;
   storeName: string;
   inviterName: string;
+  role: StoreRole;
   url: string;
   expiresAt: Date;
   timeZone: string;
 }): EmailMessage {
-  const invited = `${input.inviterName} invited you to join ${input.storeName} on Fluta as staff.`;
+  const invited = `${input.inviterName} invited you to join ${input.storeName} on Fluta as ${describeInvitedRole(input.role)}.`;
   const expiry = `This link works once and expires in ${INVITATION_VALID_DAYS} days, on ${formatLongDate(input.expiresAt, input.timeZone)}.`;
   const ignore = "If you weren't expecting this email, you can ignore it.";
   return {
@@ -31,7 +33,12 @@ export function buildInvitationEmail(input: {
     html: renderEmailHtml({
       preview: invited,
       heading: input.storeName,
-      paragraphs: [invited, "Accept the invitation to set up your account and start working in the store's workspace."],
+      paragraphs: [
+        invited,
+        input.role === "RIDER"
+          ? "Accept the invitation to set up your account and see the store's pickups and deliveries."
+          : "Accept the invitation to set up your account and start working in the store's workspace.",
+      ],
       button: { label: "Accept invitation", url: input.url },
       smallPrint: [expiry, ignore],
       footer: `Sent by Fluta on behalf of ${input.storeName}.`,

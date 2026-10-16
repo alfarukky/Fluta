@@ -6,6 +6,7 @@ import { createUserWithPassword } from "@/server/data/users";
 export const SEED_USERS = {
   freshFoldOwner: { name: "Ada Okafor", email: "ada@freshfold.example" },
   freshFoldStaff: { name: "Kemi Adeyemi", email: "kemi@freshfold.example" },
+  freshFoldRider: { name: "Tayo Balogun", email: "tayo@freshfold.example" },
   cleanWaveOwner: { name: "Musa Bello", email: "musa@cleanwave.example" },
   // A Fluta admin has no store membership.
   flutaAdmin: { name: "Fluta Admin", email: "admin@fluta.example", platformRole: "FLUTA_ADMIN" },

@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { getNavItem, getNavItems, isNavItemActive, NAV_ITEMS, type NavHref } from "./nav-items";
+import { getNavItem, getNavItems, getWorkspaceHome, isNavItemActive, NAV_ITEMS, type NavHref } from "./nav-items";
 
 describe("getNavItems", () => {
   it("gives owners every workspace page", () => {
     expect(getNavItems("OWNER").map((item) => item.label)).toEqual([
       "Overview",
       "Orders",
+      "Deliveries",
       "Customers",
       "Payments",
       "Services",
@@ -17,7 +18,26 @@ describe("getNavItems", () => {
   });
 
   it("gives staff only the day-to-day pages", () => {
-    expect(getNavItems("STAFF").map((item) => item.label)).toEqual(["Overview", "Orders", "Customers", "Payments"]);
+    expect(getNavItems("STAFF").map((item) => item.label)).toEqual([
+      "Overview",
+      "Orders",
+      "Deliveries",
+      "Customers",
+      "Payments",
+    ]);
+  });
+
+  it("gives riders only Deliveries", () => {
+    expect(getNavItems("RIDER").map((item) => item.href)).toEqual(["/deliveries"]);
+  });
+});
+
+describe("getWorkspaceHome", () => {
+  it("is Deliveries for riders and Overview for everyone else", () => {
+    expect(getWorkspaceHome("RIDER")).toBe("/deliveries");
+    expect(getWorkspaceHome("STAFF")).toBe("/overview");
+    expect(getWorkspaceHome("OWNER")).toBe("/overview");
+    expect(getWorkspaceHome(null)).toBe("/overview");
   });
 });
 

@@ -135,7 +135,7 @@ export function StaffManagement({ rows: listed }: StaffManagementProps) {
   const inviteButton = (
     <Button onClick={openInvite}>
       <UserPlusIcon data-icon="inline-start" aria-hidden />
-      Invite staff
+      Invite
     </Button>
   );
   const hasStaff = countStaff(rows) > 0;
@@ -144,21 +144,21 @@ export function StaffManagement({ rows: listed }: StaffManagementProps) {
     <main className="page-container flex flex-1 flex-col gap-section py-section">
       <div className="flex flex-col gap-section">
         <PageHeader
-          title="Staff"
-          description="Invite staff, see who has access, and deactivate anyone who no longer works with you."
+          title="Team"
+          description="Invite staff and riders, see who has access, and deactivate anyone who no longer works with you."
           actions={hasStaff ? inviteButton : undefined}
         />
         <SettingsNav />
       </div>
 
-      <section aria-label="Staff list" className="flex flex-col gap-component">
+      <section aria-label="Team list" className="flex flex-col gap-component">
         <StaffTable rows={rows} busyIds={busyIds} onAction={handleAction} />
         <StaffCards rows={rows} busyIds={busyIds} onAction={handleAction} />
         {!hasStaff && (
           <EmptyState
             icon={UsersIcon}
-            title="No staff yet"
-            description="Invite the people who work at your store so they can take orders and update them."
+            title="No team members yet"
+            description="Invite the people who work at your store: staff take and update orders, riders handle pickups and deliveries."
             action={inviteButton}
           />
         )}

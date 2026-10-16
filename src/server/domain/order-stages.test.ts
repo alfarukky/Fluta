@@ -27,6 +27,7 @@ const STAGES: OrderStage[] = [
 const OPEN_STAGES = STAGES.filter((stage) => stage !== "COMPLETED" && stage !== "CANCELLED");
 const FULFILMENT_TYPES: FulfilmentType[] = ["DROP_OFF", "PICKUP_DELIVERY"];
 const ROLES: StoreRole[] = ["STAFF", "OWNER"];
+const ALL_ROLES: StoreRole[] = [...ROLES, "RIDER"];
 
 // Everything that could block a move is satisfied: an approved quote, nothing
 // awaiting approval, a note, a confirmed window, and an order that started at
@@ -64,6 +65,7 @@ const ALLOWED: Record<FulfilmentType, Record<StoreRole, string[]>> = {
       ...cancels,
     ],
     OWNER: [],
+    RIDER: [],
   },
   PICKUP_DELIVERY: {
     STAFF: [
@@ -83,6 +85,8 @@ const ALLOWED: Record<FulfilmentType, Record<StoreRole, string[]>> = {
       ...cancels,
     ],
     OWNER: [],
+    // The rider allowlist: these three moves and nothing else.
+    RIDER: ["PICKUP_SCHEDULED>PICKED_UP", "READY>OUT_FOR_DELIVERY", "OUT_FOR_DELIVERY>COMPLETED"],
   },
 };
 ALLOWED.DROP_OFF.OWNER = [...ALLOWED.DROP_OFF.STAFF, "COMPLETED>READY"];
@@ -90,7 +94,7 @@ ALLOWED.PICKUP_DELIVERY.OWNER = [...ALLOWED.PICKUP_DELIVERY.STAFF, "COMPLETED>OU
 
 describe("canTransition: every from and to stage", () => {
   for (const fulfilmentType of FULFILMENT_TYPES) {
-    for (const role of ROLES) {
+    for (const role of ALL_ROLES) {
       it(`${fulfilmentType}, ${role}`, () => {
         const allowed: string[] = [];
         for (const from of STAGES) {
@@ -104,6 +108,77 @@ describe("canTransition: every from and to stage", () => {
       });
     }
   }
+});
+
+describe("canTransition: riders", () => {
+  const rider = (overrides: Partial<TransitionContext> = {}) =>
+    context({ fulfilmentType: "PICKUP_DELIVERY", actor: "RIDER", ...overrides });
+
+  it("allows only the three delivery moves, with or without a note", () => {
+    const allowed: string[] = [];
+    for (const note of [null, "A note"]) {
+      for (const collectedByCustomer of [false, true]) {
+        for (const from of STAGES) {
+          for (const to of STAGES) {
+            if (canTransition(from, to, rider({ note, collectedByCustomer })).allowed) allowed.push(`${from}>${to}`);
+          }
+        }
+      }
+    }
+    expect([...new Set(allowed)].sort()).toEqual(
+      ["OUT_FOR_DELIVERY>COMPLETED", "PICKUP_SCHEDULED>PICKED_UP", "READY>OUT_FOR_DELIVERY"].sort(),
+    );
+  });
+
+  it("refuses step back, cancel, reopen, and Customer collected instead", () => {
+    for (const [from, to] of [
+      ["PICKED_UP", "PICKUP_SCHEDULED"],
+      ["OUT_FOR_DELIVERY", "READY"],
+      ["READY", "CANCELLED"],
+      ["COMPLETED", "OUT_FOR_DELIVERY"],
+    ] as const) {
+      expect(canTransition(from, to, rider())).toMatchObject({ allowed: false, code: "NOT_ALLOWED" });
+    }
+    expect(canTransition("READY", "COMPLETED", rider({ collectedByCustomer: true }))).toMatchObject({
+      allowed: false,
+      code: "NOT_ALLOWED",
+    });
+  });
+
+  it("refuses the delivery moves on drop-off orders", () => {
+    for (const [from, to] of [
+      ["PICKUP_SCHEDULED", "PICKED_UP"],
+      ["READY", "OUT_FOR_DELIVERY"],
+      ["OUT_FOR_DELIVERY", "COMPLETED"],
+    ] as const) {
+      expect(canTransition(from, to, rider({ fulfilmentType: "DROP_OFF" })).allowed).toBe(false);
+    }
+  });
+
+  it("can't complete a delivery while a price update waits for the customer", () => {
+    expect(canTransition("OUT_FOR_DELIVERY", "COMPLETED", rider({ hasRevisionAwaitingApproval: true }))).toEqual({
+      allowed: false,
+      code: "NOT_ALLOWED",
+      reason: "Waiting for the customer to approve the revised total.",
+    });
+  });
+
+  it("is offered no step back, cancel, reopen, or Customer collected instead", () => {
+    for (const stage of STAGES) {
+      const order: StageOrderState = {
+        stage,
+        fulfilmentType: "PICKUP_DELIVERY",
+        hasApprovedQuote: true,
+        hasRevisionAwaitingApproval: false,
+        startingStage: "BOOKED",
+        completedFromStage: stage === "COMPLETED" ? "OUT_FOR_DELIVERY" : null,
+        stageBeforeQuote: null,
+        pickupWindowConfirmed: true,
+      };
+      const { secondary } = getAvailableTransitions(order, "RIDER");
+      expect(secondary).toEqual([]);
+    }
+  });
 });
 
 describe("canTransition: notes", () => {

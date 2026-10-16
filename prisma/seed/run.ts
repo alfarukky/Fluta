@@ -14,6 +14,7 @@ export async function runSeed(prisma: PrismaClient, password: string, now = new 
   const freshFold = await seedStore(prisma, now, freshFoldSpec(now), {
     ownerUserId: users.freshFoldOwner,
     staffUserIds: [users.freshFoldStaff],
+    riderUserIds: [users.freshFoldRider],
   });
   const cleanWave = await seedStore(prisma, now, cleanWaveSpec(), {
     ownerUserId: users.cleanWaveOwner,

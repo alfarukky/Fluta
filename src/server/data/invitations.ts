@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type StoreRole } from "@/generated/prisma/client";
 import { normalizeEmail } from "@/lib/email-address";
+import type { InvitableRole } from "@/schemas/staff";
 
 import { STORE_ACCESS_SELECT } from "./access";
 import { getPrisma } from "./client";
@@ -33,6 +34,7 @@ export type CreateInvitationResult =
 export async function createStaffInvitation(
   storeId: string,
   email: string,
+  role: InvitableRole,
   token: NewInvitationToken,
   now: Date,
 ): Promise<CreateInvitationResult> {
@@ -52,7 +54,7 @@ export async function createStaffInvitation(
       data: { revokedAt: now },
     });
     const invitation = await tx.storeInvitation.create({
-      data: { storeId, email: normalized, role: "STAFF", ...token },
+      data: { storeId, email: normalized, role, ...token },
       select: { id: true },
     });
     return { ok: true, invitationId: invitation.id, email: normalized };
@@ -60,7 +62,7 @@ export async function createStaffInvitation(
 }
 
 export type ReplaceInvitationResult =
-  | { ok: true; invitationId: string; email: string }
+  | { ok: true; invitationId: string; email: string; role: StoreRole }
   | { ok: false; code: "NOT_FOUND" | "EMAIL_IN_USE" };
 
 // Resend: a new token for a pending or expired invitation of this store. The
@@ -91,7 +93,7 @@ export async function replaceStaffInvitation(
       data: { storeId, email: previous.email, role: previous.role, ...token },
       select: { id: true },
     });
-    return { ok: true, invitationId: invitation.id, email: previous.email };
+    return { ok: true, invitationId: invitation.id, email: previous.email, role: previous.role };
   }, TRANSACTION_OPTIONS);
 }
 
