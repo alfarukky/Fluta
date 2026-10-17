@@ -62,4 +62,6 @@ function stubValidEnv(): void {
   vi.stubEnv("RESEND_API_KEY", "re_test_placeholder");
   vi.stubEnv("EMAIL_FROM", "Fluta <mailer@example.com>");
   vi.stubEnv("BOOKING_IP_SECRET", "a-booking-ip-secret-of-at-least-32-characters");
+  vi.stubEnv("CRON_SECRET", "a-cron-secret-that-is-at-least-32-characters");
+  vi.stubEnv("FLUTA_ALERT_EMAIL", "alerts@example.com");
 }

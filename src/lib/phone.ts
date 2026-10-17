@@ -40,3 +40,9 @@ export function toPhoneSearchDigits(text: string): string | null {
   if (!digits) return null;
   return digits.startsWith("0") ? `234${digits.slice(1)}` : digits;
 }
+
+// Automatic SMS go only to Nigerian numbers (+234). Others get their link on
+// the booking confirmation, by email, or by WhatsApp from staff.
+export function isNigerianNumber(e164: string): boolean {
+  return /^\+234\d+$/.test(e164);
+}

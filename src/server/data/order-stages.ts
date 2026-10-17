@@ -3,6 +3,7 @@ import "server-only";
 import type { OrderStage, Prisma } from "@/generated/prisma/client";
 
 import { getPrisma } from "./client";
+import { queueOrderMessages, type MessageRequest, type QueuedMessages } from "./messages";
 import { ORDER_AUDIT_TARGET } from "./quotes";
 import { TRACKING_AUDIT_ACTIONS } from "./tracking";
 
@@ -42,17 +43,20 @@ export interface StageChange {
   // back to the customer's request (Requested, scheduled date and window
   // cleared, not outside the schedule), so staff confirm or suggest again.
   resetPickupTime: boolean;
+  // The customer's message for this move (Ready, On its way), if any.
+  messages: MessageRequest | null;
 }
 
 export type StageChangeOutcome<T> =
   | { status: "NOT_FOUND" }
   | { status: "REFUSED"; refusal: T }
   | { status: "CONFLICT" }
-  | { status: "CHANGED" };
+  | { status: "CHANGED"; queued: QueuedMessages | null };
 
 // In one transaction: reads the order as it is now, asks `decide` (the
 // caller's rules) for the change, moves the stage only if it is still
-// `change.from`, and writes the status event. If someone else moved the
+// `change.from`, writes the status event, and queues the change's customer
+// message. If someone else moved the
 // order first, the conditional update matches nothing and nothing is saved.
 export async function changeOrderStage<T>(
   storeId: string,
@@ -121,6 +125,7 @@ export async function changeOrderStage<T>(
         },
       });
     }
-    return { status: "CHANGED" };
+    const queued = change.messages ? await queueOrderMessages(tx, storeId, orderId, change.messages, now) : null;
+    return { status: "CHANGED", queued };
   }, TRANSACTION_OPTIONS);
 }

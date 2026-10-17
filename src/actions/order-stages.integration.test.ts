@@ -66,6 +66,8 @@ afterAll(async () => {
   await prisma.order.updateMany({ where, data: { approvedQuoteId: null } });
   await prisma.$transaction(
     [
+      prisma.auditEvent.deleteMany({ where }),
+      prisma.messageEvent.deleteMany({ where }),
       prisma.statusEvent.deleteMany({ where }),
       prisma.payment.deleteMany({ where }),
       prisma.quoteRevision.deleteMany({ where }),

@@ -15,6 +15,14 @@ const VALID = {
   RESEND_API_KEY: "re_test_placeholder",
   EMAIL_FROM: "Fluta <mailer@example.com>",
   BOOKING_IP_SECRET: "a-booking-ip-secret-of-at-least-32-characters",
+  CRON_SECRET: "a-cron-secret-that-is-at-least-32-characters",
+  FLUTA_ALERT_EMAIL: "alerts@example.com",
+};
+
+const TERMII = {
+  TERMII_API_KEY: "termii-test-key",
+  TERMII_SENDER_ID: "Fluta",
+  TERMII_BASE_URL: "https://api.example.termii.com",
 };
 
 describe("parseServerEnv", () => {
@@ -29,6 +37,28 @@ describe("parseServerEnv", () => {
     expect(() => parseServerEnv({ ...VALID, RESEND_API_KEY: "", EMAIL_FROM: "" })).toThrow(
       /RESEND_API_KEY: is required[\s\S]*EMAIL_FROM: is required/,
     );
+  });
+
+  it("requires a cron secret of at least 32 characters and the alert email", () => {
+    expect(() => parseServerEnv({ ...VALID, CRON_SECRET: "short", FLUTA_ALERT_EMAIL: "" })).toThrow(
+      /CRON_SECRET: must be at least 32 characters[\s\S]*FLUTA_ALERT_EMAIL/,
+    );
+  });
+
+  it("accepts Termii with all three values, or none outside production", () => {
+    expect(parseServerEnv({ ...VALID, ...TERMII })).toMatchObject(TERMII);
+    expect(parseServerEnv({ ...VALID, TERMII_API_KEY: "", TERMII_SENDER_ID: "", TERMII_BASE_URL: "" }).TERMII_API_KEY).toBeUndefined();
+  });
+
+  it("refuses part of Termii's settings, or none in production", () => {
+    expect(() => parseServerEnv({ ...VALID, TERMII_API_KEY: "key" })).toThrow(/set all three, or none/);
+    expect(() =>
+      parseServerEnv({ ...VALID, NODE_ENV: "production", BETTER_AUTH_URL: "https://fluta.example" }),
+    ).toThrow(/required in production/);
+  });
+
+  it("refuses a sender ID Termii won't take", () => {
+    expect(() => parseServerEnv({ ...VALID, ...TERMII, TERMII_SENDER_ID: "Fluta Laundry!" })).toThrow(/TERMII_SENDER_ID/);
   });
 
   it("accepts a complete environment", () => {
@@ -68,8 +98,9 @@ describe("parseServerEnv", () => {
 
 describe("parseServerEnv in production", () => {
   it("accepts an https:// auth URL", () => {
-    expect(parseServerEnv({ ...VALID, NODE_ENV: "production", BETTER_AUTH_URL: "https://app.fluta.ng" })).toEqual({
+    expect(parseServerEnv({ ...VALID, ...TERMII, NODE_ENV: "production", BETTER_AUTH_URL: "https://app.fluta.ng" })).toEqual({
       ...VALID,
+      ...TERMII,
       BETTER_AUTH_URL: "https://app.fluta.ng",
     });
   });

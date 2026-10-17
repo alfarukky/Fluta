@@ -123,6 +123,7 @@ enum MessageStatus {
   SENT // accepted by the provider; not proof of delivery
   FAILED
   OPENED // manual WhatsApp: staff opened the chat
+  REPLACED // a newer link was issued before it was sent; final, never sent
 }
 
 enum InvoiceStatus {
@@ -548,10 +549,12 @@ model MessageEvent {
   orderId           String
   channel           MessageChannel
   template          String // e.g. LINK_CREATED, QUOTE_NEEDS_APPROVAL, READY, OUT_FOR_DELIVERY
+  recipient         String // E.164 phone (SMS, WhatsApp) or normalized email, saved when queued
   providerMessageId String?
   status            MessageStatus  @default(QUEUED)
   body              String? // rendered message; cleared once SENT or finally FAILED (holds raw token)
-  attempts          Int            @default(0)
+  attempts          Int            @default(0) // claims so far; each claim uses one of 3 attempts
+  lastAttemptAt     DateTime? // set by each claim; SENDING older than 10 minutes may be claimed again
   lastError         String?
   sentAt            DateTime?
   createdByUserId   String?

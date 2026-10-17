@@ -37,6 +37,7 @@ export default defineConfig({
           include: INTEGRATION_TESTS,
           env: loadTestEnv(),
           globalSetup: ["./src/test/integration/global-setup.ts"],
+          setupFiles: ["./src/test/integration/setup.ts"],
           // Files share one database; run them one at a time.
           fileParallelism: false,
           testTimeout: 30_000,

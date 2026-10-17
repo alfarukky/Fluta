@@ -21,6 +21,7 @@ import type { OrderListQuery } from "@/types/orders";
 
 import { getPrisma } from "./client";
 import { upsertCustomerByPhone, type NewCustomerData } from "./customers";
+import { queueOrderMessages, type MessageRequest, type QueuedMessages } from "./messages";
 
 // A store's orders. storeId always comes from the caller's membership, never
 // from the request, and is part of every where clause: an order ID from
@@ -75,6 +76,8 @@ export interface NewOrderData {
     approved: boolean;
   };
   actor: { type: ActorType; userId: string | null };
+  // The order link message, queued with the order.
+  messages: MessageRequest | null;
   now: Date;
 }
 
@@ -82,11 +85,14 @@ export interface CreatedOrder {
   id: string;
   orderNumber: number;
   orderPrefix: string;
+  // Messages queued with a newly created order, to send after the commit.
+  queued?: QueuedMessages | null;
 }
 
 // Creates the order and everything that goes with it in one transaction:
 // the number from Store.nextOrderNumber, the customer (found or created by
-// phone), the order, its lines, version 1, and the first status event. If
+// phone), the order, its lines, version 1, the first status event, and the
+// queued order link message. If
 // anything fails, nothing is kept and no number is used up.
 //
 // Throws Prisma's unique-constraint error (P2002) when the store already has
@@ -232,7 +238,8 @@ async function createOrderRecords(tx: Prisma.TransactionClient, storeId: string,
       createdAt: data.now,
     },
   });
-  return { id, orderNumber, orderPrefix };
+  const queued = data.messages ? await queueOrderMessages(tx, storeId, id, data.messages, data.now) : null;
+  return { id, orderNumber, orderPrefix, queued };
 }
 
 // One UPDATE … RETURNING: the row lock serialises concurrent allocations, and
@@ -439,7 +446,7 @@ export async function findOrderDetail(storeId: string, orderId: string) {
       completedAt: true,
       cancelledAt: true,
       createdAt: true,
-      store: { select: { orderPrefix: true } },
+      store: { select: { orderPrefix: true, smsEnabled: true, whatsappContactEnabled: true } },
       customer: { select: { name: true, phone: true, email: true } },
       lines: {
         select: {
@@ -493,6 +500,11 @@ export async function findOrderDetail(storeId: string, orderId: string) {
       },
       statusEvents: {
         select: { id: true, fromStage: true, toStage: true, actorType: true, actorUserId: true, note: true, createdAt: true },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      },
+      // Never the body or recipient.
+      messageEvents: {
+        select: { id: true, channel: true, template: true, status: true, attempts: true, createdAt: true, sentAt: true },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       },
     },

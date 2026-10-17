@@ -115,6 +115,8 @@ afterAll(async () => {
   await prisma.order.updateMany({ where, data: { approvedQuoteId: null } });
   await prisma.$transaction(
     [
+      prisma.auditEvent.deleteMany({ where }),
+      prisma.messageEvent.deleteMany({ where }),
       prisma.statusEvent.deleteMany({ where }),
       prisma.quoteRevision.deleteMany({ where }),
       prisma.orderLine.deleteMany({ where }),
@@ -331,6 +333,7 @@ describe("creating an order", () => {
           },
         ],
         revision: { linesSnapshot: [], itemsSubtotal: 300_000, fulfilmentCharge: 0, total: 300_000, approved: true },
+        messages: null,
         actor: { type: "STAFF", userId: null },
         now: new Date(),
       }),

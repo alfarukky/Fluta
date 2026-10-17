@@ -4,6 +4,7 @@ import type { ActorType, OrderStage, Prisma } from "@/generated/prisma/client";
 
 import { getPrisma } from "./client";
 import { isUniqueViolation } from "./errors";
+import { queueOrderMessages, type MessageRequest, type QueuedMessages } from "./messages";
 import type { NewOrderLineData } from "./orders";
 
 // Quote revisions, decisions, and address changes. storeId always comes from
@@ -138,7 +139,7 @@ export type IssueOutcome<T> =
   | { status: "NOT_FOUND" }
   | { status: "REFUSED"; refusal: T }
   | { status: "CONFLICT" }
-  | { status: "ISSUED"; revisionId: string; version: number; stage: OrderStage };
+  | { status: "ISSUED"; revisionId: string; version: number; stage: OrderStage; queued: QueuedMessages | null };
 
 // In one transaction: reads the order as it is now, asks `decide` (the
 // caller's rules) for the revision, then saves it all or nothing:
@@ -146,11 +147,13 @@ export type IssueOutcome<T> =
 // - any pending revision superseded,
 // - the next version (the unique rule on order and version refuses a second
 //   one issued at the same moment),
-// - the working lines replaced, and the stage event if the stage moves.
+// - the working lines replaced, and the stage event if the stage moves,
+// - the price update message for the customer (`messages`).
 export async function issueRevision<T>(
   storeId: string,
   orderId: string,
   decide: (order: QuoteOrderRecord) => { ok: true; revision: NewRevision } | { ok: false; refusal: T },
+  messages: MessageRequest,
   now: Date,
 ): Promise<IssueOutcome<T>> {
   try {
@@ -206,7 +209,8 @@ export async function issueRevision<T>(
           },
         });
       }
-      return { status: "ISSUED" as const, revisionId: revision.id, version: plan.version, stage };
+      const queued = await queueOrderMessages(tx, storeId, orderId, messages, now);
+      return { status: "ISSUED" as const, revisionId: revision.id, version: plan.version, stage, queued };
     }, TRANSACTION_OPTIONS);
   } catch (error) {
     // Another revision took this version number first.

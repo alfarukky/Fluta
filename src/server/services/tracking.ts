@@ -39,7 +39,9 @@ import { decideQuoteRevision } from "./quotes";
 // token again, and the link's validity, on the server.
 
 export const TRACKING_MESSAGES = {
-  invalid: "This link isn't valid. Please check it, or contact the store.",
+  // An unknown link, or one replaced by a newer message: only the current
+  // token's hash is kept, so the two can't be told apart.
+  invalid: "This link may have been replaced by a newer message from the store. Please open the latest message, or call the store.",
   unavailable: "This order is no longer available.",
   expired: (storeName: string) => `This link has expired. Please contact ${storeName}.`,
   priceNotCurrent: "This price update is no longer current.",

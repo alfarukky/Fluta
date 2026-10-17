@@ -2,8 +2,15 @@ import "server-only";
 
 import { logger } from "@/lib/logger";
 import { createLogoKey, getLogoUrl } from "@/lib/logo-url";
-import type { StoreBranding, StoreProfile } from "@/schemas/store-settings";
-import { replaceStoreLogoKey, updateStoreBranding, updateStoreProfile } from "@/server/data/stores";
+import type { CommunicationSetting, StoreBranding, StoreProfile } from "@/schemas/store-settings";
+import {
+  findStoreCommunicationSettings,
+  replaceStoreLogoKey,
+  updateStoreBranding,
+  updateStoreCommunicationSetting,
+  updateStoreProfile,
+  type CommunicationSettings,
+} from "@/server/data/stores";
 import { checkLogoFile, type LogoFileError } from "@/server/domain/logo-file";
 import { getObjectStorage } from "@/server/integrations/r2";
 
@@ -16,6 +23,20 @@ export async function saveStoreProfile(storeId: string, profile: StoreProfile): 
 
 export async function saveStoreBranding(storeId: string, branding: StoreBranding): Promise<void> {
   await updateStoreBranding(storeId, branding);
+}
+
+export type { CommunicationSettings };
+
+export async function getCommunicationSettings(storeId: string): Promise<CommunicationSettings | null> {
+  return findStoreCommunicationSettings(storeId);
+}
+
+export async function saveCommunicationSetting(
+  storeId: string,
+  setting: CommunicationSetting,
+  enabled: boolean,
+): Promise<CommunicationSettings> {
+  return updateStoreCommunicationSetting(storeId, setting, enabled);
 }
 
 export type LogoUploadResult =

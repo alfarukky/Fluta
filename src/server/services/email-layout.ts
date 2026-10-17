@@ -10,7 +10,8 @@ export interface EmailLayout {
   preview: string;
   heading: string;
   paragraphs: string[];
-  button: { label: string; url: string };
+  // Optional: an order update with nothing to act on has no button.
+  button?: { label: string; url: string };
   smallPrint: string[];
   footer: string;
 }
@@ -36,7 +37,7 @@ export function escapeHtml(text: string): string {
 }
 
 export function renderEmailHtml({ preview, heading, paragraphs, button, smallPrint, footer }: EmailLayout): string {
-  const url = escapeHtml(button.url);
+  const url = button ? escapeHtml(button.url) : null;
   const paragraph = (text: string) =>
     `<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${COLORS.text};">${escapeHtml(text)}</p>`;
   const small = (text: string) =>
@@ -59,12 +60,20 @@ export function renderEmailHtml({ preview, heading, paragraphs, button, smallPri
 <tr><td style="background:${COLORS.card};border:1px solid ${COLORS.border};border-radius:12px;padding:32px 28px;">
 <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;font-weight:700;color:${COLORS.text};">${escapeHtml(heading)}</h1>
 ${paragraphs.map(paragraph).join("\n")}
-<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 24px;"><tr>
+${
+  button && url
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 24px;"><tr>
 <td style="border-radius:8px;background:${COLORS.brand};">
 <a href="${url}" style="display:inline-block;padding:13px 22px;font-size:15px;font-weight:600;color:${COLORS.brandText};text-decoration:none;border-radius:8px;">${escapeHtml(button.label)}</a>
-</td></tr></table>
+</td></tr></table>`
+    : ""
+}
 ${smallPrint.map(small).join("\n")}
-<p style="margin:16px 0 0;font-size:12px;line-height:1.5;color:${COLORS.muted};">If the button doesn't work, copy this link into your browser:<br><a href="${url}" style="color:${COLORS.brand};word-break:break-all;">${url}</a></p>
+${
+  url
+    ? `<p style="margin:16px 0 0;font-size:12px;line-height:1.5;color:${COLORS.muted};">If the button doesn't work, copy this link into your browser:<br><a href="${url}" style="color:${COLORS.brand};word-break:break-all;">${url}</a></p>`
+    : ""
+}
 </td></tr>
 <tr><td style="padding:16px 4px 0;font-size:12px;line-height:1.5;color:${COLORS.muted};">${escapeHtml(footer)}</td></tr>
 </table>

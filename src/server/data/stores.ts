@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { StoreBranding, StoreProfile } from "@/schemas/store-settings";
+import type { CommunicationSetting, StoreBranding, StoreProfile } from "@/schemas/store-settings";
 
 import { getPrisma } from "./client";
 
@@ -43,6 +43,24 @@ export async function updateStoreBranding(storeId: string, branding: StoreBrandi
     where: { id: storeId },
     data: { brandPrimaryColor: branding.primaryColor, brandAccentColor: branding.accentColor },
   });
+}
+
+// The owner's communication switches. Read when a message is queued, so a
+// change never affects messages already queued.
+const COMMUNICATION_SELECT = { smsEnabled: true, emailCopiesEnabled: true, whatsappContactEnabled: true } as const;
+
+export type CommunicationSettings = Record<CommunicationSetting, boolean>;
+
+export async function findStoreCommunicationSettings(storeId: string): Promise<CommunicationSettings | null> {
+  return getPrisma().store.findUnique({ where: { id: storeId }, select: COMMUNICATION_SELECT });
+}
+
+export async function updateStoreCommunicationSetting(
+  storeId: string,
+  setting: CommunicationSetting,
+  enabled: boolean,
+): Promise<CommunicationSettings> {
+  return getPrisma().store.update({ where: { id: storeId }, data: { [setting]: enabled }, select: COMMUNICATION_SELECT });
 }
 
 // Sets (or clears) the logo key and returns the one it replaced, so the caller

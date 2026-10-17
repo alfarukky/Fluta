@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getBookingDateOptions, isBookablePickup, toBookingLineAmount } from "@/lib/booking";
+import { MESSAGE_TEMPLATES } from "@/lib/messages";
 import { formatNaira, lineTotalKobo } from "@/lib/money";
 import { formatOrderNumber } from "@/lib/orders";
 import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY, toDecimalString, type QuantityProblem } from "@/lib/quantity";
@@ -38,6 +39,8 @@ import {
   type PickupProblem,
 } from "@/server/domain/orders";
 import { isPickupAvailable } from "@/server/domain/pickup-schedule";
+
+import { customerMessages, sendAfterCommit } from "./notifications";
 
 // Creating an order, the one path for both staff-entered orders (counter,
 // phone, WhatsApp) and customers' online bookings. For staff, storeId and the
@@ -78,7 +81,9 @@ export async function createStaffOrder(
   if (!prepared.ok) return prepared;
 
   try {
-    return created(await insertOrder(actor.storeId, prepared.data));
+    const order = await insertOrder(actor.storeId, prepared.data);
+    await sendAfterCommit(order.queued);
+    return created(order);
   } catch (error) {
     // The same request again (a double tap, a retry): the database's unique
     // rule refused a second order, so return the first one.
@@ -130,6 +135,7 @@ export async function createOnlineOrder(
     const result = await insertOnlineOrder(actor.storeId, prepared.data);
     if (result.kind === "limitReached") return { ok: false, error: "BOOKING_LIMIT_REACHED", fieldErrors: {} };
     if (result.kind === "existing") return repeatedBooking(actor, input, result.order, now);
+    await sendAfterCommit(result.order.queued);
     return { ...created(result.order), trackingToken: prepared.trackingToken };
   } catch (error) {
     // The same request with a different phone number: the unique rule
@@ -226,6 +232,13 @@ async function prepareOnlineOrder(
       payLater: true,
       bookingIpHash: actor.ipHash,
       actor: { type: "CUSTOMER", userId: null },
+      // The same link the confirmation shows. Counted against the store's
+      // daily booking SMS cap.
+      messages: customerMessages({
+        template: MESSAGE_TEMPLATES.orderLink,
+        createdByUserId: null,
+        link: { token: trackingToken, stored: true },
+      }),
       now,
     }),
   };
@@ -305,13 +318,14 @@ async function prepareOrder(
     return fail("NEGATIVE_TOTAL", "adjustments", `Discounts can't make the total less than ₦0 (it would be ${formatNaira(total)}).`);
   }
 
+  // Sent to the customer in the order link message (never capped), and
+  // never shown to staff: they get a fresh one with "Get tracking link".
+  const trackingToken = generateToken();
   return {
     ok: true,
     data: assembleOrder({
       clientRequestId: input.clientRequestId,
-      // Staff share a link later with "Get tracking link", which issues a
-      // fresh token; this one is never shown.
-      trackingTokenHash: hashToken(generateToken()),
+      trackingTokenHash: hashToken(trackingToken),
       customer: customer.value,
       channel: input.channel,
       fulfilmentType: input.fulfilmentType,
@@ -322,6 +336,11 @@ async function prepareOrder(
       payLater: false,
       bookingIpHash: null,
       actor: { type: "STAFF", userId: actor.userId },
+      messages: customerMessages({
+        template: MESSAGE_TEMPLATES.orderLink,
+        createdByUserId: actor.userId,
+        link: { token: trackingToken, stored: true },
+      }),
       now,
     }),
   };
@@ -339,6 +358,7 @@ type OrderParts = Pick<
   | "payLater"
   | "bookingIpHash"
   | "actor"
+  | "messages"
   | "now"
 > & { lines: PricedLine[]; fulfilment: FulfilmentFields };
 

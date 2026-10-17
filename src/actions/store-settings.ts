@@ -4,10 +4,21 @@ import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/logger";
 import { formatPhone } from "@/lib/phone";
-import { storeBrandingSchema, storeProfileSchema } from "@/schemas/store-settings";
+import {
+  COMMUNICATION_SETTING_LABELS,
+  communicationSettingSchema,
+  storeBrandingSchema,
+  storeProfileSchema,
+} from "@/schemas/store-settings";
 import { ownerEditRefusalMessage } from "@/server/auth/access";
 import { requireOwnerCanEdit } from "@/server/auth/session";
-import { removeStoreLogo as removeLogo, saveStoreBranding as saveBranding, saveStoreProfile as saveProfile } from "@/server/services/store-settings";
+import {
+  removeStoreLogo as removeLogo,
+  saveCommunicationSetting,
+  saveStoreBranding as saveBranding,
+  saveStoreProfile as saveProfile,
+  type CommunicationSettings,
+} from "@/server/services/store-settings";
 
 // Owner-only settings actions. Each one checks the membership itself (every
 // action is its own request) and that the store may be edited
@@ -97,6 +108,29 @@ export async function removeStoreLogo(): Promise<SettingsActionResult> {
   }
   revalidatePath("/", "layout");
   return { ok: true, message: "Logo removed", values: undefined };
+}
+
+// One of SMS, Email copies, or WhatsApp button, switched on or off. Applies
+// to messages queued from now on: ones already queued are still sent.
+export async function setCommunicationSetting(
+  setting: unknown,
+  enabled: unknown,
+): Promise<SettingsActionResult<CommunicationSettings>> {
+  const member = await requireOwnerCanEdit();
+  if (!member.allowed) return { ok: false, message: ownerEditRefusalMessage(member, NOT_OWNER) };
+
+  const parsed = communicationSettingSchema.safeParse(setting);
+  if (!parsed.success || typeof enabled !== "boolean") return { ok: false, message: SAVE_FAILED };
+
+  try {
+    const values = await saveCommunicationSetting(member.store.id, parsed.data, enabled);
+    revalidatePath("/settings");
+    revalidatePath("/orders", "layout");
+    return { ok: true, message: `${COMMUNICATION_SETTING_LABELS[parsed.data]} turned ${enabled ? "on" : "off"}`, values };
+  } catch (error) {
+    logger.error("[store-settings] saving a communication setting failed:", describeError(error));
+    return { ok: false, message: SAVE_FAILED };
+  }
 }
 
 // Only the named fields, as strings (a missing field is ""; a file is left

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatPhone, maskPhone, normalizePhone, toPhoneSearchDigits } from "./phone";
+import { formatPhone, isNigerianNumber, maskPhone, normalizePhone, toPhoneSearchDigits } from "./phone";
 
 describe("normalizePhone", () => {
   it("reads a Nigerian number without a country code using the default country", () => {
@@ -77,5 +77,14 @@ describe("toPhoneSearchDigits", () => {
   it("is null when there are no digits", () => {
     expect(toPhoneSearchDigits("Adaeze")).toBeNull();
     expect(toPhoneSearchDigits("  ")).toBeNull();
+  });
+});
+
+describe("isNigerianNumber", () => {
+  it("is true only for +234 numbers", () => {
+    expect(isNigerianNumber("+2348031234567")).toBe(true);
+    expect(isNigerianNumber("+447700900123")).toBe(false);
+    expect(isNigerianNumber("+12345678901")).toBe(false);
+    expect(isNigerianNumber("2348031234567")).toBe(false);
   });
 });

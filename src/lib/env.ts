@@ -37,7 +37,31 @@ const serverEnvSchema = z.object({
   // hash isn't enough: every IP address can be guessed and hashed. Generate
   // with `openssl rand -base64 32`.
   BOOKING_IP_SECRET: z.string().min(32, "must be at least 32 characters"),
+  // Termii, for customer SMS. All three or none: without them, development
+  // marks messages as sent without sending them (production refuses to
+  // start, see parseServerEnv). Tests never set them. The base URL is the
+  // account's own, shown on Termii's dashboard. The sender ID is Fluta's one
+  // registered sender name.
+  TERMII_API_KEY: optionalText(),
+  TERMII_SENDER_ID: optionalText().pipe(
+    z.string().regex(/^[A-Za-z0-9]{3,11}$/, "must be 3 to 11 letters or digits").optional(),
+  ),
+  TERMII_BASE_URL: optionalText().pipe(z.url({ protocol: /^https$/, error: "must be an https URL" }).optional()),
+  // Protects /api/cron/messages: the host's scheduler sends it as a bearer
+  // token. Generate with `openssl rand -base64 32`.
+  CRON_SECRET: z.string().min(32, "must be at least 32 characters"),
+  // Where Fluta's own alerts go (a store nearing its daily booking SMS cap).
+  FLUTA_ALERT_EMAIL: z.email("must be an email address"),
 });
+
+// An unset or blank variable is undefined.
+function optionalText() {
+  return z
+    .string()
+    .trim()
+    .optional()
+    .transform((value) => value || undefined);
+}
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
@@ -45,7 +69,7 @@ let cachedEnv: ServerEnv | undefined;
 
 export function parseServerEnv(source: Record<string, string | undefined>): ServerEnv {
   const result = serverEnvSchema.safeParse(source);
-  const urlProblems = productionUrlProblems(source);
+  const urlProblems = [...productionUrlProblems(source), ...termiiProblems(source)];
   if (result.success && urlProblems.length === 0) return result.data;
 
   const problems = [
@@ -65,6 +89,28 @@ function productionUrlProblems(source: Record<string, string | undefined>): stri
   if (source.NODE_ENV !== "production" || url === undefined) return [];
   if (url.startsWith("https://") && !url.includes("localhost") && !url.includes("127.0.0.1")) return [];
   return ["  - BETTER_AUTH_URL: must be the public https:// address (not localhost or 127.0.0.1) in production"];
+}
+
+// Termii is all or nothing, and production always sends real SMS.
+function termiiProblems(source: Record<string, string | undefined>): string[] {
+  const names = ["TERMII_API_KEY", "TERMII_SENDER_ID", "TERMII_BASE_URL"] as const;
+  const set = names.filter((name) => source[name]?.trim());
+  if (set.length === names.length) return [];
+  if (set.length === 0 && source.NODE_ENV !== "production") return [];
+  return [`  - ${names.join(", ")}: set all three${source.NODE_ENV === "production" ? " (required in production)" : ", or none"}`];
+}
+
+export interface TermiiConfig {
+  apiKey: string;
+  senderId: string;
+  baseUrl: string;
+}
+
+// Null when Termii isn't configured (development and tests).
+export function getTermiiConfig(): TermiiConfig | null {
+  const { TERMII_API_KEY, TERMII_SENDER_ID, TERMII_BASE_URL } = getServerEnv();
+  if (!TERMII_API_KEY || !TERMII_SENDER_ID || !TERMII_BASE_URL) return null;
+  return { apiKey: TERMII_API_KEY, senderId: TERMII_SENDER_ID, baseUrl: TERMII_BASE_URL };
 }
 
 // Validated lazily (and once) so modules that only need isDevelopment() don't

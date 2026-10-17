@@ -61,3 +61,14 @@ export const storeBrandingSchema = z.object({
 });
 
 export type StoreBranding = z.output<typeof storeBrandingSchema>;
+
+// The owner's communication switches (Settings).
+export const COMMUNICATION_SETTINGS = ["smsEnabled", "emailCopiesEnabled", "whatsappContactEnabled"] as const;
+export const communicationSettingSchema = z.enum(COMMUNICATION_SETTINGS);
+export type CommunicationSetting = z.infer<typeof communicationSettingSchema>;
+
+export const COMMUNICATION_SETTING_LABELS: Record<CommunicationSetting, string> = {
+  smsEnabled: "SMS",
+  emailCopiesEnabled: "Email copies",
+  whatsappContactEnabled: "WhatsApp button",
+};

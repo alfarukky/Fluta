@@ -11,6 +11,8 @@ import {
   type TransitionDenial,
 } from "@/server/domain/order-stages";
 
+import { sendAfterCommit, stageMessages } from "./notifications";
+
 // Moving an order between stages from the order detail page. storeId, the
 // user, and their role always come from the caller's membership (see
 // src/actions/order-stages.ts). Every move is checked again here, inside the
@@ -64,6 +66,7 @@ export async function changeStage(
         completedAt: to === "COMPLETED" ? "set" : from === "COMPLETED" ? "clear" : "keep",
         cancel: to === "CANCELLED",
         resetPickupTime: order.fulfilmentType === "PICKUP_DELIVERY" && from === "PICKUP_SCHEDULED" && to === "BOOKED",
+        messages: stageMessages(from, to, actor.userId),
       };
       return { ok: true, change };
     },
@@ -72,6 +75,7 @@ export async function changeStage(
 
   switch (outcome.status) {
     case "CHANGED":
+      await sendAfterCommit(outcome.queued);
       return { ok: true, from, to };
     case "NOT_FOUND":
       return { ok: false, error: "NOT_FOUND", message: ORDER_NOT_FOUND_MESSAGE };

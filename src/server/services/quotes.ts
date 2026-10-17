@@ -1,9 +1,11 @@
 import "server-only";
 
 import type { ActorType } from "@/generated/prisma/client";
+import { MESSAGE_TEMPLATES } from "@/lib/messages";
 import { formatOrderNumber, isAwaitingApproval } from "@/lib/orders";
 import { fromDecimalString, toDecimalString } from "@/lib/quantity";
 import { canReviseQuote, findPendingRevision, isRevisionReasonRequired } from "@/lib/quotes";
+import { generateToken } from "@/lib/tokens";
 import type { EditAddressInput, IssueRevisionInput, RecordDecisionInput } from "@/schemas/quotes";
 import { findActiveServiceArea, listActiveServiceAreas } from "@/server/data/fulfilment";
 import type { NewOrderLineData } from "@/server/data/orders";
@@ -31,6 +33,8 @@ import {
   type ExistingOrderLine,
 } from "@/server/domain/quotes";
 import type { OrderEntryArea, OrderEntryService, QuoteEditorData } from "@/types/orders";
+
+import { customerMessages, sendAfterCommit } from "./notifications";
 
 // Quotes and revisions: issuing a revision, approving or declining one, and
 // editing a pickup order's address. storeId and the user always come from the
@@ -158,11 +162,18 @@ export async function issueQuoteRevision(actor: QuoteActor, input: IssueRevision
     actor.storeId,
     input.orderId,
     (order) => planRevision(order, input, catalogue, chosenArea, actor.userId),
+    // A fresh link: the customer approves the new price there.
+    customerMessages({
+      template: MESSAGE_TEMPLATES.priceUpdate,
+      createdByUserId: actor.userId,
+      link: { token: generateToken(), stored: false },
+    }),
     now,
   );
 
   switch (outcome.status) {
     case "ISSUED":
+      await sendAfterCommit(outcome.queued);
       return {
         ok: true,
         version: outcome.version,

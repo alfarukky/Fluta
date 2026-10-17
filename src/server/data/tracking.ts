@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { Prisma } from "@/generated/prisma/client";
+import { LINK_TEMPLATES } from "@/lib/messages";
 
 import { getPrisma } from "./client";
 import { ORDER_AUDIT_TARGET } from "./quotes";
@@ -114,10 +115,9 @@ export type LinkOrderRecord = Prisma.OrderGetPayload<{ select: typeof LINK_ORDER
 
 export type ReissueOutcome<T> = { status: "NOT_FOUND" } | { status: "REFUSED"; refusal: T } | { status: "ISSUED" };
 
-// Replaces the order's token hash in one update, so the old link stops
-// working at once, and records who did it in an AuditEvent (never the token
-// or its hash). Two at the same moment both succeed in turn: only the last
-// stored link works.
+// Replaces the order's token hash (storeNewTrackingToken), so the old link
+// stops working at once and unsent messages holding it are replaced. Two at
+// the same moment both succeed in turn: only the last stored link works.
 export async function reissueTrackingToken<T>(
   storeId: string,
   orderId: string,
@@ -145,21 +145,7 @@ export async function reissueTrackingToken<T>(
     const refusal = decide(record);
     if (refusal !== null) return { status: "REFUSED", refusal };
 
-    await tx.order.update({
-      where: { storeId_id: { storeId, id: orderId } },
-      data: { trackingTokenHash: tokenHash, trackingTokenIssuedAt: now },
-    });
-    await tx.auditEvent.create({
-      data: {
-        storeId,
-        actorType: "STAFF",
-        actorUserId,
-        action: TRACKING_AUDIT_ACTIONS.linkIssued,
-        targetType: ORDER_AUDIT_TARGET,
-        targetId: orderId,
-        createdAt: now,
-      },
-    });
+    await storeNewTrackingToken(tx, storeId, orderId, tokenHash, actorUserId, now);
     return { status: "ISSUED" };
   }, TRANSACTION_OPTIONS);
 }
@@ -173,9 +159,70 @@ export async function replaceBookingTrackingToken(
   tokenHash: string,
   now: Date,
 ): Promise<boolean> {
-  const { count } = await getPrisma().order.updateMany({
-    where: { storeId, clientRequestId, channel: "ONLINE" },
+  return getPrisma().$transaction(async (tx) => {
+    const { count } = await tx.order.updateMany({
+      where: { storeId, clientRequestId, channel: "ONLINE" },
+      data: { trackingTokenHash: tokenHash, trackingTokenIssuedAt: now },
+    });
+    if (count > 0) await replaceUnsentLinkMessages(tx, storeId, { clientRequestId });
+    return count > 0;
+  }, TRANSACTION_OPTIONS);
+}
+
+// Whether a new link would work: the order as the link rules need it, or
+// null for an order that isn't this store's.
+export async function findLinkOrder(storeId: string, orderId: string): Promise<LinkOrderRecord | null> {
+  return getPrisma().order.findUnique({ where: { storeId_id: { storeId, id: orderId } }, select: LINK_ORDER_SELECT });
+}
+
+// A new link for the order: the old one stops working at once, and unsent
+// messages holding it are replaced. A staff member's new link is recorded
+// as an AuditEvent (never the token or its hash).
+export async function storeNewTrackingToken(
+  tx: Prisma.TransactionClient,
+  storeId: string,
+  orderId: string,
+  tokenHash: string,
+  actorUserId: string | null,
+  now: Date,
+): Promise<void> {
+  await tx.order.update({
+    where: { storeId_id: { storeId, id: orderId } },
     data: { trackingTokenHash: tokenHash, trackingTokenIssuedAt: now },
   });
-  return count > 0;
+  await replaceUnsentLinkMessages(tx, storeId, { id: orderId });
+  if (actorUserId !== null) {
+    await tx.auditEvent.create({
+      data: {
+        storeId,
+        actorType: "STAFF",
+        actorUserId,
+        action: TRACKING_AUDIT_ACTIONS.linkIssued,
+        targetType: ORDER_AUDIT_TARGET,
+        targetId: orderId,
+        createdAt: now,
+      },
+    });
+  }
 }
+
+// The order's unsent SMS and email still holding an older link become
+// REPLACED, with their body cleared. Final: never sent or claimed again.
+export async function replaceUnsentLinkMessages(
+  tx: Prisma.TransactionClient,
+  storeId: string,
+  order: { id: string } | { clientRequestId: string },
+): Promise<void> {
+  await tx.messageEvent.updateMany({
+    where: {
+      storeId,
+      ...("id" in order ? { orderId: order.id } : { order: { clientRequestId: order.clientRequestId } }),
+      channel: { in: ["SMS", "EMAIL"] },
+      template: { in: [...LINK_TEMPLATES] },
+      status: { in: ["QUEUED", "SENDING", "FAILED"] },
+      body: { not: null },
+    },
+    data: { status: "REPLACED", body: null },
+  });
+}
+

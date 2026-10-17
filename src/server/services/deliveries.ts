@@ -8,6 +8,7 @@ import { buildDeliverySections } from "@/server/domain/deliveries";
 import { canTransition, getStageOrderState, RIDER_MOVES, toContext } from "@/server/domain/order-stages";
 import type { DeliveryMove, DeliverySections } from "@/types/deliveries";
 
+import { sendAfterCommit, stageMessages } from "./notifications";
 import { ORDER_CHANGED_MESSAGE, ORDER_NOT_FOUND_MESSAGE } from "./order-stages";
 
 // The Deliveries view (src/app/(staff)/(workspace)/deliveries) and its three
@@ -77,6 +78,7 @@ export async function moveDelivery(
           completedAt: to === "COMPLETED" ? "set" : "keep",
           cancel: false,
           resetPickupTime: false,
+          messages: stageMessages(from, to, actor.userId),
         },
       };
     },
@@ -85,6 +87,7 @@ export async function moveDelivery(
 
   switch (outcome.status) {
     case "CHANGED":
+      await sendAfterCommit(outcome.queued);
       return { ok: true };
     case "NOT_FOUND":
       return { ok: false, error: "NOT_FOUND", message: ORDER_NOT_FOUND_MESSAGE };

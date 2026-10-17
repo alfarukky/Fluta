@@ -24,6 +24,7 @@ import { getBalance, type Balance } from "@/server/domain/balance";
 import { getAvailableTransitions, getStageOrderState, type AvailableTransitions } from "@/server/domain/order-stages";
 import { buildOrderListQuery, ORDER_LIST_PAGE_SIZE } from "@/server/domain/order-list";
 import { getPickupTimeRefusal } from "@/server/services/pickup-times";
+import { canSendSmsTo } from "@/server/services/notifications";
 import { canIssueTrackingLink } from "@/server/services/tracking-links";
 import type { OrderListCursor, OrderListPage, OrderListRow } from "@/types/orders";
 
@@ -101,6 +102,10 @@ export interface OrderDetail {
   pickupTime: OrderPickupTimeState | null;
   // "Get tracking link" is offered only when the new link would work.
   canIssueTrackingLink: boolean;
+  // "Send link by SMS": a Nigerian number, with the store's SMS on.
+  canSendLinkBySms: boolean;
+  // The store's WhatsApp button setting.
+  whatsappEnabled: boolean;
 }
 
 export interface OrderPickupTimeState {
@@ -182,6 +187,8 @@ export async function getOrderDetail(
     },
     pickupTime: getPickupTimeState(order, pending !== null),
     canIssueTrackingLink: canIssueTrackingLink(order, now),
+    canSendLinkBySms: canSendSmsTo(order.customer.phone, order.store.smsEnabled),
+    whatsappEnabled: order.store.whatsappContactEnabled,
   };
 }
 

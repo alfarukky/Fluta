@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import { AccessDenied } from "@/components/auth/AccessDenied";
 import { BrandingForm } from "@/components/settings/BrandingForm";
+import { CommunicationSettingsCard } from "@/components/settings/CommunicationSettingsCard";
 import { CustomerBookingCard } from "@/components/settings/CustomerBookingCard";
 import { SettingsNav } from "@/components/settings/SettingsNav";
 import { StoreProfileForm } from "@/components/settings/StoreProfileForm";
@@ -14,6 +15,7 @@ import { getLogoUrl } from "@/lib/logo-url";
 import { formatPhone } from "@/lib/phone";
 import { requireStoreMember } from "@/server/auth/session";
 import { getStoreSettings } from "@/server/data/stores";
+import { getCommunicationSettings } from "@/server/services/store-settings";
 
 export const metadata: Metadata = { title: "Settings · Fluta" };
 
@@ -21,7 +23,10 @@ export default async function SettingsPage() {
   const member = await requireStoreMember({ role: "OWNER" });
   if (!member.allowed) return <AccessDenied reason={member.reason} />;
 
-  const settings = await getStoreSettings(member.store.id);
+  const [settings, communication] = await Promise.all([
+    getStoreSettings(member.store.id),
+    getCommunicationSettings(member.store.id),
+  ]);
   const { bookingUrl, qrCodePng } = await getBookingShare(settings);
   const status = summarizeStoreStatus(member.store.status, member.access, member.membership.role);
 
@@ -56,6 +61,8 @@ export default async function SettingsPage() {
             }}
             initialLogoUrl={getLogoUrl(settings)}
           />
+
+          {communication && <CommunicationSettingsCard initialValues={communication} />}
         </div>
 
         <Card className="order-first lg:order-none">

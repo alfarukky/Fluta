@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { describeMessageStatus, getMessageTemplateLabel, isFinallyFailed, MESSAGE_CHANNEL_LABELS } from "@/lib/messages";
 import { formatNaira } from "@/lib/money";
 import {
   describeCustomerEstimate,
@@ -24,10 +25,12 @@ import { formatCalendarDate, formatDateTime, fromDateKey, toDateKey } from "@/li
 import type { OrderDetail as OrderDetailData } from "@/server/services/orders";
 import { cn } from "@/lib/utils";
 
+import { CustomerMessageActions } from "./CustomerMessageActions";
 import { PaymentBadge, StageBadge } from "./OrderBadges";
 import { OrderStageActions } from "./OrderStageActions";
 import { PickupTimeCard, type PickupTimeOptions } from "./PickupTimeCard";
 import { QuoteBanner } from "./QuoteBanner";
+import { SendAgainButton } from "./SendAgainButton";
 import { TrackingLinkButton } from "./TrackingLinkButton";
 
 type Order = OrderDetailData["order"];
@@ -130,7 +133,8 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
           <QuoteHistorySection order={order} timeZone={timeZone} />
         </div>
         <div className="flex min-w-0 flex-col gap-grid">
-          <CustomerSection order={order} canIssueTrackingLink={canChangeStage && detail.canIssueTrackingLink} />
+          <CustomerSection detail={detail} canChangeStage={canChangeStage} />
+          <MessagesSection order={order} canSendAgain={canChangeStage} timeZone={timeZone} />
           <FulfilmentSection order={order} />
           <InternalNoteSection note={order.internalNote} />
           <TimelineSection detail={detail} timeZone={timeZone} />
@@ -258,8 +262,10 @@ function OrderSummarySection({ order, proposed }: { order: Order; proposed: Revi
   );
 }
 
-function CustomerSection({ order, canIssueTrackingLink }: { order: Order; canIssueTrackingLink: boolean }) {
+function CustomerSection({ detail, canChangeStage }: { detail: OrderDetailData; canChangeStage: boolean }) {
+  const { order } = detail;
   const { name, phone, email } = order.customer;
+  const canIssueTrackingLink = canChangeStage && detail.canIssueTrackingLink;
   return (
     <Section title="Customer">
       <Detail label="Name" value={name} />
@@ -278,6 +284,52 @@ function CustomerSection({ order, canIssueTrackingLink }: { order: Order; canIss
           <TrackingLinkButton orderId={order.id} />
           <p className="type-caption text-muted-foreground">The customer follows the order, approves prices, and accepts pickup times there.</p>
         </div>
+      )}
+      {canChangeStage && (
+        <CustomerMessageActions
+          orderId={order.id}
+          canIssueLink={detail.canIssueTrackingLink}
+          canSendLinkBySms={detail.canSendLinkBySms}
+          whatsappEnabled={detail.whatsappEnabled}
+        />
+      )}
+    </Section>
+  );
+}
+
+// Every message to the customer, newest first, by its own channel's words.
+// SENT means the provider accepted it, never that it arrived.
+function MessagesSection({ order, canSendAgain, timeZone }: { order: Order; canSendAgain: boolean; timeZone: string }) {
+  const messages = order.messageEvents;
+  return (
+    <Section title="Messages">
+      {messages.length === 0 ? (
+        <p className="type-body-sm text-muted-foreground">No messages to the customer yet.</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {messages.map((message) => {
+            const status = describeMessageStatus(message);
+            const label = `${getMessageTemplateLabel(message.template)} · ${MESSAGE_CHANNEL_LABELS[message.channel]}`;
+            return (
+              <li key={message.id} className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="type-body-sm break-words text-foreground">{label}</span>
+                    <span className="type-caption text-muted-foreground">
+                      {formatDateTime(message.sentAt ?? message.createdAt, timeZone)}
+                    </span>
+                  </div>
+                  <Badge variant={status.tone}>{status.label}</Badge>
+                </div>
+                {canSendAgain && message.channel !== "WHATSAPP_MANUAL" && isFinallyFailed(message) && (
+                  <div>
+                    <SendAgainButton orderId={order.id} messageId={message.id} label={label} />
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       )}
     </Section>
   );

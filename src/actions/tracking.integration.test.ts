@@ -67,6 +67,11 @@ beforeAll(async () => {
       activeDays: [0, 1, 2, 3, 4, 5, 6],
       openTime: "08:00",
       closeTime: "18:00",
+      // No customer messages: a price update message would issue a fresh
+      // link, and these tests follow each order's first one. Messages and
+      // their links are tested in notifications.integration.test.ts.
+      smsEnabled: false,
+      emailCopiesEnabled: false,
       subscription: { create: { planName: "Test", priceAmount: 0 } },
       customers: { create: { name: "Tracking Test Customer", phone: CUSTOMER_PHONE } },
     },
@@ -109,6 +114,7 @@ afterAll(async () => {
   await prisma.$transaction(
     [
       prisma.auditEvent.deleteMany({ where }),
+      prisma.messageEvent.deleteMany({ where }),
       prisma.statusEvent.deleteMany({ where }),
       prisma.payment.deleteMany({ where }),
       prisma.quoteRevision.deleteMany({ where }),

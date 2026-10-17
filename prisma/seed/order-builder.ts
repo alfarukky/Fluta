@@ -309,9 +309,11 @@ async function createHistory(
         orderId,
         channel: MessageChannel.SMS,
         template,
+        recipient: spec.customerPhone,
         // Bodies hold the raw tracking token, so they're cleared once SENT or finally FAILED.
         status: failed ? MessageStatus.FAILED : MessageStatus.SENT,
         attempts: failed ? 3 : 1,
+        lastAttemptAt: hoursAfter(times[index], failed ? 0.5 : 1 / 60),
         lastError: failed ? "Provider request timed out" : null,
         sentAt: failed ? null : hoursAfter(times[index], 1 / 60),
         createdByUserId: actorUserIdFor(stageActor(spec, index), ctx),
