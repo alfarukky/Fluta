@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import type { OrderEntryArea, OrderEntryService } from "@/types/orders";
 
-import { addService, emptyDraft, OUT_OF_AREA, reviewDraft, toCreateOrderRequest, type OrderDraft } from "./order-draft";
+import {
+  addService,
+  chooseArea,
+  emptyDraft,
+  OUT_OF_AREA,
+  reviewDraft,
+  toCreateOrderRequest,
+  type OrderDraft,
+} from "./order-draft";
 
 const shirt: OrderEntryService = { id: "shirt", name: "Shirt", category: "Ironing", pricingType: "PER_ITEM", price: 80_000, requiresQuote: false };
 const wash: OrderEntryService = { id: "wash", name: "Wash & fold", category: "Washing", pricingType: "PER_KG", price: 150_000, requiresQuote: true };
@@ -15,6 +23,19 @@ const areas: OrderEntryArea[] = [
 function draft(change: Partial<OrderDraft> = {}): OrderDraft {
   return { ...emptyDraft("DROP_OFF"), ...change };
 }
+
+describe("chooseArea", () => {
+  it("pre-fills the default fee when moving to out of area, ₦0 included", () => {
+    expect(chooseArea({ areaChoice: "wuse" }, OUT_OF_AREA, 250_000)).toEqual({ areaChoice: OUT_OF_AREA, charge: "2,500" });
+    expect(chooseArea({ areaChoice: "" }, OUT_OF_AREA, 0)).toEqual({ areaChoice: OUT_OF_AREA, charge: "0" });
+  });
+
+  it("leaves the charge alone without a default fee, for a listed area, or when already out of area", () => {
+    expect(chooseArea({ areaChoice: "wuse" }, OUT_OF_AREA, null)).toEqual({ areaChoice: OUT_OF_AREA });
+    expect(chooseArea({ areaChoice: OUT_OF_AREA }, "wuse", 250_000)).toEqual({ areaChoice: "wuse" });
+    expect(chooseArea({ areaChoice: OUT_OF_AREA }, OUT_OF_AREA, 250_000)).toEqual({ areaChoice: OUT_OF_AREA });
+  });
+});
 
 describe("addService", () => {
   it("adds a new item line with a quantity of 1, and a weighed line empty", () => {

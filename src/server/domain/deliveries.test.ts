@@ -17,6 +17,8 @@ function order(overrides: Partial<DeliveryOrder> = {}): DeliveryOrder {
     addressText: "12 Admiralty Way, Lekki",
     serviceAreaName: "Lekki Phase 1",
     isOutOfArea: false,
+    pickupLatitude: null,
+    pickupLongitude: null,
     scheduledPickupDate: new Date(`${TODAY}T00:00:00Z`),
     scheduledWindowStart: "10:00",
     scheduledWindowEnd: "12:00",
@@ -27,6 +29,14 @@ function order(overrides: Partial<DeliveryOrder> = {}): DeliveryOrder {
 }
 
 describe("buildDeliverySections", () => {
+  it("gives each card the shared location as numbers, or none", () => {
+    const shared = order({ pickupLatitude: "6.428123", pickupLongitude: "3.421988" });
+    const none = order({ stage: "READY", scheduledPickupDate: null });
+    const sections = buildDeliverySections([shared, none], TODAY, STORE);
+    expect(sections.pickups[0].location).toEqual({ latitude: 6.428123, longitude: 3.421988 });
+    expect(sections.readyToDeliver[0].location).toBeNull();
+  });
+
   it("puts each stage in its section", () => {
     const pickup = order();
     const out = order({ stage: "OUT_FOR_DELIVERY", scheduledPickupDate: null });
@@ -80,6 +90,7 @@ describe("buildDeliverySections", () => {
       address: "12 Admiralty Way, Lekki",
       areaName: "Ajah",
       isOutOfArea: true,
+      location: null,
       stage: "PICKUP_SCHEDULED",
       scheduledDate: TODAY,
       windowStart: "10:00",
@@ -93,7 +104,7 @@ describe("buildDeliverySections", () => {
     const ready = order({ stage: "READY", orderNumber: 1043 });
     const [card] = buildDeliverySections([ready], TODAY, STORE).readyToDeliver;
     expect(Object.keys(card).sort()).toEqual(
-      ["address", "areaName", "customerName", "customerPhone", "isOutOfArea", "orderId", "orderNumber", "stage"].sort(),
+      ["address", "areaName", "customerName", "customerPhone", "isOutOfArea", "location", "orderId", "orderNumber", "stage"].sort(),
     );
   });
 });

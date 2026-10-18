@@ -37,3 +37,8 @@ export function StageBadge({ stage }: { stage: OrderStage }) {
 export function PaymentBadge({ state }: { state: PaymentState }) {
   return <Badge variant={PAYMENT_TONES[state]}>{PAYMENT_STATE_LABELS[state]}</Badge>;
 }
+
+// A pickup order outside the store's listed areas, so staff notice it at once.
+export function OutOfAreaBadge() {
+  return <Badge variant="warning">Outside our service areas</Badge>;
+}

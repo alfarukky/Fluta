@@ -14,6 +14,7 @@ import { getTrackingUrl } from "@/lib/tracking-link";
 import {
   claimMessage,
   clearOldBookingIpHashes,
+  clearOldPickupLocations,
   failStuckMessages,
   findDueMessages,
   findOrderMessage,
@@ -248,6 +249,7 @@ export interface MessageJobResult {
   failed: number;
   stuck: number;
   ipHashesCleared: number;
+  locationsCleared: number;
 }
 
 // Every 5 minutes (/api/cron/messages): ends messages stuck on their last
@@ -263,7 +265,8 @@ export async function runMessageJob(now: Date): Promise<MessageJobResult> {
     if (outcome === "FAILED") failed++;
   }
   const ipHashesCleared = await clearOldBookingIpHashes(now);
-  return { sent, failed, stuck, ipHashesCleared };
+  const locationsCleared = await clearOldPickupLocations(now);
+  return { sent, failed, stuck, ipHashesCleared, locationsCleared };
 }
 
 // ───────────── Staff actions on the order page ─────────────

@@ -40,6 +40,7 @@ export interface OrderListRow {
   paymentState: PaymentState;
   stage: OrderStage;
   fulfilmentType: FulfilmentType;
+  isOutOfArea: boolean;
   created: string;
   pickup: string | null; // pickup orders only
 }

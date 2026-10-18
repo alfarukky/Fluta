@@ -1,5 +1,5 @@
 import type { FulfilmentType, OrderStage } from "@/generated/prisma/enums";
-import { lineTotalKobo, parseNairaToKobo } from "@/lib/money";
+import { formatNairaInput, lineTotalKobo, parseNairaToKobo } from "@/lib/money";
 import { getOrderTotal, isOrderFullyPriced } from "@/lib/order-pricing";
 import { getInitialStage, type StaffChannel } from "@/lib/orders";
 import { getQuantityProblem, isWeighed, parseHundredths } from "@/lib/quantity";
@@ -10,6 +10,17 @@ import type { CustomerMatch, OrderEntryArea, OrderEntryService } from "@/types/o
 // is a preview only: the server recomputes every price from the catalogue.
 
 export const OUT_OF_AREA = "OUT_OF_AREA";
+
+// A new area choice. Moving to out of area pre-fills the store's default fee
+// (kobo, or null for none) as the charge, which staff can still change.
+export function chooseArea(
+  draft: Pick<OrderDraft, "areaChoice">,
+  areaChoice: string,
+  defaultFee: number | null,
+): Partial<Pick<OrderDraft, "areaChoice" | "charge">> {
+  const prefill = areaChoice === OUT_OF_AREA && draft.areaChoice !== OUT_OF_AREA && defaultFee !== null;
+  return prefill ? { areaChoice, charge: formatNairaInput(defaultFee) } : { areaChoice };
+}
 
 export interface ServiceLineDraft {
   key: string;

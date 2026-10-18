@@ -4,7 +4,12 @@ import { MapPinIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { disableServiceArea, enableServiceArea, type AreaActionResult } from "@/actions/fulfilment";
+import {
+  disableServiceArea,
+  enableServiceArea,
+  type AreaActionResult,
+  type DefaultFeeActionResult,
+} from "@/actions/fulfilment";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +17,7 @@ import type { FulfilmentArea } from "@/types/fulfilment";
 
 import { AreaCards, AreaTable } from "./AreaList";
 import { AreaSheet } from "./AreaSheet";
+import { DefaultFeeForm } from "./DefaultFeeForm";
 
 // How long the Undo button stays on a "disabled" toast.
 const UNDO_TOAST_MS = 8000;
@@ -21,10 +27,13 @@ type SavedArea = Extract<AreaActionResult, { ok: true }>;
 interface ServiceAreasSectionProps {
   // Sorted by name, with each saved copy shown at once (see FulfilmentSettings).
   areas: FulfilmentArea[];
+  // Kobo, or null for no default fee.
+  defaultDeliveryFee: number | null;
   onSaved: (result: SavedArea) => void;
+  onDefaultFeeSaved: (result: Extract<DefaultFeeActionResult, { ok: true }>) => void;
 }
 
-export function ServiceAreasSection({ areas, onSaved }: ServiceAreasSectionProps) {
+export function ServiceAreasSection({ areas, defaultDeliveryFee, onSaved, onDefaultFeeSaved }: ServiceAreasSectionProps) {
   const [sheet, setSheet] = useState<{ open: boolean; areaId: string | null; formKey: number }>({
     open: false,
     areaId: null,
@@ -32,7 +41,6 @@ export function ServiceAreasSection({ areas, onSaved }: ServiceAreasSectionProps
   });
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
   const editing = sheet.areaId ? (areas.find((area) => area.id === sheet.areaId) ?? null) : null;
-
 
   function openAdd() {
     setSheet((current) => ({ open: true, areaId: null, formKey: current.formKey + 1 }));
@@ -129,6 +137,7 @@ export function ServiceAreasSection({ areas, onSaved }: ServiceAreasSectionProps
             <AreaCards areas={areas} busyIds={busyIds} onEdit={openEdit} onToggleActive={toggleActive} />
           </>
         )}
+        <DefaultFeeForm defaultDeliveryFee={defaultDeliveryFee} onSaved={onDefaultFeeSaved} />
       </CardContent>
 
       <AreaSheet

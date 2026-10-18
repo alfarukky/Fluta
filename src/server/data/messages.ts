@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type FulfilmentType, type MessageChannel } from "@/generated/prisma/client";
 import { MAX_MESSAGE_ATTEMPTS, MESSAGE_TEMPLATES } from "@/lib/messages";
+import { TRACKING_LINK_DAYS } from "@/lib/tokens";
 import { IP_HASH_RETENTION_MS } from "@/server/domain/booking-limits";
 import { getCapDayStart, STUCK_SENDING_MS } from "@/server/domain/messages";
 
@@ -368,6 +369,26 @@ export async function clearOldBookingIpHashes(now: Date): Promise<number> {
   const { count } = await getPrisma().order.updateMany({
     where: { bookingIpHash: { not: null }, createdAt: { lt: new Date(now.getTime() - IP_HASH_RETENTION_MS) } },
     data: { bookingIpHash: null },
+  });
+  return count;
+}
+
+// A customer's shared location is kept only while the store may still need a
+// pickup or delivery: it is cleared from orders completed or cancelled more
+// than 30 days ago (the tracking link's lifetime), across all stores. The
+// typed address stays. Each stage is matched with its own date, so an order
+// reopened and closed again keeps its location for 30 days from that close.
+export async function clearOldPickupLocations(now: Date): Promise<number> {
+  const cutoff = new Date(now.getTime() - TRACKING_LINK_DAYS * 24 * 60 * 60 * 1000);
+  const { count } = await getPrisma().order.updateMany({
+    where: {
+      pickupLatitude: { not: null },
+      OR: [
+        { stage: "COMPLETED", completedAt: { lt: cutoff } },
+        { stage: "CANCELLED", cancelledAt: { lt: cutoff } },
+      ],
+    },
+    data: { pickupLatitude: null, pickupLongitude: null },
   });
   return count;
 }

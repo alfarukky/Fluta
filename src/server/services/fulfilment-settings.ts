@@ -1,7 +1,13 @@
 import "server-only";
 
 import { toMatchKey } from "@/lib/match-key";
-import type { ClosedDateInput, FulfilmentOption, ScheduleInput, ServiceAreaInput } from "@/schemas/fulfilment";
+import type {
+  ClosedDateInput,
+  DefaultDeliveryFeeInput,
+  FulfilmentOption,
+  ScheduleInput,
+  ServiceAreaInput,
+} from "@/schemas/fulfilment";
 import { isUniqueViolation } from "@/server/data/errors";
 import {
   countActiveServiceAreas,
@@ -13,8 +19,10 @@ import {
   insertServiceArea,
   setFulfilmentOption,
   setServiceAreaActive,
+  updateDefaultDeliveryFee,
   updateSchedule,
   updateServiceArea,
+  type FulfilmentDefaultFee,
   type FulfilmentOptions,
   type FulfilmentSchedule,
   type ServiceAreaData,
@@ -29,7 +37,7 @@ import type { FulfilmentClosedDate } from "@/types/fulfilment";
 // unique per store in the database, so two identical requests at once still
 // save one row; the loser gets the duplicate result.
 
-export type { FulfilmentOptions, FulfilmentSchedule };
+export type { FulfilmentDefaultFee, FulfilmentOptions, FulfilmentSchedule };
 
 // False (with the options unchanged) when turning off the last option on.
 export async function changeFulfilmentOption(
@@ -47,6 +55,12 @@ export async function isPickupDeliveryEnabled(storeId: string): Promise<boolean>
 
 export async function saveSchedule(storeId: string, schedule: ScheduleInput): Promise<FulfilmentSchedule> {
   return updateSchedule(storeId, schedule);
+}
+
+// Existing orders keep their own copy of the charge, so a change here only
+// affects bookings made after it.
+export async function saveDefaultDeliveryFee(storeId: string, input: DefaultDeliveryFeeInput): Promise<FulfilmentDefaultFee> {
+  return updateDefaultDeliveryFee(storeId, input.defaultDeliveryFee);
 }
 
 export type AreaSaveError = "DUPLICATE_NAME" | "DUPLICATE_DISABLED_NAME" | "NOT_FOUND";

@@ -1,4 +1,5 @@
 import type { OrderStage } from "@/generated/prisma/client";
+import { fromStoredCoordinates } from "@/lib/location";
 import { formatOrderNumber } from "@/lib/orders";
 import { toDateKey } from "@/lib/time";
 import type { DeliveryCard, DeliverySections, PickupCard } from "@/types/deliveries";
@@ -14,6 +15,8 @@ export interface DeliveryOrder {
   addressText: string | null;
   serviceAreaName: string | null;
   isOutOfArea: boolean;
+  pickupLatitude: { toString(): string } | null;
+  pickupLongitude: { toString(): string } | null;
   scheduledPickupDate: Date | null;
   scheduledWindowStart: string | null;
   scheduledWindowEnd: string | null;
@@ -37,6 +40,7 @@ export function buildDeliverySections(
       address: order.addressText,
       areaName: order.serviceAreaName,
       isOutOfArea: order.isOutOfArea,
+      location: fromStoredCoordinates(order.pickupLatitude, order.pickupLongitude),
     };
     if (order.stage === "PICKUP_SCHEDULED") {
       if (!order.scheduledPickupDate) continue;

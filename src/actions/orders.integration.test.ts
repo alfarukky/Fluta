@@ -314,6 +314,7 @@ describe("creating an order", () => {
         fulfilmentCharge: null,
         addressText: null,
         pickup: null,
+        pickupLocation: null,
         trackingTokenHash: randomUUID(),
         internalNote: null,
         customerNote: null,

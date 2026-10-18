@@ -42,12 +42,21 @@ export interface FulfilmentOptions {
   pickupDeliveryEnabled: boolean;
 }
 
+// Kobo, charged when a customer's area isn't in the list. Null means only
+// listed areas are accepted; 0 is a set fee ("Free").
+export interface FulfilmentDefaultFee {
+  defaultDeliveryFee: number | null;
+}
+
+export type FulfilmentRules = FulfilmentOptions & FulfilmentSchedule & FulfilmentDefaultFee;
+
 const OPTION_AND_SCHEDULE_FIELDS = {
   dropOffEnabled: true,
   pickupDeliveryEnabled: true,
   activeDays: true,
   openTime: true,
   closeTime: true,
+  defaultDeliveryFee: true,
 } as const;
 
 // Everything the fulfilment page shows. Areas are unordered (the page sorts
@@ -71,7 +80,7 @@ export async function getFulfilmentSettings(storeId: string, today: string) {
   return { ...settings, areas: serviceAreas, closedDates: closedDates.map(toClosedDateRecord) };
 }
 
-export async function getFulfilmentOptionsAndSchedule(storeId: string): Promise<FulfilmentOptions & FulfilmentSchedule> {
+export async function getFulfilmentOptionsAndSchedule(storeId: string): Promise<FulfilmentRules> {
   return getPrisma().store.findUniqueOrThrow({ where: { id: storeId }, select: OPTION_AND_SCHEDULE_FIELDS });
 }
 
@@ -99,6 +108,14 @@ export async function updateSchedule(storeId: string, schedule: FulfilmentSchedu
     where: { id: storeId },
     data: schedule,
     select: { activeDays: true, openTime: true, closeTime: true },
+  });
+}
+
+export async function updateDefaultDeliveryFee(storeId: string, defaultDeliveryFee: number | null): Promise<FulfilmentDefaultFee> {
+  return getPrisma().store.update({
+    where: { id: storeId },
+    data: { defaultDeliveryFee },
+    select: { defaultDeliveryFee: true },
   });
 }
 

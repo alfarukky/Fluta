@@ -10,6 +10,7 @@ import {
   type PickupWindowStatus,
   type PricingType,
 } from "@/generated/prisma/client";
+import type { Coordinates } from "@/lib/location";
 import { CLOSED_STAGES, type PaymentState } from "@/lib/orders";
 import {
   IP_BOOKING_WINDOW_MS,
@@ -59,6 +60,9 @@ export interface NewOrderData {
   fulfilmentCharge: number | null;
   addressText: string | null;
   pickup: { date: Date; windowStart: string; windowEnd: string; status: PickupWindowStatus } | null;
+  // Online pickups only: the customer's shared location, already checked and
+  // rounded (src/lib/location.ts). Only for "Open in Maps".
+  pickupLocation: Coordinates | null;
   trackingTokenHash: string;
   internalNote: string | null;
   // Online bookings only: the customer's "Anything else?" note. Never priced.
@@ -193,6 +197,8 @@ async function createOrderRecords(tx: Prisma.TransactionClient, storeId: string,
       fulfilmentCharge: data.fulfilmentCharge,
       addressText: data.addressText,
       ...pickupFields(data.pickup),
+      pickupLatitude: data.pickupLocation?.latitude.toFixed(6) ?? null,
+      pickupLongitude: data.pickupLocation?.longitude.toFixed(6) ?? null,
       payLater: data.payLater,
       trackingTokenHash: data.trackingTokenHash,
       trackingTokenIssuedAt: data.now,
@@ -298,6 +304,7 @@ const LIST_ROW_SELECT = {
   orderNumber: true,
   stage: true,
   fulfilmentType: true,
+  isOutOfArea: true,
   scheduledPickupDate: true,
   scheduledWindowStart: true,
   scheduledWindowEnd: true,
@@ -434,6 +441,8 @@ export async function findOrderDetail(storeId: string, orderId: string) {
       isOutsideSchedule: true,
       fulfilmentCharge: true,
       addressText: true,
+      pickupLatitude: true,
+      pickupLongitude: true,
       requestedPickupDate: true,
       requestedWindowStart: true,
       requestedWindowEnd: true,

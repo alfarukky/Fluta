@@ -5,8 +5,8 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { BookingOptions, BookingStep } from "@/types/booking";
 
-import type { BookingDraft, BookingReview } from "./booking-draft";
-import { describePickupCharge, describePickupTime, describeReviewLine, findArea, PriceSummary } from "./booking-summary";
+import { getChosenArea, type BookingDraft, type BookingReview } from "./booking-draft";
+import { describePickupCharge, describePickupTime, describeReviewLine, PriceSummary } from "./booking-summary";
 
 interface ReviewStepProps {
   draft: BookingDraft;
@@ -19,7 +19,7 @@ interface ReviewStepProps {
 // own prices (the server works it out again when the booking is sent).
 export function ReviewStep({ draft, options, review, onEdit }: ReviewStepProps) {
   const pickup = draft.fulfilmentType === "PICKUP_DELIVERY";
-  const area = findArea(draft, options);
+  const area = getChosenArea(draft, options);
   const note = draft.note.trim();
 
   return (
@@ -48,6 +48,7 @@ export function ReviewStep({ draft, options, review, onEdit }: ReviewStepProps) 
           <dl className="type-body-sm grid gap-1 text-foreground">
             <Detail term="Area">{area?.name}</Detail>
             <Detail term="Address">{draft.address.trim()}</Detail>
+            {draft.location && <Detail term="Location">Added to help find your address</Detail>}
             <Detail term="Preferred time">{describePickupTime(draft)}</Detail>
             <Detail term="Pickup & delivery">{describePickupCharge(review)}</Detail>
           </dl>

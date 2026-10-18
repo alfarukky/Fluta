@@ -30,4 +30,21 @@ describe("logger", () => {
     expect(written[2]).toMatchObject({ name: "TypeError", message: "bad /o/[token]" });
     expect(written[3]).toBe(42);
   });
+
+  it("never writes a location field, at any depth", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    logger.warn("booking", {
+      orderId: "o1",
+      pickup: { latitude: 6.428123, longitude: 3.421988 },
+      rows: [{ pickupLatitude: "6.428123", pickupLongitude: "3.421988" }],
+    });
+    const written = JSON.stringify(warn.mock.calls[0]);
+    expect(written).not.toContain("6.428123");
+    expect(written).not.toContain("3.421988");
+    expect(warn.mock.calls[0][1]).toEqual({
+      orderId: "o1",
+      pickup: { latitude: "[redacted]", longitude: "[redacted]" },
+      rows: [{ pickupLatitude: "[redacted]", pickupLongitude: "[redacted]" }],
+    });
+  });
 });

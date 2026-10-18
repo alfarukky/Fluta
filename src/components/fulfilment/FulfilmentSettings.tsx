@@ -17,6 +17,8 @@ interface FulfilmentSettingsProps {
   options: FulfilmentOptionValues;
   // From the server, refreshed after every save (the actions revalidate /fulfilment).
   areas: FulfilmentArea[];
+  // Kobo, or null for no default fee.
+  defaultDeliveryFee: number | null;
   schedule: ScheduleValues;
   closedDates: FulfilmentClosedDate[];
   // "YYYY-MM-DD" in the store's time zone.
@@ -30,6 +32,7 @@ export function FulfilmentSettings(props: FulfilmentSettingsProps) {
   const [options, setOptions] = useState(props.options);
   const [schedule, setSchedule] = useState(props.schedule);
   const [pickupAvailable, setPickupAvailable] = useState(props.pickupAvailable);
+  const [defaultDeliveryFee, setDefaultDeliveryFee] = useState(props.defaultDeliveryFee);
   const [savedAreas, setSavedAreas] = useState<SavedRecords<FulfilmentArea>>(new Map());
 
   // Each area action returns the saved area; show it at once instead of
@@ -37,8 +40,10 @@ export function FulfilmentSettings(props: FulfilmentSettingsProps) {
   const areas = useMemo(() => sortAreas(withSavedRecords(props.areas, savedAreas)), [props.areas, savedAreas]);
 
   // What the pickup warning lists; whether it shows is pickupAvailable's call.
+  // A default fee (₦0 included) serves customers whatever their area.
+  const servesAnArea = areas.some((area) => area.isActive) || defaultDeliveryFee !== null;
   const pickupMissing = [
-    ...(areas.some((area) => area.isActive) ? [] : ["add at least one active service area"]),
+    ...(servesAnArea ? [] : ["add at least one active service area, or set a default fee"]),
     ...(isValidSchedule(schedule) ? [] : ["set at least one active day and your pickup hours"]),
   ];
 
@@ -63,8 +68,13 @@ export function FulfilmentSettings(props: FulfilmentSettingsProps) {
 
         <ServiceAreasSection
           areas={areas}
+          defaultDeliveryFee={defaultDeliveryFee}
           onSaved={(result) => {
             setSavedAreas((current) => rememberSavedRecord(current, result.area, props.areas));
+            setPickupAvailable(result.pickupAvailable);
+          }}
+          onDefaultFeeSaved={(result) => {
+            setDefaultDeliveryFee(result.fee.defaultDeliveryFee);
             setPickupAvailable(result.pickupAvailable);
           }}
         />

@@ -1,9 +1,11 @@
 import type { FulfilmentType } from "@/generated/prisma/enums";
 import { getBookingPriceSummary, toBookingLineAmount, type BookingPriceSummary } from "@/lib/booking";
+import type { Coordinates } from "@/lib/location";
 import { lineTotalKobo } from "@/lib/money";
 import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY, parseHundredths } from "@/lib/quantity";
-import type { BookingRequest } from "@/schemas/booking";
+import { UNLISTED_AREA_ID, UNLISTED_AREA_NAME_MIN, type BookingRequest } from "@/schemas/booking";
 import { ADDRESS_MAX, CUSTOMER_NAME_MAX, CUSTOMER_NOTE_MAX } from "@/schemas/field-limits";
+import { AREA_NAME_MAX } from "@/schemas/fulfilment";
 import type { BookingOptions, BookingService, BookingStep } from "@/types/booking";
 
 // The booking form's answers, kept as typed so moving between steps never
@@ -15,8 +17,11 @@ export interface BookingDraft {
   lines: { serviceId: string; amount: string }[];
   note: string; // "Anything else?", optional
   fulfilmentType: FulfilmentType | null;
-  areaId: string;
+  areaId: string; // an area's ID, UNLISTED_AREA_ID, or ""
+  areaName: string; // typed for "My area isn't listed"
   address: string;
+  // Shared with "Use my current location", only to help find the address.
+  location: Coordinates | null;
   date: string; // "YYYY-MM-DD", or ""
   window: string; // "10:00-12:00", or ""
   name: string;
@@ -29,7 +34,9 @@ export const EMPTY_DRAFT: BookingDraft = {
   note: "",
   fulfilmentType: null,
   areaId: "",
+  areaName: "",
   address: "",
+  location: null,
   date: "",
   window: "",
   name: "",
@@ -62,7 +69,7 @@ export function getSteps(draft: Pick<BookingDraft, "fulfilmentType">): BookingSt
 export type DraftErrors = Record<string, string>;
 
 // Field keys: "service.{id}", "services", "note", "fulfilmentType", "areaId",
-// "address", "date", "window", "name", "phone", "email".
+// "areaName", "address", "date", "window", "name", "phone", "email".
 export function validateStep(step: BookingStep, draft: BookingDraft, options: BookingOptions): DraftErrors {
   switch (step) {
     case "services":
@@ -111,7 +118,14 @@ export function getAmountMessage(service: Pick<BookingService, "pricingType">, t
 
 function validatePickup(draft: BookingDraft, options: BookingOptions): DraftErrors {
   const errors: DraftErrors = {};
-  if (!options.areas.some((area) => area.id === draft.areaId)) errors.areaId = "Choose your area";
+  if (!getChosenArea(draft, options)) errors.areaId = "Choose your area";
+  if (draft.areaId === UNLISTED_AREA_ID && options.defaultFee !== null) {
+    const name = draft.areaName.trim();
+    if (!name) errors.areaName = "Enter your area";
+    else if (name.length < UNLISTED_AREA_NAME_MIN || name.length > AREA_NAME_MAX) {
+      errors.areaName = `Area name must be ${UNLISTED_AREA_NAME_MIN} to ${AREA_NAME_MAX} characters`;
+    }
+  }
   const address = draft.address.trim();
   if (!address) errors.address = "Enter your address";
   else if (address.length > ADDRESS_MAX) errors.address = `Address must be ${ADDRESS_MAX} characters or fewer`;
@@ -121,6 +135,24 @@ function validatePickup(draft: BookingDraft, options: BookingOptions): DraftErro
     errors.window = "Choose a pickup time";
   }
   return errors;
+}
+
+export interface ChosenArea {
+  name: string;
+  // Kobo, or null when the store will confirm it.
+  charge: number | null;
+}
+
+// The listed area chosen, or "My area isn't listed" (the typed name at the
+// store's default fee) when the store offers it. Null when nothing valid is
+// chosen.
+export function getChosenArea(draft: Pick<BookingDraft, "areaId" | "areaName">, options: BookingOptions): ChosenArea | null {
+  if (draft.areaId === UNLISTED_AREA_ID) {
+    return options.defaultFee === null ? null : { name: draft.areaName.trim(), charge: options.defaultFee };
+  }
+  const area = options.areas.find((candidate) => candidate.id === draft.areaId);
+  if (!area) return null;
+  return { name: area.name, charge: area.chargeType === "FIXED" ? area.fixedCharge : null };
 }
 
 export const SHORT_ADDRESS_MIN_LENGTH = 20;
@@ -162,7 +194,15 @@ export function toBookingRequest(draft: BookingDraft, clientRequestId: string): 
     fulfilmentType: draft.fulfilmentType ?? "DROP_OFF",
     pickup:
       pickup && window
-        ? { areaId: draft.areaId, address: draft.address, date: draft.date, windowStart: window.start, windowEnd: window.end }
+        ? {
+            areaId: draft.areaId,
+            ...(draft.areaId === UNLISTED_AREA_ID && { areaName: draft.areaName }),
+            ...(draft.location && { location: draft.location }),
+            address: draft.address,
+            date: draft.date,
+            windowStart: window.start,
+            windowEnd: window.end,
+          }
         : null,
     customer: { name: draft.name, phone: draft.phone, email: draft.email },
     customerNote: draft.note,
@@ -171,6 +211,7 @@ export function toBookingRequest(draft: BookingDraft, clientRequestId: string): 
 
 const PICKUP_FIELDS: Record<string, string> = {
   areaId: "areaId",
+  areaName: "areaName",
   address: "address",
   date: "date",
   window: "window",
@@ -225,8 +266,7 @@ export function reviewBooking(draft: BookingDraft, options: BookingOptions): Boo
     const amount = line.amount.trim() ? parseHundredths(line.amount) : null;
     return [{ service, amount, ...toBookingLineAmount(service, amount) }];
   });
-  const area = options.areas.find((candidate) => candidate.id === draft.areaId);
-  const pickupCharge = area && area.chargeType === "FIXED" ? area.fixedCharge : null;
+  const pickupCharge = getChosenArea(draft, options)?.charge ?? null;
   const summary = getBookingPriceSummary({
     fulfilmentType,
     lines: priced.map(({ service, quantity, estimate }) => ({ ...service, quantity, estimate })),

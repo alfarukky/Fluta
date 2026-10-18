@@ -276,6 +276,7 @@ model Store {
   dailyBookingSmsCap     Int         @default(100) // "your order link" SMS after online bookings
   emailCopiesEnabled     Boolean     @default(true)
   whatsappContactEnabled Boolean     @default(true)
+  defaultDeliveryFee     Int? // kobo; charged for areas not in the list. NULL = only listed areas, 0 = free (CHECK 0 to 100,000,000)
   createdAt              DateTime    @default(now())
   updatedAt              DateTime    @updatedAt
 
@@ -378,6 +379,11 @@ model Order {
   addressText       String? // used for BOTH pickup and delivery in the MVP
   isOutOfArea       Boolean @default(false)
   fulfilmentCharge  Int? // null = quote pending or not applicable
+  // The customer's shared location, only for "Open in Maps" (never used for the
+  // area, price, or address). Both set or both NULL (CHECK). Cleared by the
+  // cron job 30 days after the order is completed or cancelled.
+  pickupLatitude    Decimal? @db.Decimal(9, 6)
+  pickupLongitude   Decimal? @db.Decimal(9, 6)
 
   requestedPickupDate  DateTime?           @db.Date
   requestedWindowStart String? // "10:00"

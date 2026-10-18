@@ -2,11 +2,13 @@ import { z } from "zod";
 
 import { FulfilmentType } from "@/generated/prisma/enums";
 import { normalizeEmail } from "@/lib/email-address";
+import { parseCoordinates } from "@/lib/location";
 import { normalizePhone } from "@/lib/phone";
 import { parseClockTime } from "@/lib/pickup-schedule";
 import { parseDateKey } from "@/lib/time";
 
 import { ADDRESS_MAX, CUSTOMER_NAME_MAX, CUSTOMER_NOTE_MAX } from "./field-limits";
+import { AREA_NAME_MAX } from "./fulfilment";
 import {
   CUSTOMER_PHONE_COUNTRY,
   MAX_SERVICE_LINES,
@@ -29,17 +31,52 @@ const serviceLineSchema = z.object({
 
 const clockTime = z.string().refine((value) => parseClockTime(value) !== null, "Choose a pickup time");
 
-const pickupSchema = z.object({
-  areaId: recordId,
-  address: z
-    .string()
-    .trim()
-    .min(1, "Enter your address")
-    .max(ADDRESS_MAX, `Address must be ${ADDRESS_MAX} characters or fewer`),
-  date: z.string().refine((value) => parseDateKey(value) !== null, "Choose a pickup date"),
-  windowStart: clockTime,
-  windowEnd: clockTime,
-});
+// The area choice for "My area isn't listed" (only offered when the store has
+// a default fee). It can never be a real area's ID.
+export const UNLISTED_AREA_ID = "unlisted";
+export const UNLISTED_AREA_NAME_MIN = 2;
+
+// The customer's shared location: kept only when both values are finite
+// numbers in range (rounded to 6 decimal places). Anything else, or nothing,
+// is no location: it never blocks a booking.
+const locationSchema = z
+  .unknown()
+  .optional()
+  .transform((value) => {
+    if (typeof value !== "object" || value === null) return null;
+    return parseCoordinates(Reflect.get(value, "latitude"), Reflect.get(value, "longitude"));
+  });
+
+const pickupSchema = z
+  .object({
+    areaId: recordId,
+    // The customer's own area name, for an unlisted area only.
+    areaName: z
+      .string()
+      .trim()
+      .max(200)
+      .optional()
+      .transform((value) => value || null),
+    location: locationSchema,
+    address: z
+      .string()
+      .trim()
+      .min(1, "Enter your address")
+      .max(ADDRESS_MAX, `Address must be ${ADDRESS_MAX} characters or fewer`),
+    date: z.string().refine((value) => parseDateKey(value) !== null, "Choose a pickup date"),
+    windowStart: clockTime,
+    windowEnd: clockTime,
+  })
+  .superRefine((pickup, ctx) => {
+    if (pickup.areaId !== UNLISTED_AREA_ID) return;
+    const name = pickup.areaName ?? "";
+    if (name.length < UNLISTED_AREA_NAME_MIN || name.length > AREA_NAME_MAX) {
+      const message = name ? `Area name must be ${UNLISTED_AREA_NAME_MIN} to ${AREA_NAME_MAX} characters` : "Enter your area";
+      ctx.addIssue({ code: "custom", path: ["areaName"], message });
+    }
+  })
+  // A listed area's name comes from the store, whatever was typed.
+  .transform((pickup) => (pickup.areaId === UNLISTED_AREA_ID ? pickup : { ...pickup, areaName: null }));
 
 const contactSchema = z.object({
   name: z

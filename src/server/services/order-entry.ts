@@ -7,7 +7,7 @@ import { formatOrderNumber } from "@/lib/orders";
 import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY, toDecimalString, type QuantityProblem } from "@/lib/quantity";
 import { fromDateKey, getLocalDateKey, getMinutesInTimeZone } from "@/lib/time";
 import { generateToken, hashToken } from "@/lib/tokens";
-import type { BookingInput } from "@/schemas/booking";
+import { UNLISTED_AREA_ID, type BookingInput } from "@/schemas/booking";
 import type { CreateOrderInput, PickupInput } from "@/schemas/orders";
 import { findCustomer, findCustomerByPhone, searchCustomers, type CustomerRecord } from "@/server/data/customers";
 import { isUniqueViolation } from "@/server/data/errors";
@@ -177,7 +177,7 @@ async function loadOnlineContext(actor: OnlineBookingActor, input: BookingInput,
     getFulfilmentOptionsAndSchedule(actor.storeId),
     countActiveServiceAreas(actor.storeId),
     listActiveServices(actor.storeId),
-    input.pickup ? findActiveServiceArea(actor.storeId, input.pickup.areaId) : null,
+    input.pickup && input.pickup.areaId !== UNLISTED_AREA_ID ? findActiveServiceArea(actor.storeId, input.pickup.areaId) : null,
     input.pickup ? listClosedDateKeys(actor.storeId, today) : [],
   ]);
   return { settings, activeAreaCount, services, area, closedDates };
@@ -254,7 +254,8 @@ function resolveRequestedPickup(
   pickup: NonNullable<BookingInput["pickup"]>,
   now: Date,
 ): { ok: true; fields: FulfilmentFields } | Failure {
-  if (!area) return fail("AREA_UNAVAILABLE", "pickup.areaId", "This area isn't available any more. Choose another.");
+  const resolved = resolveBookingArea(settings, area, pickup);
+  if (!resolved.ok) return resolved;
 
   const options = getBookingDateOptions(
     { today: getLocalDateKey(now, actor.timeZone), minutes: getMinutesInTimeZone(now, actor.timeZone) },
@@ -265,6 +266,37 @@ function resolveRequestedPickup(
     return fail("PICKUP_NOT_AVAILABLE", "pickup.window", "That pickup time is no longer available. Please choose another.");
   }
 
+  return {
+    ok: true,
+    fields: {
+      ...resolved.fields,
+      isOutsideSchedule: false,
+      addressText: pickup.address,
+      pickup: { date: fromDateKey(pickup.date), windowStart: pickup.windowStart, windowEnd: pickup.windowEnd, status: "REQUESTED" },
+      // Only ever for "Open in Maps": never the area, the charge, or the address.
+      pickupLocation: pickup.location,
+    },
+  };
+}
+
+// A listed area (its fixed charge, or none yet when the store will confirm
+// it), or "My area isn't listed" at the store's current default fee. A fee
+// removed while the customer had the page open is caught here.
+function resolveBookingArea(
+  settings: OnlineContext["settings"],
+  area: OnlineContext["area"],
+  pickup: NonNullable<BookingInput["pickup"]>,
+): { ok: true; fields: Pick<FulfilmentFields, "serviceAreaId" | "serviceAreaName" | "isOutOfArea" | "fulfilmentCharge"> } | Failure {
+  if (pickup.areaId === UNLISTED_AREA_ID) {
+    if (settings.defaultDeliveryFee === null || pickup.areaName === null) {
+      return fail("AREA_UNAVAILABLE", "pickup.areaId", "This option isn't available any more. Choose your area.");
+    }
+    return {
+      ok: true,
+      fields: { serviceAreaId: null, serviceAreaName: pickup.areaName, isOutOfArea: true, fulfilmentCharge: settings.defaultDeliveryFee },
+    };
+  }
+  if (!area) return fail("AREA_UNAVAILABLE", "pickup.areaId", "This area isn't available any more. Choose another.");
   const fixed = area.chargeType === "FIXED" && area.fixedCharge !== null;
   return {
     ok: true,
@@ -272,11 +304,8 @@ function resolveRequestedPickup(
       serviceAreaId: area.id,
       serviceAreaName: area.name,
       isOutOfArea: false,
-      isOutsideSchedule: false,
       // A quote-required area's charge is left for staff to set (Feature 12).
       fulfilmentCharge: fixed ? area.fixedCharge : null,
-      addressText: pickup.address,
-      pickup: { date: fromDateKey(pickup.date), windowStart: pickup.windowStart, windowEnd: pickup.windowEnd, status: "REQUESTED" },
     },
   };
 }
@@ -539,6 +568,7 @@ type FulfilmentFields = Pick<
   | "fulfilmentCharge"
   | "addressText"
   | "pickup"
+  | "pickupLocation"
 >;
 
 const NO_PICKUP: FulfilmentFields = {
@@ -549,6 +579,7 @@ const NO_PICKUP: FulfilmentFields = {
   fulfilmentCharge: null,
   addressText: null,
   pickup: null,
+  pickupLocation: null,
 };
 
 const PICKUP_MESSAGES: Record<PickupProblem["reason"], string> = {
@@ -589,6 +620,8 @@ async function resolvePickup(
       isOutsideSchedule: pickup.outsideSchedule,
       addressText: pickup.address,
       pickup: { date: fromDateKey(pickup.date), windowStart: pickup.windowStart, windowEnd: pickup.windowEnd, status: "CONFIRMED" },
+      // Staff never capture a customer's location (Feature 15b).
+      pickupLocation: null,
     },
   };
 }

@@ -65,7 +65,7 @@ export function toPublicStore(record: PublicStoreFields): PublicStore {
 
 // What the customer can choose right now: active services, the options the
 // store has on (pickup only when isPickupAvailable and a date is left), the
-// active areas, and the dates and windows.
+// active areas and any default fee, and the dates and windows.
 async function loadBookingOptions(storeId: string, timeZone: string, now: Date): Promise<BookingOptions> {
   const today = getLocalDateKey(now, timeZone);
   const [services, areas, settings, closedDates] = await Promise.all([
@@ -79,7 +79,15 @@ async function loadBookingOptions(storeId: string, timeZone: string, now: Date):
     ? getBookingDateOptions({ today, minutes: getMinutesInTimeZone(now, timeZone) }, settings, new Set(closedDates))
     : [];
   const pickup = dates.length > 0;
-  return { today, services, dropOff: settings.dropOffEnabled, pickup, areas: pickup ? areas : [], dates };
+  return {
+    today,
+    services,
+    dropOff: settings.dropOffEnabled,
+    pickup,
+    areas: pickup ? areas : [],
+    defaultFee: pickup ? settings.defaultDeliveryFee : null,
+    dates,
+  };
 }
 
 function getAvailability(canAcceptNewOrders: boolean, options: BookingOptions): BookingAvailability {

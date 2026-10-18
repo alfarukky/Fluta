@@ -1,3 +1,5 @@
+import type { Coordinates } from "@/lib/location";
+
 // What the Deliveries view shows about an order, and nothing more: no prices,
 // totals, payments, revisions, notes, or history (riders use this view).
 
@@ -11,6 +13,8 @@ export interface DeliveryCard {
   address: string | null;
   areaName: string | null; // the order's copy of the area name
   isOutOfArea: boolean;
+  // The customer's shared location, for "Open in Maps" only.
+  location: Coordinates | null;
   stage: "PICKUP_SCHEDULED" | "READY" | "OUT_FOR_DELIVERY";
 }
 

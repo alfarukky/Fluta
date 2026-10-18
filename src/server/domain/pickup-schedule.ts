@@ -11,11 +11,19 @@ export interface PickupAvailabilityInput extends PickupSchedule {
   pickupDeliveryEnabled: boolean;
   // Active (not disabled) service areas.
   activeAreaCount: number;
+  // Kobo, for areas not in the list. Null means only listed areas; 0 is free.
+  defaultDeliveryFee: number | null;
 }
 
 // Whether customers can book a pickup: pickup & delivery is on, the store
-// covers at least one active area, and the schedule has at least one active
-// day with valid hours.
-export function isPickupAvailable({ pickupDeliveryEnabled, activeAreaCount, ...schedule }: PickupAvailabilityInput): boolean {
-  return pickupDeliveryEnabled && activeAreaCount > 0 && isValidSchedule(schedule);
+// covers at least one active area or has a default fee (any amount, ₦0
+// included), and the schedule has at least one active day with valid hours.
+export function isPickupAvailable({
+  pickupDeliveryEnabled,
+  activeAreaCount,
+  defaultDeliveryFee,
+  ...schedule
+}: PickupAvailabilityInput): boolean {
+  const servesAnArea = activeAreaCount > 0 || defaultDeliveryFee !== null;
+  return pickupDeliveryEnabled && servesAnArea && isValidSchedule(schedule);
 }

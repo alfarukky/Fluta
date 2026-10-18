@@ -43,6 +43,9 @@ export interface BookingOptions {
   dropOff: boolean;
   pickup: boolean;
   areas: BookingArea[];
+  // Kobo: offered as "My area isn't listed" when set (0 is free). Null means
+  // only the listed areas can book pickup.
+  defaultFee: number | null;
   dates: BookingDateOption[];
 }
 

@@ -31,7 +31,7 @@ const CHANGED_MESSAGE = "This order was just updated. Refresh to see the latest.
 const NOT_FOUND = { ok: false, code: "NOT_FOUND", message: "Order not found." };
 
 // Everything a card may carry; anything else would be a leak.
-const CARD_FIELDS = ["address", "areaName", "customerName", "customerPhone", "isOutOfArea", "orderId", "orderNumber", "stage"];
+const CARD_FIELDS = ["address", "areaName", "customerName", "customerPhone", "isOutOfArea", "location", "orderId", "orderNumber", "stage"];
 const PICKUP_CARD_FIELDS = [...CARD_FIELDS, "isOutsideSchedule", "isOverdue", "scheduledDate", "windowEnd", "windowStart"];
 
 const PICKUP_PATH: OrderStage[] = [
@@ -107,6 +107,8 @@ afterAll(async () => {
   ).map((user) => user.id);
   await prisma.session.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.account.deleteMany({ where: { userId: { in: userIds } } });
+  // Includes any left by an earlier run that stopped before its cleanup.
+  await prisma.membership.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.store.delete({ where: { id: store.id } });
   await prisma.$disconnect();

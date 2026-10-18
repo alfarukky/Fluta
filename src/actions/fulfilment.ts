@@ -6,6 +6,7 @@ import { logger } from "@/lib/logger";
 import { getLocalDateKey } from "@/lib/time";
 import {
   closedDateFormSchema,
+  defaultDeliveryFeeFormSchema,
   FULFILMENT_OPTION_LABELS,
   fulfilmentOptionSchema,
   recordIdSchema,
@@ -22,10 +23,12 @@ import {
   getPickupAvailability,
   isPickupDeliveryEnabled,
   removeClosedDate as deleteClosedDate,
+  saveDefaultDeliveryFee as saveStoreDefaultFee,
   saveSchedule as saveStoreSchedule,
   setAreaActive,
   type AreaSaveError,
   type AreaSaveResult,
+  type FulfilmentDefaultFee,
   type FulfilmentOptions,
   type FulfilmentSchedule,
 } from "@/server/services/fulfilment-settings";
@@ -46,6 +49,9 @@ export type OptionActionResult =
   | (Failure & { options?: FulfilmentOptions });
 export type ScheduleActionResult =
   | { ok: true; message: string; schedule: FulfilmentSchedule; pickupAvailable: boolean }
+  | Failure;
+export type DefaultFeeActionResult =
+  | { ok: true; message: string; fee: FulfilmentDefaultFee; pickupAvailable: boolean }
   | Failure;
 export type AreaActionResult = { ok: true; message: string; area: FulfilmentArea; pickupAvailable: boolean } | Failure;
 export type ClosedDateActionResult = { ok: true; message: string; closedDate: FulfilmentClosedDate } | Failure;
@@ -112,6 +118,28 @@ export async function saveSchedule(formData: FormData): Promise<ScheduleActionRe
     };
   } catch (error) {
     logger.error("[fulfilment] saving the schedule failed:", describeError(error));
+    return { ok: false, message: SAVE_FAILED };
+  }
+}
+
+export async function saveDefaultDeliveryFee(formData: FormData): Promise<DefaultFeeActionResult> {
+  const member = await requireOwnerCanEdit();
+  if (!member.allowed) return { ok: false, message: ownerEditRefusalMessage(member, NOT_OWNER) };
+
+  const parsed = defaultDeliveryFeeFormSchema.safeParse(pick(formData, ["defaultDeliveryFee"]));
+  if (!parsed.success) return invalid(parsed.error.issues);
+
+  try {
+    const fee = await saveStoreDefaultFee(member.store.id, parsed.data);
+    revalidatePath("/fulfilment");
+    return {
+      ok: true,
+      message: fee.defaultDeliveryFee === null ? "Default fee removed" : "Default fee saved",
+      fee,
+      pickupAvailable: await getPickupAvailability(member.store.id),
+    };
+  } catch (error) {
+    logger.error("[fulfilment] saving the default fee failed:", describeError(error));
     return { ok: false, message: SAVE_FAILED };
   }
 }

@@ -93,6 +93,7 @@ async function NewOrderContent({
         },
         closedDates: entry.closedDates,
         today: entry.today,
+        defaultDeliveryFee: settings.defaultDeliveryFee,
       }}
     />
   );

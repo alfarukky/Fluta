@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { UNLISTED_AREA_ID } from "@/schemas/booking";
 import type { BookingOptions } from "@/types/booking";
 
 import {
@@ -28,6 +29,7 @@ const OPTIONS: BookingOptions = {
     { id: "wuse", name: "Wuse 2", chargeType: "FIXED", fixedCharge: 150_000 },
     { id: "maitama", name: "Maitama", chargeType: "QUOTE_REQUIRED", fixedCharge: null },
   ],
+  defaultFee: null,
   dates: [{ date: "2099-06-15", windows: [{ start: "10:00", end: "12:00" }] }],
 };
 
@@ -84,6 +86,17 @@ describe("validateStep", () => {
     ).toEqual({ window: "Choose a pickup time" });
   });
 
+  it("offers My area isn't listed only with a default fee, and needs the area's name", () => {
+    const pickup = { areaId: UNLISTED_AREA_ID, address: "12 Test St", date: "2099-06-15", window: "10:00-12:00" };
+    expect(validateStep("pickup", draft(pickup), OPTIONS)).toEqual({ areaId: "Choose your area" });
+    const withFee = { ...OPTIONS, defaultFee: 0 };
+    expect(validateStep("pickup", draft(pickup), withFee)).toEqual({ areaName: "Enter your area" });
+    expect(validateStep("pickup", draft({ ...pickup, areaName: "K" }), withFee)).toEqual({
+      areaName: "Area name must be 2 to 60 characters",
+    });
+    expect(validateStep("pickup", draft({ ...pickup, areaName: " Kubwa " }), withFee)).toEqual({});
+  });
+
   it("allows an optional note of up to 300 characters", () => {
     const lines = [{ serviceId: "shirt", amount: "1" }];
     expect(validateStep("services", draft({ lines, note: "" }), OPTIONS)).toEqual({});
@@ -137,6 +150,23 @@ describe("toBookingRequest", () => {
 
   it("sends the note as typed (the server trims it and stores blank as none)", () => {
     expect(toBookingRequest(draft({ note: " 2 curtains, 1 rug " }), "id").customerNote).toBe(" 2 curtains, 1 rug ");
+  });
+
+  it("sends the typed area name only for an unlisted area, and a shared location", () => {
+    const base = { fulfilmentType: "PICKUP_DELIVERY" as const, address: "12 Test St", date: "2099-06-15", window: "10:00-12:00" };
+    const location = { latitude: 9.0765, longitude: 7.3986 };
+    expect(toBookingRequest(draft({ ...base, areaId: UNLISTED_AREA_ID, areaName: "Kubwa", location }), "id").pickup).toEqual({
+      areaId: UNLISTED_AREA_ID,
+      areaName: "Kubwa",
+      location,
+      address: "12 Test St",
+      date: "2099-06-15",
+      windowStart: "10:00",
+      windowEnd: "12:00",
+    });
+    const listed = toBookingRequest(draft({ ...base, areaId: "wuse", areaName: "Kubwa" }), "id").pickup;
+    expect(listed).not.toHaveProperty("areaName");
+    expect(listed).not.toHaveProperty("location");
   });
 
   it("sends no pickup details for a drop-off", () => {
@@ -228,6 +258,15 @@ describe("reviewBooking", () => {
       OPTIONS,
     );
     expect(review.summary).toEqual({ kind: "unknown" });
+  });
+
+  it("charges the default fee for an unlisted area, ₦0 included", () => {
+    const lines = [{ serviceId: "shirt", amount: "1" }];
+    const unlisted = draft({ lines, fulfilmentType: "PICKUP_DELIVERY", areaId: UNLISTED_AREA_ID, areaName: "Kubwa" });
+    expect(reviewBooking(unlisted, { ...OPTIONS, defaultFee: 200_000 }).pickupCharge).toBe(200_000);
+    const free = reviewBooking(unlisted, { ...OPTIONS, defaultFee: 0 });
+    expect(free.pickupCharge).toBe(0);
+    expect(free.summary).toEqual({ kind: "total", total: 80_000 });
   });
 
   it("gives no number when the store will confirm the pickup charge", () => {

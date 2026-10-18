@@ -17,6 +17,8 @@ export const DELIVERY_ORDER_SELECT = {
   addressText: true,
   serviceAreaName: true,
   isOutOfArea: true,
+  pickupLatitude: true,
+  pickupLongitude: true,
   scheduledPickupDate: true,
   scheduledWindowStart: true,
   scheduledWindowEnd: true,

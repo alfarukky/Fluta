@@ -69,6 +69,32 @@ export const serviceAreaFormSchema = z
 
 export type ServiceAreaInput = z.output<typeof serviceAreaFormSchema>;
 
+export const DEFAULT_FEE_HINT = "Charged when a customer's area isn't in your list. Leave empty to only accept listed areas.";
+
+// The default pickup & delivery fee, as sent. Empty means no default fee (only
+// listed areas). ₦0 is a set fee ("Free"), not the same as empty.
+export const defaultDeliveryFeeFormSchema = z.object({
+  defaultDeliveryFee: z
+    .string()
+    .max(40, CHARGE_FORMAT_MESSAGE)
+    .transform((value, ctx) => {
+      const text = value.trim();
+      if (text === "") return null;
+      const kobo = parseNairaToKobo(text);
+      if (kobo === null) {
+        ctx.addIssue({ code: "custom", message: CHARGE_FORMAT_MESSAGE });
+        return z.NEVER;
+      }
+      if (kobo > MAX_AREA_CHARGE) {
+        ctx.addIssue({ code: "custom", message: `Fee must be ${formatNaira(MAX_AREA_CHARGE)} or less` });
+        return z.NEVER;
+      }
+      return kobo;
+    }),
+});
+
+export type DefaultDeliveryFeeInput = z.output<typeof defaultDeliveryFeeFormSchema>;
+
 // An ID from the client (service area or closed date). It is only ever looked
 // up within the caller's own store.
 export const recordIdSchema = z.string().trim().min(1).max(64);

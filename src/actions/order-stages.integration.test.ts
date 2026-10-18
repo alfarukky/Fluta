@@ -83,6 +83,8 @@ afterAll(async () => {
   ).map((user) => user.id);
   await prisma.session.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.account.deleteMany({ where: { userId: { in: userIds } } });
+  // Includes any left by an earlier run that stopped before its cleanup.
+  await prisma.membership.deleteMany({ where: { userId: { in: userIds } } });
   await prisma.user.deleteMany({ where: { id: { in: userIds } } });
   await prisma.store.delete({ where: { id: storeId } });
   await prisma.$disconnect();

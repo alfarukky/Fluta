@@ -6,6 +6,8 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { markDelivered, markPickedUp, sendOutForDelivery, type DeliveryActionResult } from "@/actions/deliveries";
+import { OutOfAreaBadge } from "@/components/orders/OrderBadges";
+import { OpenInMapsButton } from "@/components/shared/OpenInMapsButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
@@ -13,7 +15,8 @@ import { formatCalendarDate } from "@/lib/time";
 import type { DeliveryCard, PickupCard } from "@/types/deliveries";
 
 // One job on the Deliveries view: who, where, when (pickups only), a Call
-// link, and one big button for the next step. Riders see the order number as
+// link, Open in Maps when the customer shared a location, and one big button
+// for the next step. Riders see the order number as
 // plain text; owners and staff get a link to the order.
 
 const NEXT_STEP: Record<DeliveryCard["stage"], { label: string; action: (orderId: string) => Promise<DeliveryActionResult> }> =
@@ -68,7 +71,7 @@ export function DeliveryCardItem({ card, linkToOrder }: DeliveryCardItemProps) {
         <p className="type-body-sm break-words text-foreground">{card.address ?? "No address given"}</p>
         <div className="flex flex-wrap items-center gap-2">
           {card.areaName && <span className="type-body-sm text-muted-foreground">{card.areaName}</span>}
-          {card.isOutOfArea && <Badge variant="warning">Outside our service areas</Badge>}
+          {card.isOutOfArea && <OutOfAreaBadge />}
         </div>
         {pickup && (
           <div className="flex flex-wrap items-center gap-2">
@@ -96,6 +99,7 @@ export function DeliveryCardItem({ card, linkToOrder }: DeliveryCardItemProps) {
             Call
           </a>
         </Button>
+        {card.location && <OpenInMapsButton location={card.location} className="h-12 xs:flex-1 md:w-40 md:flex-none" />}
         <Button className="h-12 xs:flex-[2] md:w-44 md:flex-none" onClick={move} disabled={pending}>
           {pending ? "Saving…" : step.label}
         </Button>

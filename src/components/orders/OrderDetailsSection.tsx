@@ -21,7 +21,7 @@ import { AREA_NAME_MAX } from "@/schemas/fulfilment";
 import { ADDRESS_MAX, INTERNAL_NOTE_MAX } from "@/schemas/orders";
 import type { OrderEntryArea } from "@/types/orders";
 
-import { needsEnteredCharge, OUT_OF_AREA, windowKey, type OrderDraft } from "./order-draft";
+import { chooseArea, needsEnteredCharge, OUT_OF_AREA, windowKey, type OrderDraft } from "./order-draft";
 import { OrderSection } from "./OrderSection";
 
 export interface OrderEntrySettings {
@@ -31,6 +31,8 @@ export interface OrderEntrySettings {
   // Closed dates from today, "YYYY-MM-DD".
   closedDates: string[];
   today: string;
+  // Kobo: pre-fills the charge of an out-of-area order. Null for none.
+  defaultDeliveryFee: number | null;
 }
 
 interface OrderDetailsSectionProps {
@@ -175,14 +177,19 @@ function PickupFields({ draft, onChange, errors, areas, settings, fieldId }: Pic
   const areaError = errors["pickup.area"] ?? errors["pickup.area.areaId"] ?? errors.pickup;
   const windowError = errors["pickup.window"] ?? errors["pickup.windowStart"] ?? errors["pickup.windowEnd"];
   const chargeHint = draft.areaChoice === OUT_OF_AREA
-    ? "Outside your service areas: enter the charge you agreed, or 0."
+    ? settings.defaultDeliveryFee !== null
+      ? "Outside your service areas: your default fee is filled in. Change it if you agreed another charge."
+      : "Outside your service areas: enter the charge you agreed, or 0."
     : "This area's charge is agreed per order: enter it, or 0.";
   const scheduleHint = "For a pickup the store agreed outside its days or hours. A note is required.";
 
   return (
     <div className="flex flex-col gap-form rounded-lg border border-border p-card">
       <FormField id={fieldId("area")} label="Service area" error={areaError}>
-        <Select value={draft.areaChoice} onValueChange={(areaChoice) => onChange({ areaChoice })}>
+        <Select
+          value={draft.areaChoice}
+          onValueChange={(areaChoice) => onChange(chooseArea(draft, areaChoice, settings.defaultDeliveryFee))}
+        >
           <SelectTrigger
             id={fieldId("area")}
             className="w-full"

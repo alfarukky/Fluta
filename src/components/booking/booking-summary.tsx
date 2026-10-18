@@ -2,7 +2,7 @@ import { formatCalendarDate } from "@/lib/time";
 import { formatNaira } from "@/lib/money";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
 import { formatQuantity, isWeighed } from "@/lib/quantity";
-import type { BookingOptions, BookingService } from "@/types/booking";
+import type { BookingService } from "@/types/booking";
 
 import { parseWindowKey, type BookingDraft, type BookingReview, type ReviewLine } from "./booking-draft";
 
@@ -27,10 +27,6 @@ export function describePickupTime(draft: BookingDraft): string {
   const window = parseWindowKey(draft.window);
   const date = draft.date ? formatCalendarDate(draft.date) : "";
   return window ? `${date}, ${formatPickupWindow(window)}` : date;
-}
-
-export function findArea(draft: BookingDraft, options: BookingOptions) {
-  return options.areas.find((area) => area.id === draft.areaId);
 }
 
 // The price part of the review: a total, an estimated total, or no number.

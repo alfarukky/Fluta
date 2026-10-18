@@ -19,6 +19,7 @@ export default async function FulfilmentPage() {
     <FulfilmentSettings
       options={{ dropOffEnabled: settings.dropOffEnabled, pickupDeliveryEnabled: settings.pickupDeliveryEnabled }}
       areas={settings.areas}
+      defaultDeliveryFee={settings.defaultDeliveryFee}
       schedule={{ activeDays: settings.activeDays, openTime: settings.openTime, closeTime: settings.closeTime }}
       closedDates={settings.closedDates}
       today={settings.today}

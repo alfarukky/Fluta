@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { StoreRole } from "@/generated/prisma/client";
+import { fromStoredCoordinates, type Coordinates } from "@/lib/location";
 import { formatNaira } from "@/lib/money";
 import { formatOrderNumber, summarizeServices } from "@/lib/orders";
 import { canReviseQuote, findDeclinedRevision, findPendingRevision } from "@/lib/quotes";
@@ -70,6 +71,7 @@ function toListRow(order: OrderListRecord, store: OrderListStore): OrderListRow 
     paymentState: balance.state,
     stage: order.stage,
     fulfilmentType: order.fulfilmentType,
+    isOutOfArea: order.isOutOfArea,
     created: formatDateTime(order.createdAt, store.timeZone),
     pickup: order.fulfilmentType === "PICKUP_DELIVERY" ? formatListPickup(order) : null,
   };
@@ -90,6 +92,9 @@ function formatListPickup(order: OrderListRecord): string | null {
 export interface OrderDetail {
   order: OrderDetailRecord;
   displayNumber: string;
+  // The customer's shared location, for "Open in Maps" (owners and staff of
+  // this store only). Null when none was shared, or it has been cleared.
+  location: Coordinates | null;
   balance: Balance;
   // Staff names by user ID, for the timeline.
   staffNames: Map<string, string>;
@@ -174,6 +179,7 @@ export async function getOrderDetail(
   return {
     order,
     displayNumber: formatOrderNumber(order.store, order.orderNumber),
+    location: fromStoredCoordinates(order.pickupLatitude, order.pickupLongitude),
     balance: getBalance(order),
     staffNames: await findStaffNames(storeId, actorIds),
     stageMoves: getAvailableTransitions(getStageOrderState(order), role),

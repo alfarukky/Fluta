@@ -11,7 +11,7 @@ import { FULFILMENT_TYPE_LABELS } from "@/lib/orders";
 import type { OrderListFilters } from "@/schemas/orders";
 import type { OrderListRow } from "@/types/orders";
 
-import { PaymentBadge, StageBadge } from "./OrderBadges";
+import { OutOfAreaBadge, PaymentBadge, StageBadge } from "./OrderBadges";
 
 interface OrderListProps {
   filters: OrderListFilters;
@@ -110,6 +110,11 @@ function OrderTable({ rows }: { rows: OrderListRow[] }) {
                 <span className="type-body-sm break-words text-foreground">{row.services || "—"}</span>
                 <span className="type-caption text-muted-foreground">{FULFILMENT_TYPE_LABELS[row.fulfilmentType]}</span>
                 {row.pickup && <span className="type-caption text-muted-foreground">Pickup {row.pickup}</span>}
+                {row.isOutOfArea && (
+                  <span className="mt-1">
+                    <OutOfAreaBadge />
+                  </span>
+                )}
               </div>
             </TableCell>
             <TableCell className="align-top whitespace-normal">
@@ -151,6 +156,7 @@ function OrderCard({ row }: { row: OrderListRow }) {
       <div className="flex flex-wrap gap-2">
         <StageBadge stage={row.stage} />
         <PaymentBadge state={row.paymentState} />
+        {row.isOutOfArea && <OutOfAreaBadge />}
       </div>
     </li>
   );

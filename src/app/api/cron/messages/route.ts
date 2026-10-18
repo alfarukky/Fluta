@@ -5,7 +5,8 @@ import { runMessageJob } from "@/server/services/notifications";
 
 // The scheduled job, called by the host every 5 minutes with
 // "Authorization: Bearer <CRON_SECRET>": retries due customer messages (up
-// to 3 attempts each) and clears booking IP hashes older than 24 hours.
+// to 3 attempts each), clears booking IP hashes older than 24 hours, and
+// clears shared locations from orders closed more than 30 days ago.
 // Anything else gets a bare 401 before any work is done.
 
 export async function GET(request: Request): Promise<Response> {

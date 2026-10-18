@@ -2,10 +2,12 @@ import { ArrowLeftIcon, CalendarClockIcon, CircleCheckIcon, CircleXIcon, PhoneIc
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { OpenInMapsButton } from "@/components/shared/OpenInMapsButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { describeMessageStatus, getMessageTemplateLabel, isFinallyFailed, MESSAGE_CHANNEL_LABELS } from "@/lib/messages";
+import type { Coordinates } from "@/lib/location";
 import { formatNaira } from "@/lib/money";
 import {
   describeCustomerEstimate,
@@ -26,7 +28,7 @@ import type { OrderDetail as OrderDetailData } from "@/server/services/orders";
 import { cn } from "@/lib/utils";
 
 import { CustomerMessageActions } from "./CustomerMessageActions";
-import { PaymentBadge, StageBadge } from "./OrderBadges";
+import { OutOfAreaBadge, PaymentBadge, StageBadge } from "./OrderBadges";
 import { OrderStageActions } from "./OrderStageActions";
 import { PickupTimeCard, type PickupTimeOptions } from "./PickupTimeCard";
 import { QuoteBanner } from "./QuoteBanner";
@@ -135,7 +137,7 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
         <div className="flex min-w-0 flex-col gap-grid">
           <CustomerSection detail={detail} canChangeStage={canChangeStage} />
           <MessagesSection order={order} canSendAgain={canChangeStage} timeZone={timeZone} />
-          <FulfilmentSection order={order} />
+          <FulfilmentSection order={order} location={detail.location} />
           <InternalNoteSection note={order.internalNote} />
           <TimelineSection detail={detail} timeZone={timeZone} />
         </div>
@@ -341,7 +343,7 @@ const PICKUP_STATUS_LABELS = {
   CONFIRMED: "Confirmed",
 } as const;
 
-function FulfilmentSection({ order }: { order: Order }) {
+function FulfilmentSection({ order, location }: { order: Order; location: Coordinates | null }) {
   const pickup = order.fulfilmentType === "PICKUP_DELIVERY";
   const status = order.pickupWindowStatus;
 
@@ -360,11 +362,12 @@ function FulfilmentSection({ order }: { order: Order }) {
             value={
               <span className="flex flex-wrap items-center gap-2">
                 {order.serviceAreaName ?? "—"}
-                {order.isOutOfArea && <Badge variant="warning">Outside our service areas</Badge>}
+                {order.isOutOfArea && <OutOfAreaBadge />}
               </span>
             }
           />
           <Detail label="Address" value={order.addressText ?? "—"} />
+          {location && <OpenInMapsButton location={location} className="self-start" />}
           <Detail label="Pickup time" value={status ? PICKUP_STATUS_LABELS[status] : "—"} />
           <Detail
             label="Customer asked for"
