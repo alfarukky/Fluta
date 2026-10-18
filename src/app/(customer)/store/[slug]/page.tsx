@@ -5,6 +5,7 @@ import { AddToHomeScreenHint } from "@/components/booking/AddToHomeScreenHint";
 import { BookingClosed } from "@/components/booking/BookingClosed";
 import { BookingFlow } from "@/components/booking/BookingFlow";
 import { StoreHeader } from "@/components/booking/StoreHeader";
+import { getBookingPath } from "@/lib/booking-link";
 import { getBrandFill, getBrandTheme } from "@/lib/brand-theme";
 import { getServerEnv } from "@/lib/env";
 import { getAppShortName } from "@/lib/store-app";
@@ -27,7 +28,7 @@ export async function generateMetadata({ params }: PageProps<"/store/[slug]">): 
 
   const { name, description, slug } = bookable.store;
   const line = description ?? `Book your laundry with ${name}`;
-  const path = `/store/${encodeURIComponent(slug)}`;
+  const path = getBookingPath({ slug });
   return {
     metadataBase: new URL(getServerEnv().BETTER_AUTH_URL),
     title: name,

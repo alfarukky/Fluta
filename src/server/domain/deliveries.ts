@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { OrderStage } from "@/generated/prisma/client";
 import { fromStoredCoordinates } from "@/lib/location";
 import { formatOrderNumber } from "@/lib/orders";

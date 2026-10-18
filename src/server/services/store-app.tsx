@@ -6,7 +6,7 @@ import { ImageResponse } from "next/og";
 import sharp from "sharp";
 
 import { getBrandFill } from "@/lib/brand-theme";
-import { getBookingUrl } from "@/lib/booking-link";
+import { getBookingPath, getBookingUrl } from "@/lib/booking-link";
 import { logger } from "@/lib/logger";
 import { getInitials } from "@/lib/names";
 import { getAppShortName } from "@/lib/store-app";
@@ -53,11 +53,11 @@ export function getBrandingVersion(bookable: BookableStore): string {
 }
 
 export function getAppIconPath(bookable: BookableStore, id: AppIconId): string {
-  return `/store/${encodeURIComponent(bookable.store.slug)}/app-icon/${id}?v=${getBrandingVersion(bookable)}`;
+  return `${getBookingPath(bookable.store)}/app-icon/${id}?v=${getBrandingVersion(bookable)}`;
 }
 
 export function getPreviewImagePath(bookable: BookableStore): string {
-  return `/store/${encodeURIComponent(bookable.store.slug)}/preview-image?v=${getBrandingVersion(bookable)}`;
+  return `${getBookingPath(bookable.store)}/preview-image?v=${getBrandingVersion(bookable)}`;
 }
 
 // The store's web app manifest: its own name and icons, opening its booking

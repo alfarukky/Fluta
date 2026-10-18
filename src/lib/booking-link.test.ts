@@ -3,7 +3,14 @@ import { describe, expect, it } from "vitest";
 
 import { decodePng, expectedModules, readModules } from "@/test/qr";
 
-import { getBookingLinkPrefix, getBookingShare, getBookingUrl } from "./booking-link";
+import { getBookingLinkPrefix, getBookingPath, getBookingShare, getBookingUrl } from "./booking-link";
+
+describe("getBookingPath", () => {
+  it("is /store/{slug}, with the slug encoded", () => {
+    expect(getBookingPath({ slug: "freshfold-laundry" })).toBe("/store/freshfold-laundry");
+    expect(getBookingPath({ slug: "a b" })).toBe("/store/a%20b");
+  });
+});
 
 describe("getBookingUrl", () => {
   it("puts /store/{slug} on the app's base URL", () => {

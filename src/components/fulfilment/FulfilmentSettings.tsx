@@ -43,8 +43,8 @@ export function FulfilmentSettings(props: FulfilmentSettingsProps) {
   // A default fee (₦0 included) serves customers whatever their area.
   const servesAnArea = areas.some((area) => area.isActive) || defaultDeliveryFee !== null;
   const pickupMissing = [
-    ...(servesAnArea ? [] : ["add at least one active service area, or set a default fee"]),
-    ...(isValidSchedule(schedule) ? [] : ["set at least one active day and your pickup hours"]),
+    ...(servesAnArea ? [] : ["Add at least one active service area, or set a default fee"]),
+    ...(isValidSchedule(schedule) ? [] : ["Set at least one active day and your pickup hours"]),
   ];
 
   return (

@@ -397,15 +397,7 @@ export async function changeOrderAddress<T>(
   }, TRANSACTION_OPTIONS);
 }
 
-// ───────────── Lookups for pricing ─────────────
-
-// One of the store's areas, active or not (the order's own area).
-export async function findServiceAreaCharge(storeId: string, areaId: string) {
-  return getPrisma().serviceArea.findFirst({
-    where: { storeId, id: areaId },
-    select: { id: true, name: true, chargeType: true, fixedCharge: true },
-  });
-}
+// ───────────── Lookups ─────────────
 
 // Audit events for an order's revisions (who recorded each decision), oldest first.
 export async function findRevisionAudits(storeId: string, revisionIds: readonly string[]) {

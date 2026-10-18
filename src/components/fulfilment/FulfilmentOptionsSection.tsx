@@ -62,7 +62,7 @@ export function FulfilmentOptionsSection({
           Fulfilment options
         </CardTitle>
         <CardDescription className="type-body-sm">
-          How customers get their laundry to you and back. Keep at least one on; changes apply to new orders only.
+          How customers get their laundry to you and back. Keep at least one on. Changes apply to new orders only.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-component">
@@ -92,11 +92,18 @@ export function FulfilmentOptionsSection({
             <TriangleAlertIcon className="mt-0.5 size-5 shrink-0 text-warning" aria-hidden />
             <div className="flex flex-col gap-1">
               <p className="type-label text-foreground">Customers can&apos;t book pickup yet</p>
-              <p className="type-body-sm text-muted-foreground">
-                {pickupMissing.length > 0
-                  ? `To take pickup bookings: ${pickupMissing.join("; ")}.`
-                  : "Check your service areas and pickup schedule."}
-              </p>
+              {pickupMissing.length > 0 ? (
+                <div className="type-body-sm text-muted-foreground">
+                  <p>To take pickup bookings:</p>
+                  <ul className="list-disc pl-5">
+                    {pickupMissing.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                <p className="type-body-sm text-muted-foreground">Check your service areas and pickup schedule.</p>
+              )}
             </div>
           </div>
         )}
