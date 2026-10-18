@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { escapeHtml, renderEmailHtml } from "./email-layout";
-import { buildInvitationEmail, buildPasswordResetEmail } from "./emails";
+vi.mock("@/lib/env", () => ({ getServerEnv: () => ({ BETTER_AUTH_URL: "https://fluta.example" }) }));
+
+const { escapeHtml, renderEmailHtml } = await import("./email-layout");
+const { buildInvitationEmail, buildPasswordResetEmail } = await import("./emails");
 
 const URL_WITH_QUERY = "https://fluta.example/invite/abc?x=1&y=2";
 
@@ -15,7 +17,7 @@ describe("renderEmailHtml", () => {
       smallPrint: ["<i>small</i>"],
       footer: "<u>footer</u>",
     });
-    expect(html).not.toMatch(/<script|<img|<b>|<i>|<u>|"onmouseover/);
+    expect(html).not.toMatch(/<script|<img src=x|<b>|<i>|<u>|"onmouseover/);
     expect(html).toContain("Mama&#39;s &lt;script&gt;alert(1)&lt;/script&gt; Laundry");
     expect(html).toContain("Say &quot;hi&quot; &amp; &lt;img");
   });
@@ -30,6 +32,12 @@ describe("renderEmailHtml", () => {
       footer: "f",
     });
     expect(html.match(/href="https:\/\/fluta\.example\/invite\/abc\?x=1&amp;y=2"/g)).toHaveLength(2);
+  });
+
+  it("shows Fluta's logo from Fluta's own address, with alternative text", () => {
+    const html = renderEmailHtml({ preview: "p", heading: "FreshFold Laundry", paragraphs: [], smallPrint: [], footer: "f" });
+    expect(html).toMatch(/<img src="https:\/\/fluta\.example\/brand\/fluta-logo-email\.png"[^>]* alt="Fluta"/);
+    expect(html.indexOf("<img")).toBeLessThan(html.indexOf("FreshFold Laundry</h1>"));
   });
 
   it("escapes &, <, >, quotes", () => {

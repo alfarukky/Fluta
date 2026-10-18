@@ -9,7 +9,7 @@ import {
   ShirtIcon,
   TruckIcon,
 } from "lucide-react";
-import { Logo } from "@/components/brand/Logo";
+import { PoweredByFluta } from "@/components/brand/PoweredByFluta";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -355,9 +355,8 @@ function TimelineStep({ step }: TimelineStepProps) {
 function MobileTrackingPreview() {
   return (
     <div className="mx-auto w-full max-w-[360px] overflow-hidden rounded-3xl border border-border bg-background">
-      <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3">
+      <div className="border-b border-border bg-card px-4 py-3">
         <span className="type-h3">FreshFold Laundry</span>
-        <Logo size="sm" className="opacity-70" />
       </div>
       <div className="flex flex-col gap-4 p-4">
         <div className="flex flex-col gap-1">
@@ -391,6 +390,7 @@ function MobileTrackingPreview() {
           View receipt
         </Button>
       </div>
+      <PoweredByFluta />
     </div>
   );
 }

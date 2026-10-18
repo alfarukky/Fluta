@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { StoreHeader } from "@/components/booking/StoreHeader";
+import { PoweredByFluta } from "@/components/brand/PoweredByFluta";
 import { getBrandTheme } from "@/lib/brand-theme";
 import type { PublicStore } from "@/types/booking";
 
@@ -17,6 +18,7 @@ export function TrackingShell({ store, children }: { store: PublicStore | null; 
     >
       {store && <StoreHeader store={store} />}
       <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-section px-page pt-6 pb-section">{children}</main>
+      <PoweredByFluta />
     </div>
   );
 }

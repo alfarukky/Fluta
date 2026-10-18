@@ -429,7 +429,7 @@ export function CardsSection() {
           <CardHeader>
             <CardTitle>Fluta logo</CardTitle>
             <CardDescription>
-              Text placeholder until the final asset exists.
+              Full, symbol, reversed for dark surfaces, and single colour.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -437,6 +437,18 @@ export function CardsSection() {
               <Logo size="sm" />
               <Logo />
               <Logo size="lg" />
+            </div>
+            <div className="flex flex-wrap items-end gap-6">
+              <Logo variant="symbol" size="xs" />
+              <Logo variant="symbol" size="sm" />
+              <Logo variant="symbol" />
+              <Logo variant="symbol" size="lg" />
+              <Logo variant="symbol" tone="mono" size="sm" className="text-muted-foreground" />
+              <Logo tone="mono" size="sm" className="text-foreground" />
+            </div>
+            <div className="flex flex-wrap items-center gap-6 rounded-lg bg-primary p-card">
+              <Logo tone="reversed" />
+              <Logo variant="symbol" tone="reversed" />
             </div>
             <Separator />
             <div className="flex items-center gap-3">

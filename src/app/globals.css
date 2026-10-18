@@ -284,3 +284,40 @@
 :is([data-slot="sheet-content"], [data-slot="dialog-content"]) [data-form-field] {
   scroll-margin-top: 1rem;
 }
+
+/*
+ * Sign-in motion (sign-in, password reset, and invitation pages only; the
+ * workspace stays still). Calm: transform and opacity only, many seconds per
+ * cycle. Use with Tailwind's motion-safe: variant, so nothing runs when the
+ * device asks for reduced motion and the page shows the final, still layout.
+ */
+@theme {
+  /* Content fades and rises into place once. */
+  --animate-enter: enter 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  /* The brand panel's soft folds drift back and forth. */
+  --animate-fold-drift-a: fold-drift-a 26s ease-in-out infinite alternate;
+  --animate-fold-drift-b: fold-drift-b 34s ease-in-out infinite alternate;
+  --animate-fold-drift-c: fold-drift-c 30s ease-in-out infinite alternate;
+
+  @keyframes enter {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  @keyframes fold-drift-a {
+    to {
+      transform: translate3d(4%, -3%, 0) rotate(5deg);
+    }
+  }
+  @keyframes fold-drift-b {
+    to {
+      transform: translate3d(-5%, 2%, 0) rotate(-4deg);
+    }
+  }
+  @keyframes fold-drift-c {
+    to {
+      transform: translate3d(3%, 4%, 0) rotate(3deg);
+    }
+  }
+}

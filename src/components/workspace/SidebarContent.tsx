@@ -34,7 +34,7 @@ export function SidebarContent({ member, navCounts, onNavigate }: SidebarContent
         onClick={onNavigate}
         className="flex h-11 items-center rounded-md px-3 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
       >
-        <Logo />
+        <Logo decorative />
       </Link>
 
       <div className="rounded-lg border border-border bg-background px-3 py-3">

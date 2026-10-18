@@ -8,7 +8,7 @@ afterEach(() => {
 
 test("renders the Fluta placeholder heading", () => {
   render(<Home />);
-  expect(screen.getByText("fluta")).toBeDefined();
+  expect(screen.getByRole("img", { name: "Fluta" })).toBeDefined();
   expect(
     screen.getByRole("heading", { level: 1, name: "Laundry operations, made simple" }),
   ).toBeDefined();

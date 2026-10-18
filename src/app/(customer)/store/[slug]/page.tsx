@@ -5,6 +5,7 @@ import { AddToHomeScreenHint } from "@/components/booking/AddToHomeScreenHint";
 import { BookingClosed } from "@/components/booking/BookingClosed";
 import { BookingFlow } from "@/components/booking/BookingFlow";
 import { StoreHeader } from "@/components/booking/StoreHeader";
+import { PoweredByFluta } from "@/components/brand/PoweredByFluta";
 import { getBookingPath } from "@/lib/booking-link";
 import { getBrandFill, getBrandTheme } from "@/lib/brand-theme";
 import { getServerEnv } from "@/lib/env";
@@ -78,6 +79,7 @@ export default async function StoreBookingPage({ params }: PageProps<"/store/[sl
           <BookingClosed store={store} availability={availability} services={options.services} />
         )}
       </main>
+      <PoweredByFluta />
       <AddToHomeScreenHint slug={store.slug} storeName={store.name} />
     </div>
   );
