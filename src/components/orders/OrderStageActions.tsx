@@ -38,6 +38,9 @@ interface OrderStageActionsProps {
   fulfilmentType: FulfilmentType;
   moves: AvailableTransitions;
   quote: OrderQuoteActions;
+  // Another action (Record payment) is the main one: the next move is shown
+  // as a secondary button, so the page has one primary button.
+  quietPrimary?: boolean;
 }
 
 const SECONDARY_LABELS: Record<Exclude<StageMoveKind, "ADVANCE">, string> = {
@@ -68,7 +71,7 @@ function getAdvanceLabel(stage: OrderStage, fulfilmentType: FulfilmentType): str
 // Only the moves the server allows for this order are shown: one primary
 // button for the main next move, the rest in a quiet menu. Moves that need a
 // note (and cancelling, which is final) open a dialog first.
-export function OrderStageActions({ orderId, stage, fulfilmentType, moves, quote }: OrderStageActionsProps) {
+export function OrderStageActions({ orderId, stage, fulfilmentType, moves, quote, quietPrimary = false }: OrderStageActionsProps) {
   const [dialogMove, setDialogMove] = useState<StageMove | null>(null);
   const [editingAddress, setEditingAddress] = useState(false);
   const { pending, run } = useOrderAction();
@@ -104,7 +107,7 @@ export function OrderStageActions({ orderId, stage, fulfilmentType, moves, quote
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         {primary && (
-          <Button onClick={() => choose(primary)} disabled={pending}>
+          <Button variant={quietPrimary ? "secondary" : "primary"} onClick={() => choose(primary)} disabled={pending}>
             {getAdvanceLabel(stage, fulfilmentType)}
           </Button>
         )}

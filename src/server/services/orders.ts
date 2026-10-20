@@ -4,6 +4,7 @@ import type { StoreRole } from "@/generated/prisma/client";
 import { fromStoredCoordinates, type Coordinates } from "@/lib/location";
 import { formatNaira } from "@/lib/money";
 import { formatOrderNumber, summarizeServices } from "@/lib/orders";
+import { canRecordPaymentAt, isRecordPaymentPrimary } from "@/lib/payments";
 import { canReviseQuote, findDeclinedRevision, findPendingRevision } from "@/lib/quotes";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
 import { fromDecimalString } from "@/lib/quantity";
@@ -111,6 +112,18 @@ export interface OrderDetail {
   canSendLinkBySms: boolean;
   // The store's WhatsApp button setting.
   whatsappEnabled: boolean;
+  payments: OrderPaymentActions;
+}
+
+// What this member may do in the payments section (the page also needs the
+// store to be able to work on existing orders).
+export interface OrderPaymentActions {
+  // Any order except a cancelled one.
+  canRecord: boolean;
+  // Ready or Completed with a balance due: Record payment is the main action.
+  recordPrimary: boolean;
+  // Owners only, on confirmed store-collected payments.
+  canVoid: boolean;
 }
 
 export interface OrderPickupTimeState {
@@ -163,10 +176,13 @@ export async function getOrderDetail(
     audits,
     pickupTimes.suggestions,
     pickupTimes.resets,
+    order.payments,
   );
   const actorIds = timeline.flatMap((entry) => {
     const id =
-      entry.kind === "stage"
+      entry.kind === "payment"
+        ? entry.staffUserId
+        : entry.kind === "stage"
         ? entry.event.actorUserId
         : entry.kind === "pickupSuggested"
           ? entry.suggestion.actorUserId
@@ -176,11 +192,12 @@ export async function getOrderDetail(
     return id ? [id] : [];
   });
   const pending = findPendingRevision(order.quoteRevisions);
+  const balance = getBalance(order);
   return {
     order,
     displayNumber: formatOrderNumber(order.store, order.orderNumber),
     location: fromStoredCoordinates(order.pickupLatitude, order.pickupLongitude),
-    balance: getBalance(order),
+    balance,
     staffNames: await findStaffNames(storeId, actorIds),
     stageMoves: getAvailableTransitions(getStageOrderState(order), role),
     timeline,
@@ -195,6 +212,11 @@ export async function getOrderDetail(
     canIssueTrackingLink: canIssueTrackingLink(order, now),
     canSendLinkBySms: canSendSmsTo(order.customer.phone, order.store.smsEnabled),
     whatsappEnabled: order.store.whatsappContactEnabled,
+    payments: {
+      canRecord: canRecordPaymentAt(order.stage),
+      recordPrimary: isRecordPaymentPrimary(order.stage, balance.state),
+      canVoid: role === "OWNER",
+    },
   };
 }
 

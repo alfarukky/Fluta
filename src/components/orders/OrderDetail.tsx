@@ -1,4 +1,12 @@
-import { ArrowLeftIcon, CalendarClockIcon, CircleCheckIcon, CircleXIcon, PhoneIcon, ReceiptTextIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  BanknoteIcon,
+  CalendarClockIcon,
+  CircleCheckIcon,
+  CircleXIcon,
+  PhoneIcon,
+  ReceiptTextIcon,
+} from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -18,6 +26,7 @@ import {
   ORDER_CHANNEL_LABELS,
   PAYMENT_METHOD_LABELS,
 } from "@/lib/orders";
+import { describeBalance, describePaymentRecorded, describePaymentVoided, PAYMENT_SOURCE_LABELS } from "@/lib/payments";
 import { formatPhone } from "@/lib/phone";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
 import { formatQuantity, fromDecimalString } from "@/lib/quantity";
@@ -32,8 +41,10 @@ import { OutOfAreaBadge, PaymentBadge, StageBadge } from "./OrderBadges";
 import { OrderStageActions } from "./OrderStageActions";
 import { PickupTimeCard, type PickupTimeOptions } from "./PickupTimeCard";
 import { QuoteBanner } from "./QuoteBanner";
+import { RecordPaymentButton } from "./RecordPaymentButton";
 import { SendAgainButton } from "./SendAgainButton";
 import { TrackingLinkButton } from "./TrackingLinkButton";
+import { VoidPaymentButton } from "./VoidPaymentButton";
 
 type Order = OrderDetailData["order"];
 
@@ -47,11 +58,13 @@ interface OrderDetailProps {
 }
 
 // Everything about one order, from the order's own copies (never the current
-// service or area records), with the stage and quote actions this member may
-// take. Payment actions come in later features.
+// service or area records), with the stage, quote, and payment actions this
+// member may take.
 export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }: OrderDetailProps) {
   const { order, displayNumber, balance, quote, pickupTime } = detail;
   const editQuoteHref = `/orders/${order.id}/quote`;
+  // Ready or Completed with a balance due: Record payment is the main action.
+  const recordPrimary = canChangeStage && detail.payments.canRecord && detail.payments.recordPrimary;
 
   return (
     <main className="page-container flex flex-1 flex-col gap-section py-section">
@@ -74,18 +87,22 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
           <PaymentBadge state={balance.state} />
         </div>
         {canChangeStage && (
-          <OrderStageActions
-            orderId={order.id}
-            stage={order.stage}
-            fulfilmentType={order.fulfilmentType}
-            // The quote banner explains a pending or declined quote itself.
-            moves={quote.pending || quote.declined ? { ...detail.stageMoves, blockedReason: null } : detail.stageMoves}
-            quote={{
-              editQuoteHref: quote.canEdit ? editQuoteHref : null,
-              priceOrder: quote.needsPricing,
-              address: quote.canEdit && order.fulfilmentType === "PICKUP_DELIVERY" ? (order.addressText ?? "") : null,
-            }}
-          />
+          <div className="flex flex-wrap items-start gap-2">
+            {recordPrimary && <RecordPaymentButton orderId={order.id} balance={balance} primary />}
+            <OrderStageActions
+              orderId={order.id}
+              stage={order.stage}
+              fulfilmentType={order.fulfilmentType}
+              // The quote banner explains a pending or declined quote itself.
+              moves={quote.pending || quote.declined ? { ...detail.stageMoves, blockedReason: null } : detail.stageMoves}
+              quote={{
+                editQuoteHref: quote.canEdit ? editQuoteHref : null,
+                priceOrder: quote.needsPricing,
+                address: quote.canEdit && order.fulfilmentType === "PICKUP_DELIVERY" ? (order.addressText ?? "") : null,
+              }}
+              quietPrimary={recordPrimary}
+            />
+          </div>
         )}
       </header>
 
@@ -131,7 +148,7 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
         <div className="flex min-w-0 flex-col gap-grid">
           <OrderSummarySection order={order} proposed={quote.pending ?? quote.declined} />
           {order.customerNote && <CustomerNoteSection note={order.customerNote} />}
-          <PaymentsSection detail={detail} timeZone={timeZone} />
+          <PaymentsSection detail={detail} canChangeStage={canChangeStage} timeZone={timeZone} />
           <QuoteHistorySection order={order} timeZone={timeZone} />
         </div>
         <div className="flex min-w-0 flex-col gap-grid">
@@ -431,7 +448,22 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
     <Section title="Timeline">
       <ol className="flex flex-col gap-1">
         {detail.timeline.map((entry) =>
-          entry.kind === "stage" ? (
+          entry.kind === "payment" ? (
+            <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-success/10 px-3 py-2.5">
+              <BanknoteIcon className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="type-label break-words text-foreground">
+                  {entry.moment === "RECORDED"
+                    ? describePaymentRecorded(entry.payment, staffName(entry.staffUserId))
+                    : describePaymentVoided(entry.payment, staffName(entry.staffUserId))}
+                </span>
+                <span className="type-caption text-muted-foreground">{formatDateTime(entry.at, timeZone)}</span>
+                {entry.moment === "VOIDED" && entry.payment.voidReason && (
+                  <span className="type-body-sm break-words text-foreground">Reason: {entry.payment.voidReason}</span>
+                )}
+              </div>
+            </li>
+          ) : entry.kind === "stage" ? (
             <li key={entry.key} className="flex flex-col gap-0.5 border-b border-border py-2.5 last:border-b-0">
               <span className="type-label text-foreground">{getTimelineLabel(entry.event, detail.order.fulfilmentType)}</span>
               <span className="type-caption text-muted-foreground">
@@ -529,34 +561,44 @@ function QuoteHistorySection({ order, timeZone }: { order: Order; timeZone: stri
   );
 }
 
-function PaymentsSection({ detail, timeZone }: { detail: OrderDetailData; timeZone: string }) {
+function PaymentsSection({
+  detail,
+  canChangeStage,
+  timeZone,
+}: {
+  detail: OrderDetailData;
+  canChangeStage: boolean;
+  timeZone: string;
+}) {
   const { order, balance } = detail;
+  const staffName = (id: string | null) => (id ? (detail.staffNames.get(id) ?? null) : null);
   // Failed attempts aren't payments; they never show here.
   const payments = order.payments.filter((payment) => payment.status !== "FAILED");
   const empty = payments.length === 0 && order.refunds.length === 0;
+  const canRecord = canChangeStage && detail.payments.canRecord;
+  const canVoid = canChangeStage && detail.payments.canVoid;
+  const last = describeBalance(balance);
 
   return (
-    <Section title="Payments">
+    <Section
+      title="Payments"
+      badge={canRecord && <RecordPaymentButton orderId={order.id} balance={balance} primary={false} />}
+    >
       {empty ? (
         <p className="type-body-sm text-muted-foreground">No payments recorded yet.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
-          {payments.map((payment) => {
-            const voided = payment.status === "VOIDED" || payment.voidedAt !== null;
-            const status = voided ? "Voided" : payment.status === "CONFIRMED" ? "Confirmed" : "Pending";
-            const reference = payment.paystackReference ?? payment.note;
-            return (
-              <LineRow
-                key={payment.id}
-                voided={voided}
-                label={PAYMENT_METHOD_LABELS[payment.method]}
-                detail={[status, formatDateTime(payment.confirmedAt ?? payment.createdAt, timeZone), reference]
-                  .filter(Boolean)
-                  .join(" · ")}
-                amount={formatNaira(payment.amount)}
-              />
-            );
-          })}
+          {payments.map((payment) => (
+            <PaymentRow
+              key={payment.id}
+              payment={payment}
+              staffName={staffName}
+              timeZone={timeZone}
+              // Owners void confirmed store-collected payments. Online ones never.
+              voidable={canVoid && payment.source === "STORE_COLLECTED" && payment.status === "CONFIRMED"}
+              balanceKobo={balance.balanceKobo}
+            />
+          ))}
           {order.refunds.map((refund) => {
             const voided = refund.voidedAt !== null;
             return (
@@ -575,20 +617,72 @@ function PaymentsSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
       )}
 
       <dl className="flex flex-col gap-1 border-t border-border pt-component">
-        <Total label="Confirmed payments" value={formatNaira(balance.confirmedPaymentsKobo)} />
-        {balance.paidRefundsKobo > 0 && <Total label="Refunds paid" value={formatNaira(balance.paidRefundsKobo)} />}
-        {balance.balanceKobo === null ? (
-          <Total label="Balance" value="Awaiting quote" />
-        ) : balance.state === "NOTHING_DUE" ? (
-          <Total label="Balance" value="Nothing due" strong />
-        ) : balance.balanceKobo < 0 ? (
-          <Total label="Refund owed" value={formatNaira(-balance.balanceKobo)} strong />
-        ) : (
-          <Total label="Balance due" value={formatNaira(balance.balanceKobo)} strong />
+        {balance.balanceKobo !== null && (
+          <Total label="Confirmed payments" value={formatNaira(balance.confirmedPaymentsKobo)} />
         )}
+        {balance.paidRefundsKobo > 0 && <Total label="Refunds paid" value={formatNaira(balance.paidRefundsKobo)} />}
+        <Total label={last.label} value={last.value} strong />
       </dl>
+      {balance.balanceKobo === null && (
+        <p className="type-caption text-muted-foreground">No price is approved yet, so there is no balance.</p>
+      )}
       {!empty && <p className="type-caption text-muted-foreground">Voided records are crossed out and not counted.</p>}
     </Section>
+  );
+}
+
+type OrderPayment = Order["payments"][number];
+
+interface PaymentRowProps {
+  payment: OrderPayment;
+  staffName: (id: string | null) => string | null;
+  timeZone: string;
+  voidable: boolean;
+  balanceKobo: number | null;
+}
+
+// One payment: struck through once voided, with who voided it and why (staff only).
+function PaymentRow({ payment, staffName, timeZone, voidable, balanceKobo }: PaymentRowProps) {
+  const voided = payment.status === "VOIDED";
+  const status = voided ? "Voided" : payment.status === "CONFIRMED" ? "Confirmed" : "Pending";
+  const recordedBy =
+    payment.source === "STORE_COLLECTED" ? `by ${getActorLabel("STAFF", staffName(payment.recordedByUserId))}` : null;
+  const reference = payment.paystackReference ?? (payment.reference && `Ref: ${payment.reference}`);
+  const method = payment.method === "PAYSTACK" ? null : payment.method;
+
+  return (
+    <li className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0">
+      <div className={cn("flex items-start justify-between gap-component", voided && "line-through")}>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="type-body-sm break-words text-foreground">
+            {PAYMENT_METHOD_LABELS[payment.method]} · {PAYMENT_SOURCE_LABELS[payment.source]}
+            {payment.replacesPaymentId && " · Correction"}
+          </span>
+          <span className="type-caption break-words text-muted-foreground">
+            {[status, formatDateTime(payment.confirmedAt ?? payment.createdAt, timeZone), recordedBy, reference]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        </div>
+        <span className="type-body-sm shrink-0 text-right text-foreground">{formatNaira(payment.amount)}</span>
+      </div>
+      {payment.note && <p className="type-caption break-words text-muted-foreground">Note: {payment.note}</p>}
+      {voided && (
+        <p className="type-caption break-words text-muted-foreground">
+          Voided by {getActorLabel("STAFF", staffName(payment.voidedByUserId))}
+          {payment.voidedAt && `, ${formatDateTime(payment.voidedAt, timeZone)}`}
+          {payment.voidReason && `. Reason: ${payment.voidReason}`}
+        </p>
+      )}
+      {voidable && method && (
+        <div>
+          <VoidPaymentButton
+            payment={{ id: payment.id, amount: payment.amount, method, reference: payment.reference, note: payment.note }}
+            balanceAfterVoidKobo={balanceKobo === null ? null : balanceKobo + payment.amount}
+          />
+        </div>
+      )}
+    </li>
   );
 }
 

@@ -1,11 +1,20 @@
 import "server-only";
 
-import type { ActorType, OrderStage, QuoteStatus } from "@/generated/prisma/client";
+import type {
+  ActorType,
+  OrderStage,
+  PaymentMethod,
+  PaymentSource,
+  PaymentStatus,
+  QuoteStatus,
+} from "@/generated/prisma/client";
 
 import { AUDIT_ACTIONS } from "./quotes";
 
 // One timeline for an order: stage events, revision moments (issued,
-// approved, declined), and pickup times the store suggested, newest first.
+// approved, declined), pickup times the store suggested, and payments
+// recorded or voided, newest first. Payments are their own entries, never
+// status events.
 // The page shows it as it comes; it never merges lists itself. Staff only:
 // the tracking page has its own customer timeline (src/lib/tracking.ts).
 
@@ -63,8 +72,33 @@ export interface TimelinePickupReset {
   isOutsideSchedule: boolean;
 }
 
+// A payment as the timeline needs it. Pending and failed attempts have no
+// confirmation time and never appear.
+export interface TimelinePayment {
+  id: string;
+  amount: number;
+  method: PaymentMethod;
+  source: PaymentSource;
+  status: PaymentStatus;
+  recordedByUserId: string | null;
+  confirmedAt: Date | null;
+  voidedAt: Date | null;
+  voidedByUserId: string | null;
+  // Staff only: never shown on the tracking page or in customer messages.
+  voidReason: string | null;
+}
+
 export type TimelineEntry =
   | { kind: "stage"; key: string; at: Date; event: TimelineStageEvent }
+  | {
+      kind: "payment";
+      key: string;
+      at: Date;
+      moment: "RECORDED" | "VOIDED";
+      payment: TimelinePayment;
+      // Who recorded it, or who voided it.
+      staffUserId: string | null;
+    }
   | { kind: "pickupSuggested"; key: string; at: Date; suggestion: TimelinePickupSuggestion }
   | { kind: "pickupReset"; key: string; at: Date; reset: TimelinePickupReset }
   | {
@@ -88,6 +122,8 @@ export type TimelineEntry =
 // Within the same moment: a revision is issued before the stage moves, and
 // approved before the order returns from Quote awaiting approval.
 function rank(entry: TimelineEntry): number {
+  // A correct payment recorded in place of a voided one follows the void.
+  if (entry.kind === "payment") return entry.moment === "RECORDED" ? 5 : 4;
   // A pickup time reset is written with the step back that caused it, and
   // follows it.
   if (entry.kind === "pickupReset") return 3;
@@ -102,6 +138,7 @@ export function buildOrderTimeline(
   audits: readonly TimelineAudit[],
   pickupSuggestions: readonly TimelinePickupSuggestion[] = [],
   pickupResets: readonly TimelinePickupReset[] = [],
+  payments: readonly TimelinePayment[] = [],
 ): TimelineEntry[] {
   const recorder = new Map<string, string | null>();
   for (const audit of audits) {
@@ -171,6 +208,28 @@ export function buildOrderTimeline(
   }
   for (const reset of pickupResets) {
     entries.push({ kind: "pickupReset", key: `pickup-reset-${reset.id}`, at: reset.createdAt, reset });
+  }
+
+  for (const payment of payments) {
+    if (!payment.confirmedAt || (payment.status !== "CONFIRMED" && payment.status !== "VOIDED")) continue;
+    entries.push({
+      kind: "payment",
+      key: `payment-${payment.id}`,
+      at: payment.confirmedAt,
+      moment: "RECORDED",
+      payment,
+      staffUserId: payment.recordedByUserId,
+    });
+    if (payment.status === "VOIDED" && payment.voidedAt) {
+      entries.push({
+        kind: "payment",
+        key: `payment-void-${payment.id}`,
+        at: payment.voidedAt,
+        moment: "VOIDED",
+        payment,
+        staffUserId: payment.voidedByUserId,
+      });
+    }
   }
 
   return entries.sort((a, b) => b.at.getTime() - a.at.getTime() || rank(b) - rank(a) || b.key.localeCompare(a.key));

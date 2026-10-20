@@ -29,13 +29,19 @@ export function useOrderAction() {
     [],
   );
 
-  function run(action: () => Promise<ActionResult>, onDone?: () => void) {
+  // `onFailure` lets a form show some failures itself (under a field, or a
+  // question to confirm): when it returns true, no error toast is shown.
+  function run<Result extends ActionResult>(
+    action: () => Promise<Result>,
+    onDone?: () => void,
+    onFailure?: (result: Extract<Result, { ok: false }>) => boolean,
+  ) {
     startTransition(async () => {
       const result = await action();
       if (result.ok) {
         successMessage.current = result.message;
         onDone?.();
-      } else {
+      } else if (!onFailure?.(result as Extract<Result, { ok: false }>)) {
         toast.error(result.message);
       }
     });

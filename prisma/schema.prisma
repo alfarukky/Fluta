@@ -494,17 +494,25 @@ model Payment {
   paystackReference String?       @unique
   payerEmail        String?
   recordedByUserId  String? // staff who recorded a store-collected payment
+  // The form's request ID (a UUID): the same request twice records one payment.
+  clientRequestId   String?
+  reference         String? // a transfer or POS reference staff entered (store-collected)
   note              String?
   confirmedAt       DateTime?
   voidedAt          DateTime?
   voidedByUserId    String?
   voidReason        String?
-  replacesPaymentId String? // the voided payment this one corrects
+  // The voided payment this one corrects. Unique: a voided payment has at most one replacement.
+  replacesPaymentId String?       @unique
   createdAt         DateTime      @default(now())
 
   store Store @relation(fields: [storeId], references: [id])
   order Order @relation(fields: [storeId, orderId], references: [storeId, id])
 
+  // CHECK constraints in migration store_collected_payments (Prisma can't
+  // express them): Payment_confirmed_check, Payment_voided_check, and
+  // Payment_store_collected_method_check.
+  @@unique([storeId, clientRequestId])
   @@index([storeId, confirmedAt])
   @@index([orderId])
 }

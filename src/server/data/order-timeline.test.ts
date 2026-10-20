@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { buildOrderTimeline, type TimelineEntry, type TimelineRevision, type TimelineStageEvent } from "./order-timeline";
+import {
+  buildOrderTimeline,
+  type TimelineEntry,
+  type TimelinePayment,
+  type TimelineRevision,
+  type TimelineStageEvent,
+} from "./order-timeline";
 
 const at = (minute: number) => new Date(Date.UTC(2026, 9, 12, 9, minute));
 
@@ -43,7 +49,9 @@ describe("buildOrderTimeline", () => {
         ? `pickup ${entry.suggestion.date} ${entry.suggestion.windowStart}`
         : entry.kind === "pickupReset"
           ? `reset ${entry.reset.date} ${entry.reset.windowStart}`
-          : `v${entry.version} ${entry.moment}`;
+          : entry.kind === "payment"
+            ? `payment ${entry.payment.id} ${entry.moment}`
+            : `v${entry.version} ${entry.moment}`;
 
   it("merges stage events and revision moments, newest first", () => {
     const timeline = buildOrderTimeline(events, revisions, audits);
@@ -122,5 +130,35 @@ describe("buildOrderTimeline", () => {
     expect(timeline.map((entry) => entry.key)).toEqual(["stage-e3", "approved-r2", "stage-e2", "issued-r2", "stage-e1"]);
     // The first priced quote has nothing approved to compare with.
     expect(timeline.find((entry) => entry.key === "issued-r2")).toMatchObject({ difference: null });
+  });
+  it("adds each payment as its own entry: recorded, and voided with its reason, never pending or failed", () => {
+    const payment = (overrides: Partial<TimelinePayment> & Pick<TimelinePayment, "id">): TimelinePayment => ({
+      amount: 500_000,
+      method: "CASH",
+      source: "STORE_COLLECTED",
+      status: "CONFIRMED",
+      recordedByUserId: "ada",
+      confirmedAt: at(10),
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null,
+      ...overrides,
+    });
+    const timeline = buildOrderTimeline(events, [], [], [], [], [
+      payment({ id: "p1", status: "VOIDED", voidedAt: at(20), voidedByUserId: "kemi", voidReason: "Entered twice" }),
+      // The correct payment, recorded with the void.
+      payment({ id: "p2", amount: 400_000, confirmedAt: at(20), recordedByUserId: "kemi" }),
+      payment({ id: "p3", source: "ONLINE", method: "PAYSTACK", status: "PENDING", confirmedAt: null }),
+      payment({ id: "p4", source: "ONLINE", method: "PAYSTACK", status: "FAILED", confirmedAt: null }),
+    ]);
+    expect(timeline.map(label)).toEqual([
+      "payment p2 RECORDED",
+      "payment p1 VOIDED",
+      "payment p1 RECORDED",
+      "stage IN_PROGRESS",
+      "stage RECEIVED_BY_STORE",
+    ]);
+    expect(timeline[1]).toMatchObject({ staffUserId: "kemi", payment: { voidReason: "Entered twice" } });
+    expect(timeline[2]).toMatchObject({ staffUserId: "ada" });
   });
 });
