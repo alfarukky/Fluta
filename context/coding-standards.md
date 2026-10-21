@@ -227,14 +227,22 @@ Every feature must pass these before `/feature complete` commits it, in order:
 2. `npm run typecheck` (`tsc --noEmit`)
 3. `prisma validate` and a check that no schema change is missing a migration
 4. `npm run test:unit`, then `npm run test:integration` (run in this order, so a failure shows which side broke)
-5. Playwright journeys on the main branch before deploy
+5. Playwright journeys on `staging` before a pull request to `main`
 
-`/feature complete` runs these before committing; GitHub Actions can also run them on push to `main` (optional).
+`/feature complete` runs these before committing; GitHub Actions can also run them on push to `staging` and on pull requests to `main` (optional).
 
 ## Git Workflow
 
 - One branch per feature or fix: `feat/guest-booking-flow`, `fix/refund-owed-calculation`
-- Small, focused feature branches, merged locally into `main` with `/feature complete`
+- Branch flow: **feature branch → `staging` → `main`**
+  - Every `feat/` or `fix/` branch starts from an up-to-date `staging`
+  - `/feature complete` merges it into `staging` locally, pushes `staging`, and deletes the branch
+  - `main` is production. It changes only through a pull request from `staging` to `main`, opened by the project owner when a set of changes is ready for production
+- GitHub protection:
+  - `main`: pull requests required, no direct pushes, no force-pushes, no deletion
+  - `staging`: no force-pushes and no deletion; direct pushes allowed so `/feature complete` can push its merge
+- Deployment: Railway, one project with two environments. `staging` deploys automatically from the `staging` branch; `production` deploys from `main`. Every deploy runs `prisma migrate deploy` before the app starts, and Railway checks `/api/health`
+- Small, focused feature branches
 - Schema changes are called out in the commit message with the migration name
 
 ## Review Checklist

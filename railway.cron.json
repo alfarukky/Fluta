@@ -1,0 +1,12 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "echo \"cron service: no app build needed\""
+  },
+  "deploy": {
+    "startCommand": "node scripts/call-cron.mjs",
+    "cronSchedule": "*/5 * * * *",
+    "restartPolicyType": "NEVER"
+  }
+}

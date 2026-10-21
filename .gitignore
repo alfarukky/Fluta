@@ -40,7 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.claude
+# Claude Code: local settings stay private; the shared commands are tracked
+/.claude/*
+!/.claude/commands/
 
 # Prisma generated client
 /src/generated/prisma

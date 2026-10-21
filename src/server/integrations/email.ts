@@ -2,7 +2,7 @@ import "server-only";
 
 import { Resend } from "resend";
 
-import { getServerEnv } from "@/lib/env";
+import { getServerEnv, isStaging } from "@/lib/env";
 
 // Fluta's one mailer: email through Resend's API, with a plain-text part
 // always and an HTML part when given. The only module
@@ -32,7 +32,14 @@ function createResendMailer(): Mailer {
 
   return {
     async send({ to, subject, text, html }) {
-      const { error } = await resend.emails.send({ from: env.EMAIL_FROM, to, subject, text, html });
+      // Staging email is real, so its subject says where it came from.
+      const { error } = await resend.emails.send({
+        from: env.EMAIL_FROM,
+        to,
+        subject: isStaging() ? `[Staging] ${subject}` : subject,
+        text,
+        html,
+      });
       // Resend returns failures instead of throwing. Throw so callers see a
       // failed send, carrying only Resend's error code (e.g. "invalid_api_key"),
       // never the message, which can echo the address.

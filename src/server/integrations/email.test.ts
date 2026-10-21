@@ -7,8 +7,10 @@ vi.mock("resend", () => ({
     emails = { send };
   },
 }));
+const staging = vi.hoisted(() => ({ current: false }));
 vi.mock("@/lib/env", () => ({
   getServerEnv: () => ({ RESEND_API_KEY: "re_test_placeholder", EMAIL_FROM: "Fluta <noreply@example.com>" }),
+  isStaging: () => staging.current,
 }));
 
 const { getMailer } = await import("./email");
@@ -18,6 +20,7 @@ const MESSAGE = { to: "ada@example.com", subject: "FreshFold: hello", text: "Hel
 describe("getMailer", () => {
   beforeEach(() => {
     send.mockReset();
+    staging.current = false;
   });
 
   it("sends from EMAIL_FROM with the text and HTML parts", async () => {
@@ -26,6 +29,18 @@ describe("getMailer", () => {
     await getMailer().send(MESSAGE);
 
     expect(send).toHaveBeenCalledWith({ from: "Fluta <noreply@example.com>", ...MESSAGE });
+  });
+
+  it("starts the subject with [Staging] on the staging site, and only there", async () => {
+    send.mockResolvedValue({ data: { id: "email-1" }, error: null, headers: {} });
+
+    staging.current = true;
+    await getMailer().send(MESSAGE);
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ subject: "[Staging] FreshFold: hello" }));
+
+    staging.current = false;
+    await getMailer().send(MESSAGE);
+    expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ subject: "FreshFold: hello" }));
   });
 
   it("throws when Resend returns an error, carrying only its code", async () => {

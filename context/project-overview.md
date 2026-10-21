@@ -1298,7 +1298,7 @@ AI is used only as a **development tool** (see Development Workflow). Any future
 ## 🗂️ Development Workflow
 
 - **One modular Next.js + TypeScript application** containing the web app and a **versioned HTTP API** (for example `/api/v1/...`) so a native mobile client can be added later.
-- **One branch per feature or fix**, merged locally into `main` with `/feature complete` after lint, type-check, tests, and build pass.
+- **One branch per feature or fix**, created from `staging` and merged locally into `staging` with `/feature complete` after lint, type-check, tests, and build pass. `staging` deploys to the staging site. **`main` is production** and changes only through a pull request from `staging` to `main`, opened by the project owner.
 - **AI assistants** (Claude Code, Cursor, ChatGPT) can be used for implementation. They must follow this overview and `coding-standards.md`.
 - **Validation:** Zod on every input boundary (forms, API, webhooks).
 - **Testing:** Vitest for units, PostgreSQL integration tests (especially tenant isolation and money calculations), and a few Playwright journeys for critical flows (guest booking → quote approval → payment; staff counter order → completed).
@@ -1313,7 +1313,7 @@ AI is used only as a **development tool** (see Development Workflow). Any future
 
 - **Payments:** run the Paystack test-mode checklist (see Next Steps) before any live transaction.
 - **Monitoring:** Sentry for runtime errors **(Assumption, not yet in the tech decisions)**.
-- **CI:** GitHub Actions can run lint, type-check, and tests on push to `main` **(Optional)**.
+- **CI:** GitHub Actions can run lint, type-check, and tests on push to `staging` and on pull requests to `main` **(Optional)**.
 
 **Branch naming example:**
 
@@ -1331,7 +1331,7 @@ git switch -c fix/refund-owed-calculation
 | Authentication     | Better Auth (email/password, DB sessions); Fluta handles roles and store authorization       |
 | Database and ORM   | PostgreSQL + Prisma 7.10+ (not 8); store isolation via app scoping, composite foreign keys, and tests |
 | Database host      | Neon (leading candidate, pending cost and region check)                                      |
-| App host           | Railway for the pilot; compare with Vercel Pro after a prototype                             |
+| App host           | Railway (staging and production environments)                                                |
 | Online payments    | Paystack with store subaccounts                                                              |
 | SMS / email        | Termii (SMS pilot); Resend (official SDK) (email)                                            |
 | File storage       | Cloudflare R2 Standard (public store logos)                                                  |

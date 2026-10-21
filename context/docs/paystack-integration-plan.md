@@ -802,7 +802,7 @@ The reconciliation job keeps `PENDING` from sticking. Balance arithmetic does no
 1. Create Fluta's Paystack business account (business country Nigeria)
 2. Settings → API Keys & Webhooks: copy the **test** secret key into `.env.local` as `PAYSTACK_SECRET_KEY`, with `PAYSTACK_MODE="test"`
 3. Leave the **Test** Callback URL empty, because Fluta sends `callback_url` per transaction [S2]
-4. Set the **Test** Webhook URL only while testing (10.3 and 11). Afterwards set it back deliberately (see 11.1).
+4. Set the **Test** Webhook URL to the staging site: `https://{staging address}/api/webhooks/paystack` (Feature 16b). Local tunnel testing (11) can borrow it, but set it back to staging afterwards.
 5. Record the main account's own settlement bank. Fluta's fee settles there.
 
 ### 10.2 Production (live)
@@ -822,6 +822,8 @@ The reconciliation job keeps `PENDING` from sticking. Balance arithmetic does no
 ---
 
 ## 11. Local webhook setup
+
+**Since Feature 16b,** the staging site receives Paystack test webhooks at a permanent address, so most testing needs no tunnel. Use the tunnel below only to test webhook code before it reaches staging, and set the Test Webhook URL back to staging afterwards.
 
 ### 11.1 Official Paystack CLI
 

@@ -33,6 +33,13 @@ If a script above does not exist yet in package.json, say so and ask before addi
 - **Client:** `getPrisma()` from `src/server/data/client.ts` (created on first use so `next build` needs no secrets) (generated client imported from `@/generated/prisma/client`, gitignored). Every `PrismaPg` adapter takes `pgPoolConfig(url)` from `src/lib/database-url.ts`, which applies `connect_timeout` (pg ignores it in the URL) and lengthens Node's per-address connect attempt (the 250 ms default fails on slow links to Neon).
 - **Seed:** `prisma/seed.ts` → `prisma/seed/` (one spec per store, `order-builder.ts` mirrors the order-creation transaction). It runs under `tsx --conditions=react-server` so it can import `server-only` modules. It deletes and recreates only the FreshFold and CleanWave stores and the seeded users (`prisma/seed/users.ts`, created first through `createUserWithPassword`, all with `SEED_USER_PASSWORD`), then fails if any actor ID doesn't match a user. The seed data and the clear step use long transaction timeouts, because Neon round trips are slow from here.
 
+## Branches and environments
+
+- **Flow: feature branch → `staging` → `main`.** `/feature start` branches from an up-to-date `staging`; `/feature complete` merges into `staging`, pushes `staging`, and deletes the branch. Prefixes stay `feat/` and `fix/`.
+- **`main` is production.** Never push to `main` or merge into it: it changes only through a pull request from `staging`, opened by the project owner. GitHub enforces this (pull requests required on `main`; `staging` can't be force-pushed or deleted).
+- **Railway** has two environments: `staging` deploys automatically from `staging`, `production` from `main`. Every deploy runs `prisma migrate deploy` before starting, and Railway checks `/api/health`.
+- **Neon branches:** `development` (local), `test` (integration tests), `staging`, `production`. `DATABASE_BRANCH` names the one in use; staging behaves like production but with Paystack test keys. Never run anything against the staging or production databases except through deployment.
+
 ## Stack and architecture
 
 - **Next.js 16 (App Router) + React 19 + TypeScript (strict).** Routes live in `src/app/`. There is no `pages/` directory. Next.js 16 differs from older versions, so check `node_modules/next/dist/docs/` (`01-app/` covers the App Router) before using framework APIs.

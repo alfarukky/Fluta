@@ -13,7 +13,8 @@ async function main(): Promise<void> {
   // Variables already in the environment (CI, the integration-test setup) win.
   config({ path: ".env.local", quiet: true });
   const env = getServerEnv();
-  assertSeedAllowed(env);
+  // ALLOW_STAGING_SEED is read here, like the password: only the seed needs it.
+  assertSeedAllowed({ DATABASE_BRANCH: env.DATABASE_BRANCH, ALLOW_STAGING_SEED: process.env.ALLOW_STAGING_SEED });
   // Read here, not in env.ts: only the seed needs it, and never in production.
   const password = seedUserPassword(process.env);
 
