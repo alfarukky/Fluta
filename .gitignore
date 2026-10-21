@@ -42,8 +42,6 @@ yarn-error.log*
 next-env.d.ts
 .claude
 
-# AI
-/context
 # Prisma generated client
 /src/generated/prisma
 .mcp.json
