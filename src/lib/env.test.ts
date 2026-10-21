@@ -96,6 +96,58 @@ describe("parseServerEnv", () => {
   });
 });
 
+describe("parseServerEnv: Paystack", () => {
+  const TEST_KEY = { PAYSTACK_SECRET_KEY: "sk_test_0123456789abcdef", PAYSTACK_MODE: "test" };
+  const LIVE_KEY = { PAYSTACK_SECRET_KEY: "sk_live_0123456789abcdef", PAYSTACK_MODE: "live" };
+  const PRODUCTION = { NODE_ENV: "production", DATABASE_BRANCH: "production", BETTER_AUTH_URL: "https://app.fluta.ng", ...TERMII };
+
+  it("allows neither variable outside production", () => {
+    expect(parseServerEnv(VALID).PAYSTACK_SECRET_KEY).toBeUndefined();
+    expect(parseServerEnv({ ...VALID, PAYSTACK_SECRET_KEY: "", PAYSTACK_MODE: "" }).PAYSTACK_MODE).toBeUndefined();
+  });
+
+  it("accepts a test key in test mode on development and test databases", () => {
+    expect(parseServerEnv({ ...VALID, ...TEST_KEY })).toMatchObject(TEST_KEY);
+    expect(parseServerEnv({ ...VALID, ...TEST_KEY, DATABASE_BRANCH: "test" })).toMatchObject(TEST_KEY);
+  });
+
+  it.each(["development", "test"])("refuses a live key on the %s database", (branch) => {
+    expect(() => parseServerEnv({ ...VALID, ...LIVE_KEY, DATABASE_BRANCH: branch })).toThrow(
+      /a live key \(sk_live_\) is only allowed on the production database/,
+    );
+    expect(() =>
+      parseServerEnv({ ...VALID, ...LIVE_KEY, NODE_ENV: "production", DATABASE_BRANCH: branch, BETTER_AUTH_URL: "https://app.fluta.ng" }),
+    ).toThrow(/only allowed on the production database/);
+  });
+
+  it("refuses a live key on the production database outside a production server", () => {
+    expect(() => parseServerEnv({ ...VALID, ...LIVE_KEY, DATABASE_BRANCH: "production" })).toThrow(/only allowed on the production database/);
+  });
+
+  it("requires the mode to agree with the key", () => {
+    expect(() => parseServerEnv({ ...VALID, PAYSTACK_SECRET_KEY: "sk_test_0123456789abcdef", PAYSTACK_MODE: "live" })).toThrow(
+      /PAYSTACK_MODE: is live but the key is a test key/,
+    );
+  });
+
+  it("requires both or neither", () => {
+    expect(() => parseServerEnv({ ...VALID, PAYSTACK_SECRET_KEY: "sk_test_0123456789abcdef" })).toThrow(/set both, or neither/);
+    expect(() => parseServerEnv({ ...VALID, PAYSTACK_MODE: "test" })).toThrow(/set both, or neither/);
+  });
+
+  it("refuses something that isn't a secret key, without echoing it", () => {
+    const attempt = () => parseServerEnv({ ...VALID, PAYSTACK_SECRET_KEY: "pk_test_publickey123", PAYSTACK_MODE: "test" });
+    expect(attempt).toThrow(/PAYSTACK_SECRET_KEY: must be a Paystack secret key/);
+    expect(attempt).not.toThrow(/publickey123/);
+  });
+
+  it("requires a live key in live mode on the production database", () => {
+    expect(parseServerEnv({ ...VALID, ...PRODUCTION, ...LIVE_KEY })).toMatchObject(LIVE_KEY);
+    expect(() => parseServerEnv({ ...VALID, ...PRODUCTION })).toThrow(/production requires PAYSTACK_MODE=live and an sk_live_ key/);
+    expect(() => parseServerEnv({ ...VALID, ...PRODUCTION, ...TEST_KEY })).toThrow(/production requires PAYSTACK_MODE=live/);
+  });
+});
+
 describe("parseServerEnv in production", () => {
   it("accepts an https:// auth URL", () => {
     expect(parseServerEnv({ ...VALID, ...TERMII, NODE_ENV: "production", BETTER_AUTH_URL: "https://app.fluta.ng" })).toEqual({

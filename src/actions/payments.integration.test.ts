@@ -138,6 +138,10 @@ async function approvePrice(orderId: string, total: number): Promise<void> {
 }
 
 async function addRevision(orderId: string, version: number, total: number, approved: boolean): Promise<void> {
+  // One moment for both: an approval at the revision's creation time isn't a
+  // separate timeline entry. Prisma's own createdAt default can land a
+  // millisecond later, which made the timeline test flaky.
+  const at = new Date();
   const revision = await prisma.quoteRevision.create({
     data: {
       storeId,
@@ -149,7 +153,8 @@ async function addRevision(orderId: string, version: number, total: number, appr
       status: approved ? "APPROVED" : "PENDING",
       createdByActor: "STAFF",
       createdByUserId: users.staff.id,
-      approvedAt: approved ? new Date() : null,
+      createdAt: at,
+      approvedAt: approved ? at : null,
       approvedByActor: approved ? "STAFF" : null,
     },
     select: { id: true },

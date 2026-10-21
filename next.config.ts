@@ -35,10 +35,12 @@ const nextConfig: NextConfig = {
   },
   // Development request logs would print token URLs; leave those requests out
   // (the tracking link's /o/{token} too).
+  // Paystack retries webhooks often; their URL carries no secret, but there's
+  // no reason to log every attempt.
   // Server Action calls are logged with their arguments, which carry customer
   // phone numbers and addresses (order entry); leave them out too.
   logging: {
-    incomingRequests: { ignore: [/\/invite\//, /\/reset-password/, /\/o\//] },
+    incomingRequests: { ignore: [/\/invite\//, /\/reset-password/, /\/o\//, /\/api\/webhooks\//] },
     serverFunctions: false,
   },
 };

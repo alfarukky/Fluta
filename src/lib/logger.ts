@@ -11,6 +11,9 @@ export const logger = {
   warn(message: string, ...details: unknown[]): void {
     console.warn(redactTrackingTokens(message), ...details.map((detail) => redactDetail(detail)));
   },
+  info(message: string, ...details: unknown[]): void {
+    console.info(redactTrackingTokens(message), ...details.map((detail) => redactDetail(detail)));
+  },
 };
 
 const TRACKING_PATH = /\/o\/[^/?#\s"'<>]+/g;
@@ -20,9 +23,21 @@ export function redactTrackingTokens(text: string): string {
   return text.replace(TRACKING_PATH, "/o/[token]");
 }
 
-// Fields never written to logs, matched ignoring case and at any depth
-// ("pickupLatitude" matches "latitude"): a customer's exact location.
-export const REDACTED_FIELDS = ["latitude", "longitude"] as const;
+// Fields never written to logs, matched by the end of the name ignoring case
+// ("pickupLatitude" matches "latitude"), so entries are lower-case: a
+// customer's exact location, and from Paystack the payer's email, bank
+// account numbers, card details (the whole "authorization" object), and the
+// secret key.
+export const REDACTED_FIELDS = [
+  "latitude",
+  "longitude",
+  "email",
+  "accountnumber",
+  "account_number",
+  "authorization",
+  "authorization_code",
+  "secretkey",
+] as const;
 
 const MAX_REDACT_DEPTH = 5;
 

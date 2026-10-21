@@ -272,6 +272,7 @@ model Store {
   settlementAccountName  String? // as resolved by Paystack and confirmed by the owner
   settlementAccountLast4 String? // never store the full account number
   paystackConnectedAt    DateTime?
+  onlineFeeBps           Int         @default(0) // Fluta's fee on online payments, basis points (CHECK 0 to 500); 0 until Feature 23
   smsEnabled             Boolean     @default(true)
   dailyBookingSmsCap     Int         @default(100) // "your order link" SMS after online bookings
   emailCopiesEnabled     Boolean     @default(true)
@@ -504,17 +505,26 @@ model Payment {
   voidReason        String?
   // The voided payment this one corrects. Unique: a voided payment has at most one replacement.
   replacesPaymentId String?       @unique
+  // Online (Paystack) payments: Fluta's fee rate and amount (kobo) at the
+  // time of payment, Paystack's own fee from verify, and a short code when an
+  // attempt fails or doesn't match.
+  flutaFeeBps       Int?
+  flutaFeeAmount    Int?
+  paystackFeeAmount Int?
+  failureCode       String?
   createdAt         DateTime      @default(now())
 
   store Store @relation(fields: [storeId], references: [id])
   order Order @relation(fields: [storeId, orderId], references: [storeId, id])
 
-  // CHECK constraints in migration store_collected_payments (Prisma can't
-  // express them): Payment_confirmed_check, Payment_voided_check, and
-  // Payment_store_collected_method_check.
+  // CHECK constraints (Prisma can't express them): Payment_confirmed_check,
+  // Payment_voided_check, and Payment_store_collected_method_check in
+  // migration store_collected_payments; Payment_online_check in
+  // add_online_payments.
   @@unique([storeId, clientRequestId])
   @@index([storeId, confirmedAt])
   @@index([orderId])
+  @@index([status, createdAt]) // reconciliation job scans PENDING online payments
 }
 
 // A refund the store has actually paid. "Refund owed" is derived from the balance.

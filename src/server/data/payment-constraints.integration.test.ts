@@ -3,8 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { createTestPrisma, insertThenRollBack } from "@/test/integration/db";
 
-// The payment rules the database keeps itself (migration
-// store_collected_payments). Every write here is refused or rolled back, so
+// The payment rules the database keeps itself (migrations
+// store_collected_payments and add_online_payments). Every write here is refused or rolled back, so
 // the seeded FreshFold order never changes.
 
 let prisma: PrismaClient;
@@ -101,6 +101,41 @@ describe("Payment method CHECK constraint", () => {
         data: payment({ source: "ONLINE", method: "PAYSTACK", recordedByUserId: null, paystackReference: "constraint-check" }),
       });
     });
+  });
+});
+
+describe("Online payment CHECK constraint", () => {
+  const online = { source: "ONLINE", method: "PAYSTACK", recordedByUserId: null, paystackReference: "online-check" } as const;
+
+  it("refuses an online payment with a store method", async () => {
+    await expect(prisma.payment.create({ data: payment({ ...online, method: "CASH" }) })).rejects.toThrow(/Payment_online_check/);
+  });
+
+  it("refuses an online payment without a Paystack reference", async () => {
+    await expect(prisma.payment.create({ data: payment({ ...online, paystackReference: null }) })).rejects.toThrow(
+      /Payment_online_check/,
+    );
+  });
+
+  it("accepts a pending online attempt with its fee details", async () => {
+    await insertThenRollBack(prisma, (tx) =>
+      tx.payment.create({
+        data: payment({ ...online, status: "PENDING", confirmedAt: null, flutaFeeBps: 150, flutaFeeAmount: 9_300, paystackFeeAmount: null }),
+      }),
+    );
+  });
+});
+
+describe("Store online fee CHECK constraint", () => {
+  it("defaults to 0 and refuses a fee outside 0 to 500 basis points", async () => {
+    const store = await prisma.store.findUniqueOrThrow({ where: { id: storeId }, select: { onlineFeeBps: true } });
+    expect(store.onlineFeeBps).toBe(0);
+    for (const onlineFeeBps of [-1, 501]) {
+      await expect(
+        insertThenRollBack(prisma, (tx) => tx.store.update({ where: { id: storeId }, data: { onlineFeeBps } })),
+      ).rejects.toThrow(/Store_online_fee_bps_check/);
+    }
+    await insertThenRollBack(prisma, (tx) => tx.store.update({ where: { id: storeId }, data: { onlineFeeBps: 500 } }));
   });
 });
 

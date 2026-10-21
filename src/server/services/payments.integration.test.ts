@@ -120,7 +120,7 @@ afterAll(async () => {
 }, 120_000);
 
 function online() {
-  return { method: "PAYSTACK" as const, source: "ONLINE" as const, recordedByUserId: null };
+  return { method: "PAYSTACK" as const, source: "ONLINE" as const, recordedByUserId: null, paystackReference: `test-${randomUUID()}` };
 }
 
 function paymentData(overrides: Partial<Prisma.PaymentCreateManyInput>): Prisma.PaymentCreateManyInput {

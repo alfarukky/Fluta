@@ -52,6 +52,14 @@ const serverEnvSchema = z.object({
   CRON_SECRET: z.string().min(32, "must be at least 32 characters"),
   // Where Fluta's own alerts go (a store nearing its daily booking SMS cap).
   FLUTA_ALERT_EMAIL: z.email("must be an email address"),
+  // Paystack, for online payments. One secret key signs API calls and
+  // webhooks. Test keys (sk_test_) everywhere except the production database,
+  // which requires a live key (checked in parseServerEnv). Unset outside
+  // production: online payments are then unavailable. Tests never set them.
+  PAYSTACK_SECRET_KEY: optionalText().pipe(
+    z.string().regex(/^sk_(test|live)_\S+$/, "must be a Paystack secret key (sk_test_… or sk_live_…)").optional(),
+  ),
+  PAYSTACK_MODE: optionalText().pipe(z.enum(["test", "live"], "must be test or live").optional()),
 });
 
 // An unset or blank variable is undefined.
@@ -69,12 +77,12 @@ let cachedEnv: ServerEnv | undefined;
 
 export function parseServerEnv(source: Record<string, string | undefined>): ServerEnv {
   const result = serverEnvSchema.safeParse(source);
-  const urlProblems = [...productionUrlProblems(source), ...termiiProblems(source)];
-  if (result.success && urlProblems.length === 0) return result.data;
+  const ruleProblems = [...productionUrlProblems(source), ...termiiProblems(source), ...paystackProblems(source)];
+  if (result.success && ruleProblems.length === 0) return result.data;
 
   const problems = [
     ...(result.success ? [] : result.error.issues.map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)),
-    ...urlProblems,
+    ...ruleProblems,
   ].join("\n");
   throw new Error(
     `Invalid or missing environment variables:\n${problems}\n` +
@@ -98,6 +106,44 @@ function termiiProblems(source: Record<string, string | undefined>): string[] {
   if (set.length === names.length) return [];
   if (set.length === 0 && source.NODE_ENV !== "production") return [];
   return [`  - ${names.join(", ")}: set all three${source.NODE_ENV === "production" ? " (required in production)" : ", or none"}`];
+}
+
+// Live money never touches a development or test database, and the
+// production database never takes test payments. The key itself is never
+// echoed, only which kind it is.
+function paystackProblems(source: Record<string, string | undefined>): string[] {
+  const key = source.PAYSTACK_SECRET_KEY?.trim();
+  const mode = source.PAYSTACK_MODE?.trim();
+  const keyMode = key?.startsWith("sk_live_") ? "live" : key?.startsWith("sk_test_") ? "test" : undefined;
+  const production = source.NODE_ENV === "production" && source.DATABASE_BRANCH === "production";
+
+  if (production) {
+    if (keyMode === "live" && mode === "live") return [];
+    return ["  - PAYSTACK_SECRET_KEY, PAYSTACK_MODE: production requires PAYSTACK_MODE=live and an sk_live_ key"];
+  }
+  if (!key && !mode) return [];
+  const problems: string[] = [];
+  if (keyMode === "live") {
+    problems.push("  - PAYSTACK_SECRET_KEY: a live key (sk_live_) is only allowed on the production database");
+  }
+  if (!key || !mode) {
+    problems.push("  - PAYSTACK_SECRET_KEY, PAYSTACK_MODE: set both, or neither");
+  } else if (keyMode && keyMode !== mode) {
+    problems.push(`  - PAYSTACK_MODE: is ${mode} but the key is a ${keyMode} key`);
+  }
+  return problems;
+}
+
+export interface PaystackConfig {
+  secretKey: string;
+  mode: "test" | "live";
+}
+
+// Null when Paystack isn't configured: online payments are unavailable.
+export function getPaystackConfig(): PaystackConfig | null {
+  const { PAYSTACK_SECRET_KEY, PAYSTACK_MODE } = getServerEnv();
+  if (!PAYSTACK_SECRET_KEY || !PAYSTACK_MODE) return null;
+  return { secretKey: PAYSTACK_SECRET_KEY, mode: PAYSTACK_MODE };
 }
 
 export interface TermiiConfig {
