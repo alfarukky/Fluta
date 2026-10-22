@@ -1,73 +1,40 @@
-# Current Feature: Staging Environment and Branch Flow
+# Current Feature
 
 ## Status
 
-In Progress
+Not Started
 
 ## Spec
 
-- `context/features/16b-staging-environment-spec.md` (Feature 16b, done before Feature 17 Phase 2)
-- project-overview.md: Development Workflow (the branch flow), and the technology table (app host: "Railway (staging and production environments)")
+<!-- The spec file for this feature -->
 
 ## Goals
 
-From the spec's Requirements:
-
-- **0. Clean, synced start:** list every uncommitted file on `main`, check them for secrets (no `.env` file, key, or password), commit them in one commit (e.g. `docs: update context files`) after the owner approves the list, sync local `main` with `origin/main` (pull or push as needed), confirm a clean tree and report the shared commit, and only then create and push `staging` from it
-- **1. Branch flow:** `staging` created from `main`; every `feat/` or `fix/` branch starts from an up-to-date `staging` and is merged into `staging` locally, which is then pushed, and the branch deleted. `main` is production and changes only through a pull request from `staging`, opened by the owner. GitHub protection: `main` requires pull requests (no direct pushes, force-pushes, or deletion); `staging` allows direct pushes but no force-pushes or deletion
-- **2. Workflow files:** the feature start and complete commands (branch from `staging`; merge into and push `staging`, never `main`), `CLAUDE.md`, `context/coding-standards.md` (Git and deployment), `context/ai-interactions.md` (Never push to or merge into `main`; never run anything against the staging or production databases except through deployment), `context/project-overview.md` (Development Workflow and the technology table)
-- **3. Railway project:** one project, environments `staging` (auto-deploys from `staging`) and `production` (from `main`, not opened until Feature 25); every deploy runs `prisma migrate deploy` first and a failed migration stops the deploy; a `/api/health` route returning `200` with no data; Node version pinned; Railway's provided address for staging
-- **4. `DATABASE_BRANCH` gains `staging`** (code change, Ask First), with the rules table: https-not-localhost auth URL (staging yes), Paystack test only on staging, Paystack and Termii may be unset on staging, seed only with `ALLOW_STAGING_SEED=true`. Without Termii, staging marks SMS as sent without sending; Resend email stays real. Unit tests for every rule
-- **5. Staging's own services:** Neon branch `staging` (migrated by deploys, seeded once with FreshFold and CleanWave and a staging-only `SEED_USER_PASSWORD`); R2 bucket `fluta-staging` with its own `R2_PUBLIC_URL`; fresh `BETTER_AUTH_SECRET`, `BOOKING_IP_SECRET`, `CRON_SECRET`; Paystack test key with the Test Webhook URL set to `https://{staging address}/api/webhooks/paystack`; Resend from a clearly marked staging sender ("Fluta Staging"); a Railway cron service calling `/api/cron/messages` every 5 minutes
-- **6. Never mistaken for the real thing:** `X-Robots-Tag: noindex, nofollow` on every staging response, including booking pages, decided by `DATABASE_BRANCH=staging`; a banner on workspace and customer pages: "Staging: test data only. Payments are in test mode."; email subjects start with "[Staging]"
-- **7. Variables:** `.env.example` gains `ALLOW_STAGING_SEED`, and its comment lists every variable each environment needs. Staging values live only in Railway
+<!-- The spec's requirements -->
 
 ## Not in this feature
 
-- Opening production to real users, live Paystack keys, custom domains, and the launch checklist (Feature 25)
-- Preview deployments per feature branch
-- Automatic tests in CI (optional, later)
+<!-- Out of scope -->
 
 ## Done when
 
-- All context files are committed, the working tree is clean, and local `main`, `origin/main`, and the new `staging` all start from the same commit
-- `staging` exists, is protected against force-pushes and deletion, and `main` requires pull requests
-- `/feature start` branches from `staging`, and `/feature complete` merges into and pushes `staging`, verified with a small test change
-- All workflow documents describe the new flow
-- Railway's staging environment deploys from `staging`, runs migrations first, and passes the health check
-- The staging site opens at its Railway address, with the banner and the noindex header on every page, including booking pages
-- The demo stores are seeded on the staging database, and signing in, booking, and a store-collected payment work there
-- A Paystack test payment's webhook reaches staging without a tunnel, with a valid signature
-- The scheduled job runs every 5 minutes on staging
-- Unit tests for the `DATABASE_BRANCH` rules pass, including staging refusing a live Paystack key and the seed refusing to run without `ALLOW_STAGING_SEED`
-- `npm run lint`, `npm run typecheck`, `npm run test:unit`, `npm run test:integration`, and `npm run build` all pass
+<!-- The spec's Done when items -->
 
 ## Verify with
 
-<!-- The spec has no Verify with section -->
+<!-- How to verify the feature -->
 
 ## References
 
-- @context/coding-standards.md (Git, environments, Security)
-- @context/ai-interactions.md
-- @context/docs/paystack-integration-plan.md (sections 5.4, 10, 11)
-- @context/features/02-database-spec.md (Neon branches, seed)
-- `.claude/commands/feature/start.md` and `complete.md`
+<!-- Related context files -->
 
 ## Schema changes
 
-None. (`DATABASE_BRANCH` is an environment variable in `src/lib/env.ts`, not a schema field.)
+<!-- Migrations, or None -->
 
 ## Notes
 
-- **`.gitignore`:** the uncommitted change removes `/context`, so the context files can be committed in section 0. `db.json` (the Paystack CLI login file) is gone.
-- **`.claude` is still gitignored**, so the command files are not tracked. They live at `.claude/commands/skills/feature/actions/start.md` and `complete.md`, not `.claude/commands/feature/…` as the spec says. Edits apply locally only unless `.claude` is tracked. Ask the owner.
-- **Reference path:** the spec names `context/features/02-database-spec.md`; the file is `02-database-seed-spec.md`.
-- **Current env rules to change:** today `NODE_ENV=production` alone requires Termii and an https auth URL, and Paystack's live rule is keyed on `DATABASE_BRANCH=production`. Staging runs with `NODE_ENV=production`, so the Termii rule must allow unset on staging, and the seed's production refusal must add the `ALLOW_STAGING_SEED` check.
-- **Owner-only steps** (accounts and dashboards with no tool here): creating the Railway project and environments, R2 bucket, Resend sender, Railway cron service, setting staging variables, and the Paystack Test Webhook URL. GitHub branch protection can be set with `gh` if the owner approves.
-- **Neon:** creating the `staging` branch is a write through the Neon MCP or console. Ask first.
-- **Ask First items:** the `env.ts` change (section 4, marked Ask First by the spec); security-sensitive code (env rules, robots header); Paystack webhook config; Neon writes (creating the `staging` branch, seeding it); any push to GitHub and the branch protection change.
-- The full integration suite still needs one clean run on a steady connection (carried over from Feature 17 Phase 1).
+<!-- Anything to remember while working -->
 
 ## History
 
@@ -207,3 +174,4 @@ None. (`DATABASE_BRANCH` is an environment variable in `src/lib/env.ts`, not a s
 - 2026-10-21: Completed Feature 17, Phase 1 — Paystack Foundation and Local Webhooks (spec: `context/features/17-paystack-online-payments-spec.md`, plan sections 5, 6.7, 9.1, 11). Commit `2290f62` merged to `main`. Migration `add_online_payments`; Paystack env rules; `integrations/paystack.ts` (`listBanks`, signature check); `/api/webhooks/paystack` acknowledging signed events; logger redaction. Verify passed: a real Paystack-signed `charge.success` verified through a Cloudflare tunnel, tampered and unsigned bodies got 401, and the user reset the Test Webhook URL. Lint, typecheck, unit (806), and build pass. The full integration suite couldn't finish on today's unstable connection (Neon timeouts); by the user's choice, the Phase 1 integration files (payment rules, payments service, payments actions: 55 tests) passed instead, and last night's full run passed apart from the two test fixes in this commit. Also fixed a timing flake in the payments timeline test (one timestamp for createdAt and approvedAt). Next: Phase 2 (bank connection, `feat/paystack-2-bank-connection`). Rerun the full integration suite on a stable connection before or during Phase 2.
 - 2026-10-21: Started Feature 16b — Staging Environment and Branch Flow. Approved: the section 0 commit of the context files (secret scan clean), the `DATABASE_BRANCH=staging` env rules, robots header and banner, GitHub branch protection via `gh`, creating and seeding the Neon `staging` branch, and tracking `.claude/commands` in git.
 - 2026-10-21: Section 0 done: context files committed (PR #1, merge commit `4f48857`); local `main`, `origin/main`, and the new `staging` all at `4f48857`. `main` was already protected by a GitHub rule (pull requests required). Implemented on `feat/staging-environment-and-branch-flow`: `.claude/commands` tracked; start, complete, review, and explain commands use `staging`; CLAUDE.md, coding-standards, ai-interactions, and project-overview describe the flow; `DATABASE_BRANCH` gains `staging` with the rules table (https auth URL, test-only Paystack, optional Paystack and Termii, `ALLOW_STAGING_SEED` for the seed); `isStaging()` drives the banner (both route-group layouts, checked at 360px light and dark), a site-wide `X-Robots-Tag: noindex, nofollow` (checked on `/`, `/sign-in`, and a booking page), and "[Staging]" email subjects; `/api/health`; `railway.json` (pre-deploy migrations, health check) and `railway.cron.json` + `scripts/call-cron.mjs` (5-minute job); Node pinned to 22.14.0; `.env.example` lists every environment's variables. Lint, typecheck, unit tests (829) pass. The Neon `staging` branch already existed (created by the owner from `production`). Waiting on the owner: Railway project and environments, staging variables, R2 bucket, Resend sender, cron service, `staging` branch protection, Paystack Test Webhook URL.
+- 2026-10-22: Completed the code for Feature 16b — Staging Environment and Branch Flow (spec: `context/features/16b-staging-environment-spec.md`). Commit `af67dcf` merged into `staging`. Lint, typecheck, unit (829), integration (425), and build pass; `/api/health` returns 200 from a local production build. Railway deploys were paused on Railway's side, so these Done-when items are still open: staging deploy and health check, banner and noindex on the live site, seeding the staging database, a Paystack test webhook reaching staging, and the 5-minute cron job. The owner sets the staging variables in Railway (from a local `.env.staging`, gitignored, to delete afterwards).
