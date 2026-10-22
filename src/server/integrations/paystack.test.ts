@@ -68,26 +68,29 @@ describe("isValidPaystackSignature", () => {
 
 describe("createPaystackClient().listBanks", () => {
   const config = { secretKey: SECRET, mode: "test" as const };
-  const bank = (name: string, code: string, extra: object = {}) => ({ name, code, active: true, is_deleted: false, type: "nuban", ...extra });
+  const bank = (id: number, name: string, code: string, extra: object = {}) => ({ id, name, code, active: true, is_deleted: false, type: "nuban", ...extra });
   const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
 
-  it("follows the cursor and keeps only active, undeleted NUBAN banks", async () => {
+  it("follows the cursor and keeps only active, undeleted NUBAN banks, with their ids", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        json({ status: true, data: [bank("Access Bank", "044"), bank("Old Bank", "999", { active: false })], meta: { next: "cursor2" } }),
+        json({ status: true, data: [bank(1, "Access Bank", "044"), bank(2, "Old Bank", "999", { active: false })], meta: { next: "cursor2" } }),
       )
       .mockResolvedValueOnce(
         json({
           status: true,
-          data: [bank("Guaranty Trust Bank", "058"), bank("Gone Bank", "998", { is_deleted: true }), bank("Mobile Money", "MM", { type: "mobile_money" })],
+          data: [bank(9, "Guaranty Trust Bank", "058"), bank(3, "Gone Bank", "998", { is_deleted: true }), bank(4, "Mobile Money", "MM", { type: "mobile_money" }), bank(635, "Goodnews Microfinance Bank", "50739"), bank(792, "Prospa Capital Microfinance Bank", "50739")],
           meta: { next: null },
         }),
       );
 
     await expect(createPaystackClient(config, fetchImpl).listBanks()).resolves.toEqual([
-      { name: "Access Bank", code: "044" },
-      { name: "Guaranty Trust Bank", code: "058" },
+      { id: "1", name: "Access Bank", code: "044" },
+      { id: "9", name: "Guaranty Trust Bank", code: "058" },
+      // Two banks sharing a code are both kept: each is chosen by its id.
+      { id: "635", name: "Goodnews Microfinance Bank", code: "50739" },
+      { id: "792", name: "Prospa Capital Microfinance Bank", code: "50739" },
     ]);
 
     const [firstUrl, firstInit] = fetchImpl.mock.calls[0];
@@ -130,5 +133,110 @@ describe("createPaystackClient().listBanks", () => {
     const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => json({ status: true, data: [], meta: { next: "again" } }));
     await expect(createPaystackClient(config, fetchImpl).listBanks()).rejects.toThrow(/^too many pages$/);
     expect(fetchImpl).toHaveBeenCalledTimes(20);
+  });
+});
+
+describe("createPaystackClient(): accounts and subaccounts", () => {
+  const config = { secretKey: SECRET, mode: "test" as const };
+  const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
+  // A recorded test-mode subaccount, values replaced. Paystack returns the
+  // full account number.
+  const SUBACCOUNT = {
+    integration: 100973,
+    domain: "test",
+    subaccount_code: "ACCT_4hl4xenwpjy5wb",
+    business_name: "FreshFold Laundry",
+    description: null,
+    primary_contact_email: "ada@freshfold.example",
+    settlement_bank: "Guaranty Trust Bank",
+    account_number: "0123454521",
+    account_name: "AMINA BELLO",
+    percentage_charge: 0,
+    is_verified: false,
+    settlement_schedule: "AUTO",
+    active: true,
+    id: 55,
+  };
+  const subaccountFetch = () => vi.fn<typeof fetch>().mockImplementation(async () => json({ status: true, message: "ok", data: SUBACCOUNT }));
+  const parsedSubaccount = {
+    subaccountCode: "ACCT_4hl4xenwpjy5wb",
+    businessName: "FreshFold Laundry",
+    settlementBank: "Guaranty Trust Bank",
+    accountName: "AMINA BELLO",
+    accountNumberLast4: "4521",
+    percentageCharge: 0,
+    active: true,
+    isVerified: false,
+  };
+  const ACCOUNT = { bankCode: "058", accountNumber: "0123454521" };
+
+  it("resolves an account name with the number and bank code", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(json({ status: true, data: { account_number: "0123454521", account_name: "AMINA BELLO", bank_id: 9 } }));
+    await expect(createPaystackClient(config, fetchImpl).resolveAccount(ACCOUNT)).resolves.toEqual({ accountName: "AMINA BELLO" });
+    const url = new URL(String(fetchImpl.mock.calls[0][0]));
+    expect(url.pathname).toBe("/bank/resolve");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ account_number: "0123454521", bank_code: "058" });
+  });
+
+  it("refuses a resolve response without a name", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(json({ status: true, data: { account_name: " " } }));
+    await expect(createPaystackClient(config, fetchImpl).resolveAccount(ACCOUNT)).rejects.toThrow(/^unexpected response$/);
+  });
+
+  it("creates a subaccount with bank_code and a 0% share for Fluta, keeping only the last 4 digits", async () => {
+    const fetchImpl = subaccountFetch();
+    const created = await createPaystackClient(config, fetchImpl).createSubaccount({
+      ...ACCOUNT,
+      businessName: "FreshFold Laundry",
+      primaryContactEmail: "ada@freshfold.example",
+    });
+    expect(created).toEqual(parsedSubaccount);
+    expect(JSON.stringify(created)).not.toContain("0123454521");
+
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(String(url)).toBe("https://api.paystack.co/subaccount");
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toMatchObject({ Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      business_name: "FreshFold Laundry",
+      bank_code: "058",
+      account_number: "0123454521",
+      percentage_charge: 0,
+      primary_contact_email: "ada@freshfold.example",
+    });
+  });
+
+  it("updates the bank account of the same subaccount, or switches it off", async () => {
+    const fetchImpl = subaccountFetch();
+    const client = createPaystackClient(config, fetchImpl);
+    await client.updateSubaccount("ACCT_4hl4xenwpjy5wb", { bankCode: "044", accountNumber: "0987651234" });
+    await client.updateSubaccount("ACCT_4hl4xenwpjy5wb", { active: false });
+
+    const [[firstUrl, first], [, second]] = fetchImpl.mock.calls;
+    expect(String(firstUrl)).toBe("https://api.paystack.co/subaccount/ACCT_4hl4xenwpjy5wb");
+    expect(first?.method).toBe("PUT");
+    expect(JSON.parse(String(first?.body))).toEqual({ bank_code: "044", account_number: "0987651234" });
+    expect(JSON.parse(String(second?.body))).toEqual({ active: false });
+  });
+
+  it("fetches a subaccount", async () => {
+    const fetchImpl = subaccountFetch();
+    await expect(createPaystackClient(config, fetchImpl).fetchSubaccount("ACCT_4hl4xenwpjy5wb")).resolves.toEqual(parsedSubaccount);
+    expect(fetchImpl.mock.calls[0][1]?.method).toBe("GET");
+  });
+
+  it("refuses a subaccount code that isn't ACCT_ followed by letters and digits, without calling Paystack", async () => {
+    const fetchImpl = subaccountFetch();
+    const client = createPaystackClient(config, fetchImpl);
+    await expect(client.fetchSubaccount("../bank")).rejects.toThrow(/^invalid subaccount code$/);
+    await expect(client.updateSubaccount("ACCT_x/../y", { active: false })).rejects.toThrow(/^invalid subaccount code$/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses a subaccount response it doesn't recognise", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(json({ status: true, data: { ...SUBACCOUNT, subaccount_code: 12 } }));
+    await expect(createPaystackClient(config, fetchImpl).fetchSubaccount("ACCT_4hl4xenwpjy5wb")).rejects.toThrow(/^unexpected response$/);
   });
 });

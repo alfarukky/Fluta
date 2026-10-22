@@ -6,6 +6,10 @@ import { z } from "zod";
 
 import { getPaystackConfig, type PaystackConfig } from "@/lib/env";
 
+import { PaystackError } from "./paystack-error";
+
+export { PaystackError };
+
 // Paystack's API: the only module that calls api.paystack.co. Every response
 // is checked with Zod, and every failure is a PaystackError with a short code
 // only. Never log the secret key, the Authorization header, or a response
@@ -18,29 +22,48 @@ const REQUEST_TIMEOUT_MS = 15_000;
 // broken cursor from looping forever.
 const MAX_BANK_PAGES = 20;
 
+// Paystack's id is unique; the code is what payouts and account lookups use,
+// and a few banks share one (two names for the same bank, or two
+// microfinance banks), so a bank is chosen by id.
 export interface PaystackBank {
+  id: string;
   name: string;
   code: string;
+}
+
+// A store's settlement account as Paystack holds it. Only the last 4 digits
+// of the account number are kept: the full number never leaves this module.
+export interface PaystackSubaccount {
+  subaccountCode: string;
+  businessName: string;
+  // The bank's name, as Paystack returns it.
+  settlementBank: string;
+  accountName: string | null;
+  accountNumberLast4: string | null;
+  // What Fluta (the main account) receives from each payment, in percent.
+  percentageCharge: number;
+  active: boolean;
+  isVerified: boolean | null;
+}
+
+export interface SettlementAccountDetails {
+  bankCode: string;
+  // Ten digits (NUBAN). Sent to Paystack, never stored or logged.
+  accountNumber: string;
 }
 
 export interface PaystackClient {
   // Nigerian banks that can receive settlements (active NUBAN banks).
   listBanks(): Promise<PaystackBank[]>;
-}
-
-// Thrown for any failed call. Its message is a short code only
-// ("HTTP 400 validation_error", "timeout", "unexpected response"), never
-// Paystack's own message. On 429, retryAfterSeconds says when to try again;
-// callers don't retry in a loop.
-export class PaystackError extends Error {
-  override name = "PaystackError";
-
-  constructor(
-    code: string,
-    readonly retryAfterSeconds?: number,
-  ) {
-    super(code);
-  }
+  // The account holder's name for a bank account.
+  resolveAccount(account: SettlementAccountDetails): Promise<{ accountName: string }>;
+  // A subaccount that settles to the store's bank. Fluta's share is always
+  // 0%: a fee, when there is one, is set on each transaction (plan 6.3).
+  createSubaccount(input: SettlementAccountDetails & { businessName: string; primaryContactEmail: string }): Promise<PaystackSubaccount>;
+  // A new bank account for an existing subaccount (its code stays the same),
+  // or { active: false } to switch off a duplicate.
+  updateSubaccount(subaccountCode: string, update: SettlementAccountDetails | { active: false }): Promise<PaystackSubaccount>;
+  fetchSubaccount(subaccountCode: string): Promise<PaystackSubaccount>;
 }
 
 // Paystack's error bodies carry status, message, type, and code. Only `type`
@@ -51,6 +74,7 @@ const bankListSchema = z.object({
   status: z.literal(true),
   data: z.array(
     z.object({
+      id: z.number().int(),
       name: z.string(),
       code: z.string(),
       active: z.boolean(),
@@ -60,6 +84,41 @@ const bankListSchema = z.object({
   ),
   meta: z.object({ next: z.string().nullable().optional() }).optional(),
 });
+
+// Paystack returns the full account number; only its last 4 digits are kept.
+const subaccountResponseSchema = z.object({
+  status: z.literal(true),
+  data: z
+    .object({
+      subaccount_code: z.string().regex(/^ACCT_[A-Za-z0-9]+$/),
+      business_name: z.string(),
+      settlement_bank: z.string(),
+      account_name: z.string().nullable().optional(),
+      account_number: z.string().nullable().optional(),
+      percentage_charge: z.coerce.number(),
+      active: z.boolean().optional(),
+      is_verified: z.boolean().nullable().optional(),
+    })
+    .transform(
+      (data): PaystackSubaccount => ({
+        subaccountCode: data.subaccount_code,
+        businessName: data.business_name,
+        settlementBank: data.settlement_bank,
+        accountName: data.account_name ?? null,
+        accountNumberLast4: data.account_number ? data.account_number.slice(-4) : null,
+        percentageCharge: data.percentage_charge,
+        active: data.active ?? true,
+        isVerified: data.is_verified ?? null,
+      }),
+    ),
+});
+
+const resolveResponseSchema = z.object({
+  status: z.literal(true),
+  data: z.object({ account_name: z.string().trim().min(1) }),
+});
+
+const SUBACCOUNT_CODE = /^ACCT_[A-Za-z0-9]+$/;
 
 type FetchLike = typeof fetch;
 
@@ -75,14 +134,24 @@ export function getPaystackClient(): PaystackClient | null {
 }
 
 export function createPaystackClient(config: PaystackConfig, fetchImpl: FetchLike = fetch): PaystackClient {
-  async function get(path: string, query: Record<string, string>): Promise<unknown> {
+  async function call(
+    method: "GET" | "POST" | "PUT",
+    path: string,
+    { query = {}, body }: { query?: Record<string, string>; body?: unknown } = {},
+  ): Promise<unknown> {
     const url = new URL(path, API_BASE);
     for (const [name, value] of Object.entries(query)) url.searchParams.set(name, value);
 
     let response: Response;
     try {
       response = await fetchImpl(url, {
-        headers: { Authorization: `Bearer ${config.secretKey}`, Accept: "application/json" },
+        method,
+        headers: {
+          Authorization: `Bearer ${config.secretKey}`,
+          Accept: "application/json",
+          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (error) {
@@ -90,6 +159,19 @@ export function createPaystackClient(config: PaystackConfig, fetchImpl: FetchLik
     }
     if (!response.ok) throw await toPaystackError(response);
     return response.json().catch(() => null);
+  }
+
+  const get = (path: string, query: Record<string, string>) => call("GET", path, { query });
+
+  function subaccountPath(code: string): string {
+    if (!SUBACCOUNT_CODE.test(code)) throw new PaystackError("invalid subaccount code");
+    return `/subaccount/${code}`;
+  }
+
+  function parseSubaccount(body: unknown): PaystackSubaccount {
+    const parsed = subaccountResponseSchema.safeParse(body);
+    if (!parsed.success) throw new PaystackError("unexpected response");
+    return parsed.data.data;
   }
 
   return {
@@ -108,12 +190,43 @@ export function createPaystackClient(config: PaystackConfig, fetchImpl: FetchLik
         );
         if (!parsed.success) throw new PaystackError("unexpected response");
         for (const bank of parsed.data.data) {
-          if (bank.active && !bank.is_deleted && bank.type === "nuban") banks.push({ name: bank.name, code: bank.code });
+          if (bank.active && !bank.is_deleted && bank.type === "nuban") banks.push({ id: String(bank.id), name: bank.name, code: bank.code });
         }
         next = parsed.data.meta?.next ?? undefined;
         if (!next) return banks;
       }
       throw new PaystackError("too many pages");
+    },
+
+    async resolveAccount({ bankCode, accountNumber }) {
+      const parsed = resolveResponseSchema.safeParse(
+        await get("/bank/resolve", { account_number: accountNumber, bank_code: bankCode }),
+      );
+      if (!parsed.success) throw new PaystackError("unexpected response");
+      return { accountName: parsed.data.data.account_name };
+    },
+
+    async createSubaccount({ businessName, bankCode, accountNumber, primaryContactEmail }) {
+      return parseSubaccount(
+        await call("POST", "/subaccount", {
+          body: {
+            business_name: businessName,
+            bank_code: bankCode,
+            account_number: accountNumber,
+            percentage_charge: 0,
+            primary_contact_email: primaryContactEmail,
+          },
+        }),
+      );
+    },
+
+    async updateSubaccount(subaccountCode, update) {
+      const body = "active" in update ? { active: false } : { bank_code: update.bankCode, account_number: update.accountNumber };
+      return parseSubaccount(await call("PUT", subaccountPath(subaccountCode), { body }));
+    },
+
+    async fetchSubaccount(subaccountCode) {
+      return parseSubaccount(await call("GET", subaccountPath(subaccountCode)));
     },
   };
 }

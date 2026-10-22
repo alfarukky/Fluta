@@ -1,40 +1,83 @@
-# Current Feature
+# Current Feature: Paystack Bank Connection (Feature 17, Phase 2)
 
 ## Status
 
-Not Started
+In Progress
 
 ## Spec
 
-<!-- The spec file for this feature -->
+- `context/features/17-paystack-online-payments-spec.md` (Phase 2 only: branch `feat/paystack-2-bank-connection`)
+- The specification is `context/docs/paystack-integration-plan.md`: section 4 (Owner settings analysis) and the Phase 2 entry in section 14. Decision 5 (section 16) applies. Files from section 8 and 9.2 that belong to this phase only
+- project-overview.md: Payments (online payments into each store's own bank account) and Monetization (the Fluta fee line, shown but fixed at 0%)
 
 ## Goals
 
-<!-- The spec's requirements -->
+From plan section 4 and the Phase 2 entry ("Settings → Payments, resolve, connect, change, pay-later toggle, audit event, owner email"):
+
+- **Settings → Payments page** (4.1): `src/app/(staff)/(workspace)/settings/payments/page.tsx`, owner-only via `requireStoreMember({ role: "OWNER" })` in the page itself. `SettingsNav` gains "Payments". Every change goes through `requireOwnerCanEdit()` and `ownerEditRefusalMessage`, like `src/actions/store-settings.ts`
+- **Paystack client** (section 8): add `resolveAccount`, `createSubaccount`, `updateSubaccount`, `fetchSubaccount` to `src/server/integrations/paystack.ts` (already has `listBanks`), with Zod schemas for each response. Tests use the fake client
+- **Bank list** (4.2): from `GET /bank?country=nigeria&currency=NGN`, only `active: true` and `is_deleted: false`, cached for a day
+- **Connect flow** (4.2): business name (pre-filled with the store name), bank select, 10-digit account number (Zod), "Check account" (`resolveSettlementAccount` → "Account name: … Is this your account?"), then `connectSettlementAccount`:
+  - resolves again on the server and checks the name matches what the owner confirmed
+  - `POST /subaccount` with `business_name`, `bank_code`, `account_number`, `percentage_charge: 0`, `primary_contact_email` = owner's sign-in email
+  - saves `paystackSubaccountCode`, `settlementBankName`, `settlementAccountName`, `settlementAccountLast4`, `paystackConnectedAt` and writes `AuditEvent` `PAYSTACK_CONNECTED`, in one transaction
+  - double submit: conditional update `WHERE paystackSubaccountCode IS NULL`; a raced second subaccount is deactivated (`PUT /subaccount/:code`, `active: false`) and its code logged
+  - if the save fails after Paystack succeeds, log the subaccount code
+  - full account number is never stored (last 4 only) or logged
+- **Connected view** (4.2 step 6, section 8 layout): "Connected", bank name, account name, "•••• 4521", connection date, Fluta fee line
+- **Change bank details** (4.3): owner-only, same resolve-and-confirm steps, password re-entry first (decision 5):
+  - checks the password on the server through Better Auth against the signed-in owner's own credential account, before calling Paystack; a wrong password changes nothing, returns "That password isn't right", and counts toward the sign-in rate limit
+  - `PUT /subaccount/:code` with `bank_code` and `account_number` (code stays the same), updates the four settlement fields
+  - `AuditEvent` `PAYSTACK_BANK_CHANGED` with old and new bank name and last 4 only
+  - after the commit, emails the owner (`User.email`) through the mailer directly: "FreshFold Laundry: the bank account for online payments was changed to GTBank •••• 4521 on 20 Oct 2026, 3:15 PM. If you didn't do this, contact Fluta support now." Outcome logged
+- **Fee display** (4.4): "Fluta fee: 0% of online payments" via `formatBasisPoints` in `src/lib/money.ts` (`formatBasisPoints(150)` → "1.5%"), plus "Paystack's fees are taken from each online payment before it reaches your bank."
+- **Pay later toggle** (4.5): "Let customers pay later" (`payLaterEnabled`), off by default, shown only when connected (`setPayLater` action)
+- **Files** (section 8): `src/server/services/payment-settings.ts`, `src/server/data/payment-settings.ts` (or extend `stores.ts`), `src/actions/payment-settings.ts`, `settlementAccountSchema` in `src/schemas/online-payments.ts`, `PaymentSettingsCard.tsx`, `BankConnectionForm.tsx`, `PayLaterToggle.tsx` (client components with the shared form-error scroll helper)
+- **Tests** (section 13, the Phase 2 items): wrong password refused with no Paystack call; a FreshFold owner can't change CleanWave's bank details; Settings owner-only (staff and rider refused); resolve mismatch refused; change writes an audit event and emails the owner; a double connect leaves one subaccount saved; `formatBasisPoints`; logger never prints account numbers
 
 ## Not in this feature
 
-<!-- Out of scope -->
+- Phase 3 (starting payments, Book and pay, the Pay now card, `canPayOnline`, `initializeTransaction`), Phase 4 (webhook processing, verify, reconciliation, `getBalance` changes), Phase 5 (the fee split) and Phase 6 (production)
+- Setting `onlineFeeBps` (Feature 23's admin screen; it stays 0%)
+- Refunds through Paystack (decision 12)
 
 ## Done when
 
-<!-- The spec's Done when items -->
+From the plan's Phase 2 entry (section 14):
+
+- **Verify:** connect FreshFold in test mode. Fetch the subaccount to confirm `percentage_charge` is 0 [S4]. Change the bank, and see the audit entry and email.
+- **Ready for next phase when:** a test subaccount code is saved, and its details match
+
+And from the spec's rules for every phase:
+
+- The phase's "Verify" checks pass in test mode and the result is recorded in `current-feature.md`
+- Anything the plan marks **Unconfirmed** for this phase is checked and the answer written back into the plan
+- `npm run lint`, `npm run typecheck`, `npm run test:unit`, `npm run test:integration`, and `npm run build` all pass
 
 ## Verify with
 
-<!-- How to verify the feature -->
+- Plan section 13.3: check Settings → Payments in both themes at ~360px and desktop
+- Plan section 13.4: "Bank list, account-name resolution, and subaccount creation work end to end" (Phase 2: connect FreshFold in test mode. Resolve test-mode behaviour is **Unconfirmed** (6.1).)
 
 ## References
 
-<!-- Related context files -->
+- @context/docs/paystack-integration-plan.md (the specification)
+- @context/project-overview.md (Payments, Payment states, Monetization)
+- @context/features/16-store-collected-payments-spec.md
 
 ## Schema changes
 
-<!-- Migrations, or None -->
+None. Phase 1's migration (`add_online_payments`) already added `payLaterEnabled`, `paystackSubaccountCode`, `settlementBankName`, `settlementAccountName`, `settlementAccountLast4`, `paystackConnectedAt`, and `onlineFeeBps`. `AuditEvent.action` is a string, so `PAYSTACK_CONNECTED` and `PAYSTACK_BANK_CHANGED` need no migration.
 
 ## Notes
 
-<!-- Anything to remember while working -->
+- **Before starting:** Phase 1 is merged (commit `2290f62`); its "ready" condition was met on 2026-10-21
+- **Unconfirmed items to check in this phase:** the Better Auth call for checking a password without starting a session (check `node_modules/better-auth` and its docs); what `is_verified: false` means for settlements; whether Paystack re-resolves the account name on update; account resolution in test mode (6.1). Write the answers back into the plan
+- **Follow the current API reference:** `percentage_charge` is what the main account receives (0 = Fluta takes nothing); send `bank_code`, not `settlement_bank`
+- **Seed (decided 2026-10-22):** the seed never sets a Paystack subaccount code, in any phase (plan 9.2 updated). Both seeded stores stay unconnected. FreshFold is connected for real in test mode through this phase's flow (the Verify step). Integration tests set up connected stores in their own setup with the fake Paystack client
+- **Verify needs real test-mode calls** (development only, test key only): connecting FreshFold calls Paystack and saves to the development database. Ask first
+- Every Paystack call goes through `src/server/integrations/paystack.ts`; tests never call Paystack
+- Carried over: the full integration suite passed on 2026-10-21 (425 tests)
 
 ## History
 
@@ -175,3 +218,9 @@ Not Started
 - 2026-10-21: Started Feature 16b — Staging Environment and Branch Flow. Approved: the section 0 commit of the context files (secret scan clean), the `DATABASE_BRANCH=staging` env rules, robots header and banner, GitHub branch protection via `gh`, creating and seeding the Neon `staging` branch, and tracking `.claude/commands` in git.
 - 2026-10-21: Section 0 done: context files committed (PR #1, merge commit `4f48857`); local `main`, `origin/main`, and the new `staging` all at `4f48857`. `main` was already protected by a GitHub rule (pull requests required). Implemented on `feat/staging-environment-and-branch-flow`: `.claude/commands` tracked; start, complete, review, and explain commands use `staging`; CLAUDE.md, coding-standards, ai-interactions, and project-overview describe the flow; `DATABASE_BRANCH` gains `staging` with the rules table (https auth URL, test-only Paystack, optional Paystack and Termii, `ALLOW_STAGING_SEED` for the seed); `isStaging()` drives the banner (both route-group layouts, checked at 360px light and dark), a site-wide `X-Robots-Tag: noindex, nofollow` (checked on `/`, `/sign-in`, and a booking page), and "[Staging]" email subjects; `/api/health`; `railway.json` (pre-deploy migrations, health check) and `railway.cron.json` + `scripts/call-cron.mjs` (5-minute job); Node pinned to 22.14.0; `.env.example` lists every environment's variables. Lint, typecheck, unit tests (829) pass. The Neon `staging` branch already existed (created by the owner from `production`). Waiting on the owner: Railway project and environments, staging variables, R2 bucket, Resend sender, cron service, `staging` branch protection, Paystack Test Webhook URL.
 - 2026-10-22: Completed the code for Feature 16b — Staging Environment and Branch Flow (spec: `context/features/16b-staging-environment-spec.md`). Commit `af67dcf` merged into `staging`. Lint, typecheck, unit (829), integration (425), and build pass; `/api/health` returns 200 from a local production build. Railway deploys were paused on Railway's side, so these Done-when items are still open: staging deploy and health check, banner and noindex on the live site, seeding the staging database, a Paystack test webhook reaching staging, and the 5-minute cron job. The owner sets the staging variables in Railway (from a local `.env.staging`, gitignored, to delete afterwards).
+- 2026-10-22: Started Feature 17, Phase 2 — Paystack Bank Connection on `feat/paystack-2-bank-connection` (from `staging` at `43a913a`). Decided: the seed never sets a Paystack subaccount code (plan 9.2 updated). Approved Ask First items: Paystack client calls, the password re-check, owner-only checks, the new data module, and (at Verify, asked again) test-mode calls and development database writes.
+- 2026-10-22: Implemented Phase 2: Paystack client `resolveAccount`, `createSubaccount` (always `percentage_charge: 0`, `bank_code`), `updateSubaccount`, `fetchSubaccount` (only the last 4 digits kept); `PaystackError` moved to `paystack-error.ts` (the fake importing it from `paystack.ts` deadlocked the integration setup's mock); `src/server/data/payment-settings.ts` (conditional connect save + `PAYSTACK_CONNECTED`, bank change + `PAYSTACK_BANK_CHANGED` with old/new bank and last 4, pay later only when connected); `src/server/services/payment-settings.ts` (bank list cached a day, resolve again on the server and compare the confirmed name, duplicate subaccount switched off, codes logged on save failure, owner email after commit); `src/server/auth/password-check.ts` (Better Auth `/verify-password` through `getAuth().handler`, own rate rule at the sign-in limit; answer written into plan 4.3); actions in `src/actions/payment-settings.ts`; Settings → Payments page, `PaymentSettingsCard`, `BankConnectionForm`, `PayLaterToggle`, "Payments" in `SettingsNav`; `formatBasisPoints`; `buildBankChangedEmail`. Removed the seed's fake FreshFold connection (`ACCT_seedfreshfold`) and `payLaterEnabled: true`. Lint, typecheck, unit tests (858), and the new integration file (16) pass.
+- 2026-10-22: Verify, part 1 passed. The development database was reseeded (fake connection gone), then the owner connected FreshFold for real in test mode: subaccount `ACCT_b7sms47namw2rzc`; fetched from Paystack: `domain: test`, `percentage_charge: 0`, active, Guaranty Trust Bank •••• 9617. The store's saved code, bank, account name, and last 4 match, with one `PAYSTACK_CONNECTED` audit event. "Ready for next phase" condition met. Fixes from the run: banks are chosen by Paystack's bank id (a few banks share a code, which caused duplicate React keys and an ambiguous choice); Paystack's 429 shows "too many requests" instead of "isn't responding"; the server reuses its own lookup from "Check account" for 10 minutes (approved; plan 4.2 updated), so a connect or change uses one lookup. Test-mode lookups hit HTTP 429 after 3 that day (plan 6.1 updated). Ada's development email is `alfarukky+fluta@gmail.com` for the email check (a reseed puts it back). Still to do: the bank change (password, audit entry, email) once Paystack's test-mode lookup limit resets. Unit tests (859) and the integration file (20) pass.
+- 2026-10-23: The bank change could not be verified yet: Paystack still refused lookups with "Test mode daily limit of 3 live bank resolves exceeded" (its day follows UTC). Owner's decision: no code change, a Paystack test-mode limit and not a Fluta fault; check the bank change later and proceed. Still open from Verify: change the bank (password, `PAYSTACK_BANK_CHANGED` audit entry, owner email), once the limit resets.
+- 2026-10-23: Owner's decision: the "Fluta fee: 0% of online payments" line is removed from Settings → Payments (not needed while the fee is 0%); the Paystack fees note stays. `formatBasisPoints` and the page's `onlineFeeBps` read removed; plan 4.4 updated. The full integration suite was skipped at the owner's request (too slow here); the Phase 2 integration file passed (20).
+- 2026-10-23: Review finding fixed at the owner's request: the bank list (290 banks) gets a search. New `BankPicker` (Popover with a search field, no new dependency) replaces the plain select: filters by any part of the name, ignoring case and punctuation, or by initials ("gtb" → Guaranty Trust Bank); arrow keys and Enter to choose. Checked at 360px and desktop, light and dark, no console errors. Unit tests (860) pass.

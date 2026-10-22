@@ -182,7 +182,7 @@ No Pay now anywhere: not on the booking review, the confirmation screen, or the 
 3. **Account number.** Exactly 10 digits (NUBAN), validated with Zod.
 4. **Check account.** The `resolveSettlementAccount` action calls `GET /bank/resolve?account_number=…&bank_code=…` [S6][S7] and shows "Account name: AMINA BELLO. Is this your account?"
 5. **Confirm and connect.** The `connectSettlementAccount` action:
-   - resolves again on the server (it never trusts a name sent back from the browser) and checks it matches what the owner confirmed
+   - looks the account up on the server (it never trusts a name sent back from the browser) and checks it matches what the owner confirmed. **Decided 22 Oct 2026:** the server reuses its own successful lookup from "Check account" for 10 minutes (kept in server memory per store, bank code, and account number, keyed by a hash so no account number is held), so a connect or change uses one Paystack lookup instead of two. Paystack limits lookups, in test mode to a few a day (6.1)
    - calls `POST /subaccount` with `business_name`, `bank_code`, `account_number`, and `percentage_charge: 0`, plus `primary_contact_email` set to the owner's sign-in email [S4]
    - saves `paystackSubaccountCode`, `settlementBankName`, `settlementAccountName`, `settlementAccountLast4`, and `paystackConnectedAt`, and writes `AuditEvent` `PAYSTACK_CONNECTED`, in one transaction
 6. **Connected.** Settings shows "Connected", the bank name, the account name, "•••• 4521", the connection date, and the Fluta fee line.
@@ -206,12 +206,14 @@ Notes:
 - **Decided:** the owner re-enters their password before bank details change. A stolen session that redirects payouts is the costliest attack on this feature (see Risks).
   - The change action checks the password on the server, through Better Auth, against the signed-in owner's own credential account, before calling Paystack.
   - A wrong password changes nothing. It returns "That password isn't right" and counts toward Better Auth's sign-in rate limit.
-  - The exact Better Auth call for checking a password without starting a new session is **Unconfirmed**. Check it in Phase 2 against `node_modules/better-auth` and its docs.
+  - **Confirmed in Phase 2 (Better Auth 1.7.7):** `POST /verify-password` checks the signed-in user's own credential account (`validatePassword` → `findCredentialAccount(session.user.id)`) and starts no session. A wrong password is HTTP 400 (`INVALID_PASSWORD`). Rate limits apply only to HTTP requests, so `src/server/auth/password-check.ts` sends it through `getAuth().handler` with the caller's cookie and client IP. `/verify-password` has its own rule with the sign-in limit (10 per 5 minutes per IP), because Better Auth keys each limit by IP and path, so it can't share the `/sign-in/email` counter.
   - First-time connection doesn't need the password. Nothing is being redirected yet, and the audit entry still records who connected.
 
 ### 4.4 Fee display
 
 "Fluta fee: 0% of online payments", formatted from `Store.onlineFeeBps` by a helper in `src/lib/money.ts` (`formatBasisPoints(150)` → "1.5%"). A short line explains: "Paystack's fees are taken from each online payment before it reaches your bank."
+
+**Decided 23 Oct 2026 (owner):** Settings → Payments doesn't show the Fluta fee line. While the fee is 0% it tells the owner nothing, so Phase 2 shows only the Paystack fees note, and `formatBasisPoints` isn't added. Showing a non-zero fee to owners, if wanted, is decided with Feature 23's admin screen.
 
 ### 4.5 Pay later toggle
 
@@ -339,6 +341,7 @@ Also extend `next.config.ts` `logging.incomingRequests.ignore` with `/\/api\/web
 - Test and live are separate environments with separate keys. In test mode "settlements aren't processed … and some payment channels are unavailable" [S15].
 - Works in test mode straight away with test keys: List Banks, initialize, verify, webhooks, and test cards [S10]. Creating subaccounts in test mode also works: the documented create response shows `"domain": "test"` [S4].
 - Whether `GET /bank/resolve` returns real account names in test mode, or has a daily test limit, is **Unconfirmed**. The docs say only that the feature "is available to business in Nigeria and Ghana" [S7]. Check in Phase 0.
+  - **Observed in Phase 2 (22 Oct 2026):** test mode returns the real account holder's name for a real account. After 3 lookups that day, Paystack answered `HTTP 429 api_error` to every further `GET /bank/resolve`, which matches a small daily test-mode limit. Each connect or change uses two lookups ("Check account", then the server's own check on confirm), so test mode allows about one connect or change a day. Fluta shows a 429 as "Paystack has had too many requests from us. Please try again later." Live-mode limits are not documented in the sources read. Paystack's own 429 message: "Test mode daily limit of 3 live bank resolves exceeded. Use test bank codes 001 or upgrade to live mode." The count appears to reset at midnight UTC. Test bank code `001` (account `0000000000` → "TEST ACCOUNT 0000000000") resolves without counting, but it is not in `GET /bank`, so Fluta's bank list doesn't offer it (left as is, owner's decision 23 Oct 2026).
 - What Paystack requires before live mode (business activation documents and review) is **Unconfirmed**, because the docs read do not list it. Check the dashboard's activation checklist in Phase 0. Also ask Paystack support whether Fluta's model (collecting for many stores through subaccounts) needs any extra approval.
 
 ### 6.2 Banks, account resolution, and subaccount creation
@@ -779,7 +782,7 @@ Compared with the overview's draft:
 | `src/server/data/order-timeline.ts`                                                                   | "Online payment received: ₦X (Paystack)" entries, plus the "after cancelled" or "after paid" wording                                                  |
 | `src/server/services/notifications.ts` / cron job                                                     | Call `reconcilePendingPayments`                                                                                                                       |
 | `src/components/design-system/*`                                                                      | Show the new payment badges and the Pay now card with sample data                                                                                     |
-| `prisma/seed/*`                                                                                       | FreshFold connected with a fake `ACCT_test…` code and one confirmed online payment. CleanWave not connected.                                          |
+| `prisma/seed/*` | No Paystack fields. The seed never sets a `paystackSubaccountCode`, in any phase: Paystack refuses payments for a code that doesn't exist. Both seeded stores (FreshFold and CleanWave) stay unconnected, so the seed has no online payments either. FreshFold is connected for real in test mode through the Phase 2 flow (its Verify step). Integration tests set up connected stores in their own setup, with the fake Paystack client. |
 
 ### 9.3 The two new payment states
 

@@ -35,15 +35,11 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
       timeZone: "Africa/Lagos",
       orderPrefix: "FF",
       pickupDeliveryEnabled: true,
-      payLaterEnabled: true,
       activeDays: [1, 2, 3, 4, 5, 6],
       openTime: "08:00",
       closeTime: "18:00",
-      paystackSubaccountCode: "ACCT_seedfreshfold",
-      settlementBankName: "Example Bank",
-      settlementAccountName: "FRESHFOLD LAUNDRY SERVICES",
-      settlementAccountLast4: "4821",
-      paystackConnectedAt: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000),
+      // Not connected to Paystack: the seed never sets a subaccount code
+      // (plan 9.2). FreshFold is connected for real through Settings → Payments.
     },
     areas: [
       { name: LEKKI, chargeType: "FIXED", fixedCharge: 100_000 },
