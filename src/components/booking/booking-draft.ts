@@ -2,6 +2,7 @@ import type { FulfilmentType } from "@/generated/prisma/enums";
 import { getBookingPriceSummary, toBookingLineAmount, type BookingPriceSummary } from "@/lib/booking";
 import type { Coordinates } from "@/lib/location";
 import { lineTotalKobo } from "@/lib/money";
+import { PAYSTACK_EMAIL_REQUIRED } from "@/lib/online-payment";
 import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY, parseHundredths } from "@/lib/quantity";
 import { UNLISTED_AREA_ID, UNLISTED_AREA_NAME_MIN, type BookingRequest } from "@/schemas/booking";
 import { ADDRESS_MAX, CUSTOMER_NAME_MAX, CUSTOMER_NOTE_MAX } from "@/schemas/field-limits";
@@ -79,7 +80,7 @@ export function validateStep(step: BookingStep, draft: BookingDraft, options: Bo
     case "pickup":
       return validatePickup(draft, options);
     case "details":
-      return validateDetails(draft);
+      return validateDetails(draft, getBookAndPayTotal(options, reviewBooking(draft, options)) !== null);
     case "review":
       return {};
   }
@@ -169,8 +170,9 @@ export function isShortAddress(address: string): boolean {
 }
 
 // The phone number and email are checked properly on the server, which
-// sends any problem back to this step.
-function validateDetails(draft: BookingDraft): DraftErrors {
+// sends any problem back to this step. The email is required only for Book
+// and pay (Paystack sends the receipt there).
+function validateDetails(draft: BookingDraft, emailRequired: boolean): DraftErrors {
   const errors: DraftErrors = {};
   const name = draft.name.trim();
   if (!name) errors.name = "Enter your name";
@@ -180,7 +182,8 @@ function validateDetails(draft: BookingDraft): DraftErrors {
   if (!draft.phone.trim()) errors.phone = "Enter your phone number";
   else if (digits.length < 7 || digits.length > 15) errors.phone = "Enter a valid phone number";
   const email = draft.email.trim();
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = "Enter a valid email address";
+  if (!email && emailRequired) errors.email = PAYSTACK_EMAIL_REQUIRED;
+  else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = "Enter a valid email address";
   return errors;
 }
 
@@ -283,4 +286,13 @@ export function reviewBooking(draft: BookingDraft, options: BookingOptions): Boo
     pickupCharge,
     summary,
   };
+}
+
+// Book and pay (plan 3.2): the amount paid on Paystack in the same step, or
+// null for an ordinary booking. Only at a store that takes payment at
+// booking, and only when the total is known now (every price fixed). The
+// server decides again when the order is created.
+export function getBookAndPayTotal(options: Pick<BookingOptions, "payAtBooking">, review: BookingReview): number | null {
+  if (!options.payAtBooking || review.summary.kind !== "total" || review.summary.total <= 0) return null;
+  return review.summary.total;
 }

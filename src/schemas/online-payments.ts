@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { normalizeEmail } from "@/lib/email-address";
+import { PAYSTACK_EMAIL_REQUIRED } from "@/lib/online-payment";
+
 import { MAX_PASSWORD_LENGTH } from "./users";
 
 // A Paystack webhook event, after its signature has been checked. Only the
@@ -16,6 +19,19 @@ export const paystackEventSchema = z.object({
 });
 
 export type PaystackEvent = z.infer<typeof paystackEventSchema>;
+
+// ───────────── Pay now ─────────────
+
+// The payer's email, required by Paystack for the receipt.
+export const payerEmailSchema = z
+  .string()
+  .max(254, "Enter a valid email address")
+  .transform((value) => normalizeEmail(value))
+  .pipe(z.string().min(1, PAYSTACK_EMAIL_REQUIRED).pipe(z.email("Enter a valid email address")));
+
+export const startPaymentSchema = z.object({ email: payerEmailSchema });
+
+export type StartPaymentRequest = z.input<typeof startPaymentSchema>;
 
 // ───────────── Settings → Payments: the store's settlement account ─────────────
 

@@ -240,3 +240,175 @@ describe("createPaystackClient(): accounts and subaccounts", () => {
     await expect(createPaystackClient(config, fetchImpl).fetchSubaccount("ACCT_4hl4xenwpjy5wb")).rejects.toThrow(/^unexpected response$/);
   });
 });
+
+describe("createPaystackClient(): transactions", () => {
+  const config = { secretKey: SECRET, mode: "test" as const };
+  const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
+  const input = {
+    amountKobo: 620_000,
+    email: "amina@example.com",
+    currency: "NGN",
+    reference: "FL-0123456789abcdef0123",
+    callbackUrl: "https://fluta.test/o/token?paystack=return",
+    subaccountCode: "ACCT_abc123",
+    transactionChargeKobo: 0,
+    metadata: { payment_id: "p1", order_id: "o1", store_id: "s1" },
+  };
+
+  it("initializes with the subaccount bearing fees, Fluta's charge (even 0), and no channels", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      json({
+        status: true,
+        data: { authorization_url: "https://checkout.paystack.com/abc", access_code: "abc", reference: input.reference },
+      }),
+    );
+    await expect(createPaystackClient(config, fetchImpl).initializeTransaction(input)).resolves.toEqual({
+      authorizationUrl: "https://checkout.paystack.com/abc",
+      accessCode: "abc",
+      reference: input.reference,
+    });
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(String(url)).toBe("https://api.paystack.co/transaction/initialize");
+    expect(init?.method).toBe("POST");
+    const body = JSON.parse(String(init?.body));
+    expect(body).toEqual({
+      amount: "620000",
+      email: "amina@example.com",
+      currency: "NGN",
+      reference: input.reference,
+      callback_url: input.callbackUrl,
+      subaccount: "ACCT_abc123",
+      bearer: "subaccount",
+      transaction_charge: 0,
+      metadata: JSON.stringify(input.metadata),
+    });
+    expect(body).not.toHaveProperty("channels");
+  });
+
+  it("refuses a checkout URL that isn't Paystack's", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      json({ status: true, data: { authorization_url: "https://evil.example/pay", access_code: "abc", reference: input.reference } }),
+    );
+    await expect(createPaystackClient(config, fetchImpl).initializeTransaction(input)).rejects.toThrow(/^unexpected response$/);
+  });
+
+  it("never sends a malformed reference or subaccount code", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const client = createPaystackClient(config, fetchImpl);
+    await expect(client.initializeTransaction({ ...input, reference: "FL/../x" })).rejects.toThrow(/^invalid reference$/);
+    await expect(client.initializeTransaction({ ...input, subaccountCode: "ACCT_x/y" })).rejects.toThrow(/^invalid subaccount code$/);
+    await expect(client.verifyTransaction("a/b")).rejects.toThrow(/^invalid reference$/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("verifies, keeping only the fields Fluta checks", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      json({
+        status: true,
+        data: {
+          status: "success",
+          reference: input.reference,
+          amount: 620_000,
+          currency: "NGN",
+          domain: "test",
+          paid_at: "2026-10-23T12:00:00.000Z",
+          fees: 9_300,
+          subaccount: { subaccount_code: "ACCT_abc123", account_number: "0123454521" },
+          authorization: { authorization_code: "AUTH_x", last4: "4081" },
+          customer: { email: "amina@example.com" },
+        },
+      }),
+    );
+    await expect(createPaystackClient(config, fetchImpl).verifyTransaction(input.reference)).resolves.toEqual({
+      status: "success",
+      reference: input.reference,
+      amountKobo: 620_000,
+      currency: "NGN",
+      domain: "test",
+      paidAt: new Date("2026-10-23T12:00:00.000Z"),
+      feesKobo: 9_300,
+      subaccountCode: "ACCT_abc123",
+    });
+    expect(String(fetchImpl.mock.calls[0][0])).toBe(`https://api.paystack.co/transaction/verify/${input.reference}`);
+  });
+
+  it("reads an empty subaccount object as no split details", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      json({
+        status: true,
+        data: { status: "abandoned", reference: input.reference, amount: 620_000, currency: "NGN", domain: "test", paid_at: null, subaccount: {} },
+      }),
+    );
+    await expect(createPaystackClient(config, fetchImpl).verifyTransaction(input.reference)).resolves.toMatchObject({
+      status: "abandoned",
+      paidAt: null,
+      feesKobo: null,
+      subaccountCode: null,
+    });
+  });
+});
+
+describe("recorded Paystack responses (test mode, Phase 3)", () => {
+  const config = { secretKey: SECRET, mode: "test" as const };
+
+  it("reads a real split verify response: subaccount code, Paystack's fee, and a 0 charge", async () => {
+    const recorded = (await import("@/test/fixtures/paystack/verify-success.json")).default;
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(recorded), { status: 200 }));
+    await expect(createPaystackClient(config, fetchImpl).verifyTransaction(recorded.data.reference)).resolves.toEqual({
+      status: "success",
+      reference: recorded.data.reference,
+      amountKobo: 80_000,
+      currency: "NGN",
+      domain: "test",
+      paidAt: new Date("2026-10-23T12:30:04.000Z"),
+      feesKobo: 1_200,
+      subaccountCode: "ACCT_fixture",
+    });
+    // Fluta's charge of 0 was accepted, with Paystack's fee on the store's share.
+    expect(recorded.data.fees_split).toMatchObject({ integration: 0, params: { bearer: "subaccount", transaction_charge: "0" } });
+  });
+});
+
+describe("recorded initialize response (test mode, Phase 3)", () => {
+  it("reads Paystack's real initialize response", async () => {
+    const recorded = (await import("@/test/fixtures/paystack/initialize-success.json")).default;
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(recorded), { status: 200 }));
+    const client = createPaystackClient({ secretKey: SECRET, mode: "test" }, fetchImpl);
+    await expect(
+      client.initializeTransaction({
+        amountKobo: 10_000,
+        email: "payer@example.com",
+        currency: "NGN",
+        reference: recorded.data.reference,
+        callbackUrl: "http://localhost:3000/?paystack=return",
+        subaccountCode: "ACCT_fixture",
+        transactionChargeKobo: 0,
+        metadata: {},
+      }),
+    ).resolves.toEqual({
+      authorizationUrl: "https://checkout.paystack.com/fixtureaccesscode",
+      accessCode: "fixtureaccesscode",
+      reference: recorded.data.reference,
+    });
+  });
+});
+
+describe("recorded charge.success webhook (test mode, Phase 3)", () => {
+  it("is accepted when signed, and carries the split details Phase 4 checks", async () => {
+    const recorded = (await import("@/test/fixtures/paystack/webhook-charge-success.json")).default;
+    const bytes = encode(JSON.stringify(recorded));
+    expect(isValidPaystackSignature(bytes, sign(bytes), SECRET)).toBe(true);
+    expect(recorded).toMatchObject({
+      event: "charge.success",
+      data: {
+        status: "success",
+        domain: "test",
+        amount: 80_000,
+        currency: "NGN",
+        fees: 1_200,
+        fees_split: { integration: 0, params: { bearer: "subaccount", transaction_charge: "0" } },
+        subaccount: { subaccount_code: "ACCT_fixture" },
+      },
+    });
+  });
+});

@@ -1,0 +1,100 @@
+{
+  "event": "charge.success",
+  "data": {
+    "id": 1000002,
+    "domain": "test",
+    "status": "success",
+    "reference": "FL-0123456789abcdef0124",
+    "amount": 80000,
+    "message": null,
+    "gateway_response": "Successful",
+    "gateway_response_code": "approved",
+    "response_code": "00",
+    "paid_at": "2026-10-23T12:43:17.000Z",
+    "created_at": "2026-10-23T12:43:08.000Z",
+    "channel": "card",
+    "currency": "NGN",
+    "ip_address": "203.0.113.10",
+    "metadata": {
+      "payment_id": "payment_fixture",
+      "order_id": "order_fixture",
+      "store_id": "store_fixture",
+      "cancel_action": "http://localhost:3000/o/TRACKING_TOKEN",
+      "custom_fields": [
+        {
+          "display_name": "Order",
+          "variable_name": "order_number",
+          "value": "FF-1014"
+        }
+      ]
+    },
+    "fees_breakdown": null,
+    "log": null,
+    "fees": 1200,
+    "fees_split": {
+      "paystack": 1200,
+      "integration": 0,
+      "subaccount": 78800,
+      "params": {
+        "bearer": "subaccount",
+        "transaction_charge": "0",
+        "percentage_charge": "0"
+      }
+    },
+    "authorization": {
+      "authorization_code": "AUTH_fixture",
+      "bin": "408408",
+      "last4": "4081",
+      "exp_month": "REDACTED",
+      "exp_year": "REDACTED",
+      "channel": "card",
+      "card_type": "visa",
+      "bank": "REDACTED",
+      "country_code": "NG",
+      "brand": "visa",
+      "reusable": true,
+      "signature": "SIG_fixture",
+      "account_name": null,
+      "receiver_bank_account_number": null,
+      "receiver_bank": null
+    },
+    "customer": {
+      "id": 2000001,
+      "first_name": null,
+      "last_name": null,
+      "email": "payer@example.com",
+      "customer_code": "CUS_fixture",
+      "phone": null,
+      "metadata": null,
+      "risk_action": "default",
+      "international_format_phone": null
+    },
+    "plan": {},
+    "subaccount": {
+      "id": 3000001,
+      "subaccount_code": "ACCT_fixture",
+      "business_name": "FreshFold Laundry",
+      "description": "FreshFold Laundry",
+      "primary_contact_name": null,
+      "primary_contact_email": "owner@example.com",
+      "primary_contact_phone": null,
+      "metadata": null,
+      "percentage_charge": 0,
+      "settlement_bank": "Guaranty Trust Bank",
+      "account_number": "0000000000",
+      "currency": "NGN",
+      "active": 1
+    },
+    "split": {},
+    "order_id": null,
+    "paidAt": "2026-10-23T12:43:17.000Z",
+    "requested_amount": 80000,
+    "pos_transaction_data": null,
+    "source": {
+      "type": "api",
+      "source": "merchant_api",
+      "entry_point": "transaction_initialize",
+      "identifier": null
+    }
+  }
+}

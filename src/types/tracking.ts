@@ -59,6 +59,18 @@ export interface PickupSuggestionReview {
   requested: string | null;
 }
 
+// Pay now (plan section 7): the full balance due, on Paystack's page.
+export interface PayNowOffer {
+  amount: string; // "₦6,200"
+  // Pre-filled from the customer's saved email; "" when there is none.
+  email: string;
+  // The anti-fraud line (plan 3.6).
+  warning: string;
+  // A PENDING attempt under 15 minutes old: "A payment is being confirmed",
+  // with Pay again as a secondary link.
+  recentAttempt: boolean;
+}
+
 export interface TrackingView {
   store: PublicStore;
   displayNumber: string;
@@ -74,6 +86,8 @@ export interface TrackingView {
   // update first, since a pickup time can't be confirmed until it's decided.
   priceUpdate: PriceUpdateReview | null;
   pickupSuggestion: PickupSuggestionReview | null;
+  // Only when the order can be paid online now (canPayOnline).
+  payNow: PayNowOffer | null;
 }
 
 export type TrackingPage =

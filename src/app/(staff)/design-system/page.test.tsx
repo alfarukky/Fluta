@@ -2,6 +2,12 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import DesignSystemPage from "@/app/(staff)/design-system/page";
 
+// The Pay now preview uses the App Router, which isn't mounted here.
+vi.mock("next/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/navigation")>()),
+  useRouter: () => ({ refresh: vi.fn(), replace: vi.fn(), push: vi.fn() }),
+}));
+
 afterEach(() => {
   vi.unstubAllEnvs();
 });

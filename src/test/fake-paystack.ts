@@ -1,4 +1,12 @@
-import type { PaystackBank, PaystackClient, PaystackSubaccount, SettlementAccountDetails } from "@/server/integrations/paystack";
+import type {
+  InitializedTransaction,
+  InitializeTransactionInput,
+  PaystackBank,
+  PaystackClient,
+  PaystackSubaccount,
+  SettlementAccountDetails,
+  VerifiedTransaction,
+} from "@/server/integrations/paystack";
 // Not from paystack.ts: the integration setup replaces that module with this
 // fake, so importing a value from it here would never finish loading.
 import { PaystackError } from "@/server/integrations/paystack-error";
@@ -24,8 +32,14 @@ export class FakePaystackClient implements PaystackClient {
     ["001:0000000001", "MUSA BELLO"],
   ]);
   readonly subaccounts = new Map<string, PaystackSubaccount>();
+  // Every transaction started, by reference, as Fluta sent it.
+  readonly transactions = new Map<string, InitializeTransactionInput>();
+  // What verifyTransaction reports for a reference (default "ongoing").
+  readonly verifyStatus = new Map<string, VerifiedTransaction["status"]>();
   // Set to make the next matching calls throw.
-  failNext: Partial<Record<"resolveAccount" | "createSubaccount" | "updateSubaccount", PaystackError>> = {};
+  failNext: Partial<
+    Record<"resolveAccount" | "createSubaccount" | "updateSubaccount" | "initializeTransaction" | "verifyTransaction", PaystackError>
+  > = {};
   private nextCode = 1;
 
   async listBanks(): Promise<PaystackBank[]> {
@@ -85,9 +99,40 @@ export class FakePaystackClient implements PaystackClient {
     return { ...current };
   }
 
+  async initializeTransaction(input: InitializeTransactionInput): Promise<InitializedTransaction> {
+    this.calls.push("initializeTransaction");
+    this.throwIfFailing("initializeTransaction");
+    this.transactions.set(input.reference, { ...input });
+    return {
+      authorizationUrl: `https://checkout.paystack.com/fake-${input.reference}`,
+      accessCode: `access-${input.reference}`,
+      reference: input.reference,
+    };
+  }
+
+  async verifyTransaction(reference: string): Promise<VerifiedTransaction> {
+    this.calls.push("verifyTransaction");
+    this.throwIfFailing("verifyTransaction");
+    const transaction = this.transactions.get(reference);
+    if (!transaction) throw new PaystackError("HTTP 400");
+    const status = this.verifyStatus.get(reference) ?? "ongoing";
+    return {
+      status,
+      reference,
+      amountKobo: transaction.amountKobo,
+      currency: transaction.currency,
+      domain: "test",
+      paidAt: status === "success" ? new Date() : null,
+      feesKobo: status === "success" ? 0 : null,
+      subaccountCode: transaction.subaccountCode,
+    };
+  }
+
   reset(): void {
     this.calls.length = 0;
     this.subaccounts.clear();
+    this.transactions.clear();
+    this.verifyStatus.clear();
     this.failNext = {};
   }
 

@@ -419,7 +419,7 @@ describe("opening a tracking link", () => {
     const page = await loadTrackingPage(order.token);
     if (page.kind !== "VALID") throw new Error("The link should work");
 
-    const html = renderToStaticMarkup(TrackingOrder({ view: page.view, basePath: "/o/test" }));
+    const html = renderToStaticMarkup(TrackingOrder({ view: page.view, basePath: "/o/test", token: order.token }));
     const metadata = JSON.stringify(await getTrackingMetadata(order.token));
     for (const text of [JSON.stringify(page.view), html]) {
       for (const secret of [ADDRESS, "Hidden Close", CUSTOMER_PHONE, "803 123 4521", INTERNAL_NOTE, CUSTOMER_NOTE, STAFF_NAME, "Tracking Test Customer"]) {

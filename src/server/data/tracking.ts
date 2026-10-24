@@ -57,9 +57,12 @@ const TRACKED_ORDER_SELECT = {
       logoKey: true,
       brandPrimaryColor: true,
       brandAccentColor: true,
+      // Online payment: whether the store is connected (never shown).
+      paystackSubaccountCode: true,
     },
   },
-  customer: { select: { phone: true } },
+  // The email only pre-fills Pay now (it is never shown otherwise).
+  customer: { select: { phone: true, email: true } },
   lines: {
     select: {
       id: true,
@@ -88,7 +91,9 @@ const TRACKED_ORDER_SELECT = {
     },
     orderBy: { version: "desc" },
   },
-  payments: { select: { amount: true, status: true, voidedAt: true } },
+  // Online attempts too: a recent PENDING one hides Pay now, and the return
+  // from Paystack is matched by its reference (never shown).
+  payments: { select: { amount: true, status: true, voidedAt: true, source: true, createdAt: true, paystackReference: true } },
   refunds: { select: { amount: true, voidedAt: true } },
   statusEvents: { select: { id: true, fromStage: true, toStage: true, createdAt: true } },
 } as const satisfies Prisma.OrderSelect;

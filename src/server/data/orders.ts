@@ -89,6 +89,8 @@ export interface CreatedOrder {
   id: string;
   orderNumber: number;
   orderPrefix: string;
+  // False for a booking meant to be paid at booking (Book and pay).
+  payLater: boolean;
   // Messages queued with a newly created order, to send after the commit.
   queued?: QueuedMessages | null;
 }
@@ -134,12 +136,12 @@ export async function insertOnlineOrder(storeId: string, data: NewOrderData): Pr
 
     const existing = await tx.order.findUnique({
       where: { storeId_clientRequestId: { storeId, clientRequestId: data.clientRequestId } },
-      select: { id: true, orderNumber: true, store: { select: { orderPrefix: true } } },
+      select: { id: true, orderNumber: true, payLater: true, store: { select: { orderPrefix: true } } },
     });
     if (existing) {
       return {
         kind: "existing",
-        order: { id: existing.id, orderNumber: existing.orderNumber, orderPrefix: existing.store.orderPrefix },
+        order: { id: existing.id, orderNumber: existing.orderNumber, orderPrefix: existing.store.orderPrefix, payLater: existing.payLater },
       };
     }
 
@@ -245,7 +247,7 @@ async function createOrderRecords(tx: Prisma.TransactionClient, storeId: string,
     },
   });
   const queued = data.messages ? await queueOrderMessages(tx, storeId, id, data.messages, data.now) : null;
-  return { id, orderNumber, orderPrefix, queued };
+  return { id, orderNumber, orderPrefix, payLater: data.payLater, queued };
 }
 
 // One UPDATE … RETURNING: the row lock serialises concurrent allocations, and
@@ -285,9 +287,9 @@ function pickupFields(pickup: NewOrderData["pickup"]) {
 export async function findOrderByClientRequestId(storeId: string, clientRequestId: string): Promise<CreatedOrder | null> {
   const order = await getPrisma().order.findUnique({
     where: { storeId_clientRequestId: { storeId, clientRequestId } },
-    select: { id: true, orderNumber: true, store: { select: { orderPrefix: true } } },
+    select: { id: true, orderNumber: true, payLater: true, store: { select: { orderPrefix: true } } },
   });
-  return order && { id: order.id, orderNumber: order.orderNumber, orderPrefix: order.store.orderPrefix };
+  return order && { id: order.id, orderNumber: order.orderNumber, orderPrefix: order.store.orderPrefix, payLater: order.payLater };
 }
 
 // Whether the order is this store's: checked before the detail page starts

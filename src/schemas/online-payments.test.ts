@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { changeAccountSchema, connectAccountSchema, settlementAccountSchema } from "./online-payments";
+import { changeAccountSchema, connectAccountSchema, settlementAccountSchema, startPaymentSchema } from "./online-payments";
 
 describe("settlementAccountSchema", () => {
   it("accepts a bank code and a 10-digit account number, ignoring spaces and dashes", () => {
@@ -41,5 +41,19 @@ describe("connectAccountSchema and changeAccountSchema", () => {
       path: ["password"],
       message: "Enter your password",
     });
+  });
+});
+
+describe("startPaymentSchema", () => {
+  it("normalizes the payer's email", () => {
+    expect(startPaymentSchema.parse({ email: "  Amina@Example.COM " })).toEqual({ email: "amina@example.com" });
+  });
+
+  it("requires an email, for the Paystack receipt", () => {
+    expect(startPaymentSchema.safeParse({ email: "  " }).error?.issues[0].message).toBe("Enter your email for your Paystack receipt");
+  });
+
+  it.each(["amina", "amina@", "a@b"])("refuses %j", (email) => {
+    expect(startPaymentSchema.safeParse({ email }).error?.issues[0].message).toBe("Enter a valid email address");
   });
 });

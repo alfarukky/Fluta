@@ -49,7 +49,7 @@ const RECORDED_SELECT = { id: true, orderId: true, replacesPaymentId: true } as 
 // Locks the order's row until the transaction ends, so payments, voids, and
 // stage changes on one order happen one at a time and each sees the balance
 // left by the one before. False when the store has no such order.
-async function lockOrder(tx: Prisma.TransactionClient, storeId: string, orderId: string): Promise<boolean> {
+export async function lockOrder(tx: Prisma.TransactionClient, storeId: string, orderId: string): Promise<boolean> {
   const rows = await tx.$queryRaw<{ id: string }[]>`
     SELECT "id" FROM "Order" WHERE "storeId" = ${storeId} AND "id" = ${orderId} FOR UPDATE`;
   return rows.length > 0;

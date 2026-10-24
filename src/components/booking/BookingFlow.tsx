@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createBooking, type BookingActionResult } from "@/actions/booking";
 import { prefersReducedMotion, useScrollToFirstError } from "@/components/forms/scroll-to-first-error";
 import { Button } from "@/components/ui/button";
+import { formatNaira } from "@/lib/money";
 import type { BookingOptions, BookingStep } from "@/types/booking";
 
 import { BookingConfirmation } from "./BookingConfirmation";
@@ -12,6 +13,7 @@ import { BookingStepper } from "./BookingStepper";
 import {
   createDraft,
   fromServerErrors,
+  getBookAndPayTotal,
   getSteps,
   reviewBooking,
   toBookingRequest,
@@ -31,6 +33,21 @@ interface BookingFlowProps {
   options: BookingOptions;
 }
 
+interface Confirmed {
+  displayNumber: string;
+  trackingUrl: string | null;
+  draft: BookingDraft;
+  // Book and pay whose payment couldn't start: Pay now to try again.
+  payNow: { token: string; message: string } | null;
+}
+
+// "Book and pay ₦6,200" for Book and pay, otherwise "Confirm booking".
+function submitLabel(bookAndPayTotal: number | null, pending: boolean, leaving: boolean): string {
+  if (bookAndPayTotal === null) return pending ? "Sending your booking…" : "Confirm booking";
+  if (leaving) return "Opening Paystack…";
+  return pending ? "Sending your booking…" : `Book and pay ${formatNaira(bookAndPayTotal)}`;
+}
+
 export const STEP_TITLES: Record<BookingStep, string> = {
   services: "Choose your services",
   fulfilment: "Drop-off or pickup",
@@ -46,8 +63,10 @@ export function BookingFlow({ slug, storeName, options }: BookingFlowProps) {
   const [step, setStep] = useState<BookingStep>("services");
   const [errors, setErrors] = useState<DraftErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState<{ displayNumber: string; trackingUrl: string | null; draft: BookingDraft } | null>(null);
+  const [confirmed, setConfirmed] = useState<Confirmed | null>(null);
   const [pending, startTransition] = useTransition();
+  // On the way to Paystack's checkout (or the order page): stays disabled.
+  const [leaving, setLeaving] = useState(false);
   // Made once when the page opens: sending the same booking again (a double
   // tap, a retry after a lost connection) returns the same order.
   const requestId = useRef<string | null>(null);
@@ -70,6 +89,9 @@ export function BookingFlow({ slug, storeName, options }: BookingFlowProps) {
 
   const steps = getSteps(draft);
   const index = steps.indexOf(step);
+  const review = reviewBooking(draft, options);
+  const bookAndPayTotal = getBookAndPayTotal(options, review);
+  const busy = pending || leaving;
 
   function update(patch: Partial<BookingDraft>) {
     setDraft((current) => ({ ...current, ...patch }));
@@ -118,8 +140,22 @@ export function BookingFlow({ slug, storeName, options }: BookingFlowProps) {
         submitting.current = false;
       }
       if (result.ok) {
+        // Book and pay: straight to Paystack, or to the order page when this
+        // booking's payment is already being confirmed.
+        const next =
+          result.payment?.kind === "CHECKOUT" ? result.payment.checkoutUrl : result.payment?.kind === "PENDING" ? result.trackingUrl : null;
+        if (next) {
+          setLeaving(true);
+          window.location.assign(next);
+          return;
+        }
         stepChanged.current = true;
-        setConfirmed({ displayNumber: result.displayNumber, trackingUrl: result.trackingUrl, draft });
+        setConfirmed({
+          displayNumber: result.displayNumber,
+          trackingUrl: result.trackingUrl,
+          draft,
+          payNow: result.payment?.kind === "FAILED" ? { token: result.payment.token, message: result.payment.message } : null,
+        });
         return;
       }
       // Back to the step with the problem, with every answer kept.
@@ -151,6 +187,7 @@ export function BookingFlow({ slug, storeName, options }: BookingFlowProps) {
         draft={confirmed.draft}
         review={reviewBooking(confirmed.draft, options)}
         options={options}
+        payNow={confirmed.payNow}
         onStartAgain={startAgain}
       />
     );
@@ -201,21 +238,28 @@ export function BookingFlow({ slug, storeName, options }: BookingFlowProps) {
         />
       )}
       {step === "pickup" && <PickupStep options={options} draft={draft} errors={errors} onChange={update} />}
-      {step === "details" && <DetailsStep draft={draft} errors={errors} onChange={update} />}
+      {step === "details" && <DetailsStep draft={draft} errors={errors} onChange={update} emailRequired={bookAndPayTotal !== null} />}
       {step === "review" && (
-        <ReviewStep draft={draft} options={options} review={reviewBooking(draft, options)} onEdit={(target) => goTo(target)} />
+        <ReviewStep
+          draft={draft}
+          options={options}
+          review={review}
+          onEdit={(target) => goTo(target)}
+          storeName={storeName}
+          bookAndPay={bookAndPayTotal !== null}
+        />
       )}
 
       <div className="flex flex-col-reverse gap-3 xs:flex-row xs:justify-between">
         {index > 0 ? (
-          <Button type="button" variant="outline" onClick={() => goTo(steps[index - 1])} disabled={pending}>
+          <Button type="button" variant="outline" onClick={() => goTo(steps[index - 1])} disabled={busy}>
             Back
           </Button>
         ) : (
           <span className="hidden xs:block" />
         )}
-        <Button type="submit" disabled={pending} aria-disabled={pending}>
-          {last ? (pending ? "Sending your booking…" : "Confirm booking") : "Continue"}
+        <Button type="submit" disabled={busy} aria-disabled={busy}>
+          {last ? submitLabel(bookAndPayTotal, pending, leaving) : "Continue"}
         </Button>
       </div>
     </form>

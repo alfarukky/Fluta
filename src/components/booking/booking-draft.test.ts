@@ -7,6 +7,7 @@ import {
   createDraft,
   EMPTY_DRAFT,
   fromServerErrors,
+  getBookAndPayTotal,
   getSteps,
   isShortAddress,
   reviewBooking,
@@ -24,6 +25,7 @@ const OPTIONS: BookingOptions = {
     { id: "gown", name: "Wedding gown", category: "Specialist care", pricingType: "PER_ITEM", price: 0, requiresQuote: true },
   ],
   dropOff: true,
+  payAtBooking: false,
   pickup: true,
   areas: [
     { id: "wuse", name: "Wuse 2", chargeType: "FIXED", fixedCharge: 150_000 },
@@ -276,5 +278,31 @@ describe("reviewBooking", () => {
     );
     expect(review.pickupCharge).toBeNull();
     expect(review.summary).toEqual({ kind: "unknown" });
+  });
+});
+
+describe("Book and pay", () => {
+  const PAY_AT_BOOKING = { ...OPTIONS, payAtBooking: true };
+  const shirts = draft({ lines: [{ serviceId: "shirt", amount: "3" }], fulfilmentType: "DROP_OFF", name: "Ada Obi", phone: "0803 123 4567" });
+
+  it("applies to a fixed-price booking at a store that takes payment at booking", () => {
+    expect(getBookAndPayTotal(PAY_AT_BOOKING, reviewBooking(shirts, PAY_AT_BOOKING))).toBe(240_000);
+  });
+
+  it("never applies when the store doesn't take payment at booking", () => {
+    expect(getBookAndPayTotal(OPTIONS, reviewBooking(shirts, OPTIONS))).toBeNull();
+  });
+
+  it("never applies while the store still has to confirm a price", () => {
+    const estimate = draft({ ...shirts, lines: [{ serviceId: "agbada", amount: "2" }] });
+    expect(getBookAndPayTotal(PAY_AT_BOOKING, reviewBooking(estimate, PAY_AT_BOOKING))).toBeNull();
+    const quotedArea = draft({ ...shirts, fulfilmentType: "PICKUP_DELIVERY", areaId: "maitama" });
+    expect(getBookAndPayTotal(PAY_AT_BOOKING, reviewBooking(quotedArea, PAY_AT_BOOKING))).toBeNull();
+  });
+
+  it("requires the email only on the Book and pay path", () => {
+    expect(validateStep("details", shirts, PAY_AT_BOOKING)).toEqual({ email: "Enter your email for your Paystack receipt" });
+    expect(validateStep("details", draft({ ...shirts, email: "ada@example.com" }), PAY_AT_BOOKING)).toEqual({});
+    expect(validateStep("details", shirts, OPTIONS)).toEqual({});
   });
 });

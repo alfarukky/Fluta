@@ -243,7 +243,7 @@ describe("a customer's shared location", () => {
     expectNoLeak(JSON.stringify(page));
     expect(JSON.stringify(page)).not.toMatch(/location/i);
     if (page.kind === "VALID") {
-      const markup = renderToStaticMarkup(createElement(TrackingOrder, { view: page.view, basePath: `/o/${token}` }));
+      const markup = renderToStaticMarkup(createElement(TrackingOrder, { view: page.view, basePath: `/o/${token}`, token }));
       expectNoLeak(markup);
       expect(markup).not.toMatch(/location|maps/i);
     }

@@ -52,6 +52,47 @@ export interface SettlementAccountDetails {
   accountNumber: string;
 }
 
+// Starting one payment on Paystack's checkout (plan 6.3). Amounts in kobo.
+export interface InitializeTransactionInput {
+  amountKobo: number;
+  // Required by Paystack: the payer's receipt goes here.
+  email: string;
+  currency: string;
+  // Fluta's own reference, saved on the PENDING Payment first (plan 6.4).
+  reference: string;
+  // Where Paystack sends the customer afterwards. Holds the raw tracking
+  // token: never log it.
+  callbackUrl: string;
+  // The store's subaccount. Paystack's fees come from its share.
+  subaccountCode: string;
+  // Fluta's fee for this payment, sent even at 0 (plan 6.3).
+  transactionChargeKobo: number;
+  // Sent to Paystack as a JSON string.
+  metadata: Record<string, unknown>;
+}
+
+export interface InitializedTransaction {
+  // Paystack's checkout page, always on checkout.paystack.com.
+  authorizationUrl: string;
+  accessCode: string;
+  reference: string;
+}
+
+// What Paystack says about one transaction (plan 6.6). `status` is the
+// payment's status, not the API call's. Nothing about the card or payer.
+export interface VerifiedTransaction {
+  status: "abandoned" | "failed" | "ongoing" | "pending" | "processing" | "queued" | "reversed" | "success";
+  reference: string;
+  amountKobo: number;
+  currency: string;
+  domain: "test" | "live";
+  paidAt: Date | null;
+  // Paystack's own fee, in kobo.
+  feesKobo: number | null;
+  // Null when Paystack sends no split details.
+  subaccountCode: string | null;
+}
+
 export interface PaystackClient {
   // Nigerian banks that can receive settlements (active NUBAN banks).
   listBanks(): Promise<PaystackBank[]>;
@@ -64,6 +105,8 @@ export interface PaystackClient {
   // or { active: false } to switch off a duplicate.
   updateSubaccount(subaccountCode: string, update: SettlementAccountDetails | { active: false }): Promise<PaystackSubaccount>;
   fetchSubaccount(subaccountCode: string): Promise<PaystackSubaccount>;
+  initializeTransaction(input: InitializeTransactionInput): Promise<InitializedTransaction>;
+  verifyTransaction(reference: string): Promise<VerifiedTransaction>;
 }
 
 // Paystack's error bodies carry status, message, type, and code. Only `type`
@@ -119,6 +162,35 @@ const resolveResponseSchema = z.object({
 });
 
 const SUBACCOUNT_CODE = /^ACCT_[A-Za-z0-9]+$/;
+// Paystack allows only alphanumerics, "-", ".", and "=" in a reference.
+const REFERENCE = /^[A-Za-z0-9.=-]{1,100}$/;
+export const PAYSTACK_CHECKOUT_ORIGIN = "https://checkout.paystack.com/";
+
+const initializeResponseSchema = z.object({
+  status: z.literal(true),
+  data: z.object({
+    authorization_url: z.string().refine((url) => url.startsWith(PAYSTACK_CHECKOUT_ORIGIN)),
+    access_code: z.string().min(1),
+    reference: z.string().min(1),
+  }),
+});
+
+// Only the fields Fluta checks. The card ("authorization"), the customer,
+// and the full log are dropped here. The split's shape is unconfirmed
+// (plan 6.6), so a subaccount code is read only when present.
+const verifyResponseSchema = z.object({
+  status: z.literal(true),
+  data: z.object({
+    status: z.enum(["abandoned", "failed", "ongoing", "pending", "processing", "queued", "reversed", "success"]),
+    reference: z.string(),
+    amount: z.number().int(),
+    currency: z.string(),
+    domain: z.enum(["test", "live"]),
+    paid_at: z.string().nullable().optional(),
+    fees: z.number().int().nullable().optional(),
+    subaccount: z.object({ subaccount_code: z.string().optional() }).loose().nullable().optional(),
+  }),
+});
 
 type FetchLike = typeof fetch;
 
@@ -227,6 +299,48 @@ export function createPaystackClient(config: PaystackConfig, fetchImpl: FetchLik
 
     async fetchSubaccount(subaccountCode) {
       return parseSubaccount(await call("GET", subaccountPath(subaccountCode)));
+    },
+
+    async initializeTransaction(input) {
+      if (!SUBACCOUNT_CODE.test(input.subaccountCode)) throw new PaystackError("invalid subaccount code");
+      if (!REFERENCE.test(input.reference)) throw new PaystackError("invalid reference");
+      // No `channels`: Paystack's defaults apply (plan decision 6).
+      const parsed = initializeResponseSchema.safeParse(
+        await call("POST", "/transaction/initialize", {
+          body: {
+            amount: String(input.amountKobo),
+            email: input.email,
+            currency: input.currency,
+            reference: input.reference,
+            callback_url: input.callbackUrl,
+            subaccount: input.subaccountCode,
+            bearer: "subaccount",
+            transaction_charge: input.transactionChargeKobo,
+            metadata: JSON.stringify(input.metadata),
+          },
+        }),
+      );
+      if (!parsed.success) throw new PaystackError("unexpected response");
+      const { data } = parsed.data;
+      return { authorizationUrl: data.authorization_url, accessCode: data.access_code, reference: data.reference };
+    },
+
+    async verifyTransaction(reference) {
+      if (!REFERENCE.test(reference)) throw new PaystackError("invalid reference");
+      const parsed = verifyResponseSchema.safeParse(await call("GET", `/transaction/verify/${reference}`));
+      if (!parsed.success) throw new PaystackError("unexpected response");
+      const { data } = parsed.data;
+      const paidAt = data.paid_at ? new Date(data.paid_at) : null;
+      return {
+        status: data.status,
+        reference: data.reference,
+        amountKobo: data.amount,
+        currency: data.currency,
+        domain: data.domain,
+        paidAt: paidAt && !Number.isNaN(paidAt.getTime()) ? paidAt : null,
+        feesKobo: data.fees ?? null,
+        subaccountCode: data.subaccount?.subaccount_code ?? null,
+      };
     },
   };
 }

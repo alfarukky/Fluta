@@ -16,10 +16,14 @@ import { getCustomerPaymentText, getCustomerStageLabel, getCustomerTimeline } fr
 import { ADJUSTMENT_KIND_LABELS } from "@/schemas/orders";
 import { acceptPickupSuggestion, findLatestPickupSuggestion, type PickupOrderRecord } from "@/server/data/pickup-times";
 import { findTrackedOrder, type TrackedOrderRecord } from "@/server/data/tracking";
+import { getPaymentWarning } from "@/lib/online-payment";
 import { getBalance, type Balance } from "@/server/domain/balance";
+import { canPayOnline, hasRecentPendingAttempt } from "@/server/domain/online-payment";
+import { getPaystackClient } from "@/server/integrations/paystack";
 import { canTransition, getStageOrderState, toContext } from "@/server/domain/order-stages";
 import type { QuoteSnapshot } from "@/server/domain/orders";
 import type {
+  PayNowOffer,
   PriceUpdateReview,
   TrackingItem,
   TrackingPage,
@@ -74,8 +78,22 @@ export const loadTrackingPage = cache(async (token: string, now: Date = new Date
   }
   const suggestion =
     order.pickupWindowStatus === "PROPOSED_BY_STORE" ? await findLatestPickupSuggestion(order.storeId, order.id) : null;
-  return { kind: "VALID", view: buildView(order, balance, suggestion) };
+  return { kind: "VALID", view: buildView(order, balance, suggestion, now) };
 });
+
+// Back from Paystack (/o/{token}?paystack=return&reference=…): whether that
+// reference is this order's online attempt and still PENDING, so the page
+// shows "Confirming your payment…". The return itself never changes
+// anything: confirming comes from Paystack's webhook or verify (Phase 4).
+export async function isPaymentBeingConfirmed(token: string, reference: string): Promise<boolean> {
+  if (!isWellFormedToken(token)) return false;
+  const order = await findTrackedOrder(hashToken(token));
+  return (
+    order?.payments.some(
+      (payment) => payment.source === "ONLINE" && payment.status === "PENDING" && payment.paystackReference === reference,
+    ) ?? false
+  );
+}
 
 const CLOSED: ReadonlySet<OrderStage> = new Set(CLOSED_STAGES);
 
@@ -83,6 +101,7 @@ function buildView(
   order: TrackedOrderRecord,
   balance: Balance,
   suggestion: Awaited<ReturnType<typeof findLatestPickupSuggestion>>,
+  now: Date,
 ): TrackingView {
   const timeZone = order.store.timeZone;
   const closed = CLOSED.has(order.stage);
@@ -113,7 +132,22 @@ function buildView(
               : null,
           }
         : null,
+    payNow: buildPayNow(order, now),
   } satisfies TrackingView;
+}
+
+// Pay now, when the order can be paid online now: never at a store that
+// isn't connected, or while Paystack isn't configured.
+function buildPayNow(order: TrackedOrderRecord, now: Date): PayNowOffer | null {
+  if (!getPaystackClient()) return null;
+  const decision = canPayOnline(order, order.store, now);
+  if (!decision.allowed) return null;
+  return {
+    amount: formatNaira(decision.amountKobo),
+    email: order.customer.email ?? "",
+    warning: getPaymentWarning(order.store.name),
+    recentAttempt: hasRecentPendingAttempt(order.payments, now),
+  };
 }
 
 function buildTimeline(order: TrackedOrderRecord, timeZone: string): TrackingTimelineStep[] {

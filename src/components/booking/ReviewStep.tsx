@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { getTransferWarning } from "@/lib/online-payment";
 import type { BookingOptions, BookingStep } from "@/types/booking";
 
 import { getChosenArea, type BookingDraft, type BookingReview } from "./booking-draft";
@@ -13,11 +14,14 @@ interface ReviewStepProps {
   options: BookingOptions;
   review: BookingReview;
   onEdit: (step: BookingStep) => void;
+  storeName: string;
+  // Book and pay: paid on Paystack after the button (null: pay the store later).
+  bookAndPay: boolean;
 }
 
 // Everything the customer chose, with the price worked out from the store's
 // own prices (the server works it out again when the booking is sent).
-export function ReviewStep({ draft, options, review, onEdit }: ReviewStepProps) {
+export function ReviewStep({ draft, options, review, onEdit, storeName, bookAndPay }: ReviewStepProps) {
   const pickup = draft.fulfilmentType === "PICKUP_DELIVERY";
   const area = getChosenArea(draft, options);
   const note = draft.note.trim();
@@ -68,7 +72,14 @@ export function ReviewStep({ draft, options, review, onEdit }: ReviewStepProps) 
       <section className="flex flex-col gap-2 rounded-xl border border-border bg-card p-card" aria-label="Price">
         <PriceSummary review={review} />
         {note && <p className="type-body-sm text-foreground">The store may update your price after reading your note.</p>}
-        <p className="type-caption text-muted-foreground">No payment is needed now. You&apos;ll pay the store later.</p>
+        {bookAndPay ? (
+          <div className="flex flex-col gap-1">
+            <p className="type-body-sm text-foreground">You&apos;ll pay on Paystack&apos;s secure page after tapping Book and pay.</p>
+            <p className="type-caption text-muted-foreground">{getTransferWarning(storeName)}</p>
+          </div>
+        ) : (
+          <p className="type-caption text-muted-foreground">No payment is needed now. You&apos;ll pay the store later.</p>
+        )}
       </section>
     </div>
   );

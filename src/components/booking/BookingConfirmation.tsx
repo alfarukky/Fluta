@@ -5,7 +5,10 @@ import type { RefObject } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PayNowCard } from "@/components/tracking/PayNowCard";
 import { CopyLinkButton } from "@/components/workspace/CopyLinkButton";
+import { getPaymentWarning } from "@/lib/online-payment";
+import { formatNaira } from "@/lib/money";
 import type { BookingOptions } from "@/types/booking";
 
 import type { BookingDraft, BookingReview } from "./booking-draft";
@@ -20,6 +23,9 @@ interface BookingConfirmationProps {
   draft: BookingDraft;
   review: BookingReview;
   options: BookingOptions;
+  // Book and pay whose payment couldn't start: the order is saved, and Pay
+  // now tries again (the link's token, and why it failed).
+  payNow: { token: string; message: string } | null;
   onStartAgain: () => void;
 }
 
@@ -32,6 +38,7 @@ export function BookingConfirmation({
   draft,
   review,
   options,
+  payNow,
   onStartAgain,
 }: BookingConfirmationProps) {
   const pickup = draft.fulfilmentType === "PICKUP_DELIVERY";
@@ -50,6 +57,24 @@ export function BookingConfirmation({
         </h2>
         <p className="type-body text-foreground">{next}</p>
       </div>
+
+      {payNow && review.summary.kind === "total" && (
+        <div className="flex flex-col gap-component">
+          <p role="alert" className="type-body-sm rounded-lg border border-warning/40 bg-warning/10 p-3 text-foreground">
+            Your booking is saved, but your payment didn&apos;t start. {payNow.message}
+          </p>
+          <PayNowCard
+            token={payNow.token}
+            headingLevel="h3"
+            offer={{
+              amount: formatNaira(review.summary.total),
+              email: draft.email.trim(),
+              warning: getPaymentWarning(storeName),
+              recentAttempt: false,
+            }}
+          />
+        </div>
+      )}
 
       <div className="flex flex-col gap-1 rounded-xl border border-border bg-card p-card">
         <span className="type-caption text-muted-foreground">Your order number</span>

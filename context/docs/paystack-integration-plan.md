@@ -391,7 +391,7 @@ export function getFlutaFeeKobo(amountKobo: number, feeBps: number): number {
 **At ₦0:** the subaccount is created with `percentage_charge: 0`, so Fluta gets nothing by default.
 
 - **Recommendation:** still send `transaction_charge: 0` explicitly, so a later dashboard edit of the subaccount's percentage can never charge a 0% store
-- Whether Paystack accepts `transaction_charge: 0` is **Unconfirmed**. Neither the current docs nor the older split page say whether 0 is allowed [S2][S24].
+- ~~Whether Paystack accepts `transaction_charge: 0` is Unconfirmed.~~ **Confirmed in Phase 3 (23 October 2026, test mode):** Paystack accepts `transaction_charge: 0`. The verify response shows `fees_split.params.transaction_charge: "0"`, `integration: 0`, and the store's share reduced only by Paystack's fee (₦800 paid → ₦12 to Paystack, ₦788 to the subaccount). Fixture: `src/test/fixtures/paystack/verify-success.json`.
 - Check in Phase 3. If it is refused, omit the parameter at 0% and, when connecting, assert that the fetched subaccount has `percentage_charge` 0 [S4].
 
 **Insufficient share:** "When specifying a bearer, you need to ensure that the amount that goes into the subaccount is sufficient to bear the transaction fee. If the amount is insufficient, you'll get a `400 Bad Request` error" [S3]. With a fee capped at 5% this should only affect tiny amounts. Treat it as a refusal ("This amount can't be paid online. Please pay the store directly.") and log it.
@@ -412,8 +412,9 @@ export function getFlutaFeeKobo(amountKobo: number, feeBps: number): number {
 
 - After a successful payment, "Paystack will redirect the user back to a `callback_url` you set. We'll append the transaction reference in the URL", for example `…?reference=YOUR_REFERENCE` [S9]. The verify-payments page says the same [S8].
 - "Just because the `callback_url` was visited doesn't prove that transaction was successful" [S9]. Fluta treats the return as a **hint to check**, never as confirmation.
-- `callback_url` = `{BETTER_AUTH_URL}/o/{token}?paystack=return`. Paystack appends `reference` (and possibly `trxref`). The exact appended names beyond `reference` are **Unconfirmed**, so read only `reference`.
-- `metadata.cancel_action` = `{BETTER_AUTH_URL}/o/{token}`, the URL Paystack sends the customer to if they press cancel on checkout [S26]. This is documented on the mobile WebView guide. Whether the standard redirect checkout honours it the same way is **Unconfirmed**. Check in Phase 3.
+- `callback_url` = `{BETTER_AUTH_URL}/o/{token}?paystack=return`. **Confirmed in Phase 3:** Paystack appends both `trxref` and `reference` (same value), giving `…?paystack=return&trxref=FL-…&reference=FL-…`. Fluta reads only `reference`.
+- `metadata.cancel_action` = `{BETTER_AUTH_URL}/o/{token}`, the URL Paystack sends the customer to if they press cancel on checkout [S26]. This is documented on the mobile WebView guide. **Confirmed in Phase 3:** the standard redirect checkout honours it. "Cancel Payment" on checkout sends the customer straight to `/o/{token}`, with no parameters added.
+- **Note on the privacy rule below:** `cancel_action` is itself a metadata value, so the raw token does sit in `metadata.cancel_action` (Paystack shows it back in verify responses). The other metadata values (`payment_id`, `order_id`, `store_id`, `custom_fields`) never hold it, and an integration test checks that.
 - **Privacy note.** Both URLs carry the raw tracking token, which Paystack stores on the transaction. The token never appears in `metadata` values and is never logged.
 - **Decided:** this is accepted. Paystack is the payment processor.
 - **A link replaced during checkout.** Staff may resend the link (which issues a new token) while the customer is on Paystack's page. The customer then returns to the old link and sees the existing "This link may have been replaced by a newer message from the store" page, so the return-page verify can't run. No money is lost, because the webhook (or the reconciliation job, 7.1) still records the payment against the order. The customer sees it as soon as they open the new link. This is rare and accepted.
@@ -437,7 +438,7 @@ Fluta confirms a payment only when **all** of these hold:
 | `data.domain`                     | `"test"` when `PAYSTACK_MODE=test`, `"live"` when live [S2] |
 | `data.subaccount.subaccount_code` | equals the store's `paystackSubaccountCode`                 |
 
-The `data.subaccount` object appears in verify responses, but the documented examples show it empty (`{}`) for non-split payments [S2]. Its exact shape for a split payment is **Unconfirmed**.
+The `data.subaccount` object appears in verify responses, but the documented examples show it empty (`{}`) for non-split payments [S2]. **Confirmed in Phase 3:** for a split payment it is the full subaccount object, including `subaccount_code`, `percentage_charge`, and the settlement account (with the full account number, which Fluta never keeps). Verify also returns `fees` (Paystack's fee in kobo) and `fees_split` (`paystack`, `integration`, `subaccount`, and `params` with `bearer`, `transaction_charge`, and `percentage_charge`).
 
 - **Recommendation:** check it when present, and record a real test-mode payload in Phase 3 to fix the schema
 - Even without it, the reference was generated by Fluta and saved on a `Payment` with the store's ID, so a payment can't be credited to the wrong store
@@ -1038,21 +1039,26 @@ Each phase ends in test mode with its checks passing before the next starts.
   - `startPayment` and initialize
   - Pay now on the tracking page
   - **Book and pay** (3.2, decision 13): the "Book and pay ₦X" button for fixed-price bookings at a connected store with pay later off, which creates the order and goes straight to Paystack in one step, with email required on that path and Pay now on the confirmation screen if initialize fails
-  - the return page and verify on return
+  - the return page: "Confirming your payment…" while the payment is still `PENDING` (nothing is confirmed in this phase)
+  - `verifyTransaction` in the Paystack client, used only to record real responses as fixtures
   - the warning line
-- **Verify:**
-  - pay with the test cards
-  - book and pay at FreshFold with pay later off: one tap reaches Paystack's checkout, and paying returns to the order page, which then shows Paid
-  - book and pay, then cancel or close checkout: the order exists, shows Payment required to staff, and Pay now on its link completes the payment
+- **Verify (decided 23 October 2026: payment confirmation stays entirely in Phase 4):**
+  - Pay now on an order link reaches Paystack's checkout, and test cards can be used there
+  - book and pay at FreshFold with pay later off: one tap reaches Paystack's checkout
+  - the `PENDING` `Payment` row is saved before Paystack is called
+  - after paying, the return page shows "Confirming your payment…" and the payment is still `PENDING`
   - book at a store with pay later on: the button reads "Book", no checkout opens, and the email stays optional
-  - record real verify and webhook payloads and save them as test fixtures
-  - check whether `transaction_charge: 0` is accepted and whether `cancel_action` works
+  - record Paystack's real initialize, verify, and webhook responses and save them as test fixtures
+  - answer the open questions: whether `transaction_charge: 0` is accepted, whether `cancel_action` works, the callback parameter names, and the shape of `data.subaccount` in a split verify response
 - **Ready for next phase when:** payloads are recorded, and the subaccount and fee fields in them are known
 
 ### Phase 4: Webhook and verify processing
 
-- **Build:** `confirmPaystackPayment`, mismatch handling, late payments, reconciliation job, timeline entries, the new payment states in `getBalance` and SQL
-- **Verify:** every integration test in 13.2. The webhook and the return verify both run on one payment.
+- **Build:** `confirmPaystackPayment`, verify on return (`confirmReturnedPayment` from the return page), mismatch handling, late payments, reconciliation job, timeline entries, the new payment states in `getBalance` and SQL
+- **Verify:**
+  - every integration test in 13.2. The webhook and the return verify both run on one payment.
+  - book and pay at FreshFold with pay later off, then pay: the order page shows Paid (moved from Phase 3)
+  - book and pay, then cancel or close checkout: the order exists, shows Payment required to staff, and Pay now on its link completes the payment (moved from Phase 3)
 - **Ready for next phase when:** duplicates count once, and mismatches are refused
 
 ### Phase 5: The Fluta fee split
@@ -1083,7 +1089,7 @@ Each phase ends in test mode with its checks passing before the next starts.
   - password re-entry (decided, 4.3)
 - **Tracking token sent to Paystack** in `callback_url` (6.5). Paystack is the payment processor and the token is never in metadata or logs, but it now lives outside Fluta.
 - **The CLI is old** (2022 nightly, ngrok-based) and rewrites the Test Webhook URL [S21][S22]. The tunnel fallback (11.2) removes the dependency.
-- **Unconfirmed `transaction_charge: 0`** (6.3). If it's refused, the 0% path relies on the subaccount's `percentage_charge` staying 0.
+- ~~Unconfirmed `transaction_charge: 0`~~ (6.3). Confirmed accepted in Phase 3.
 - **Refund funding on split transactions** is unconfirmed (6.11). This is a reason to keep refunds outside Fluta.
 - **Missed webhooks** during deploys. Covered by verify on return, the reconciliation job, and Paystack's retries [S1].
 - **Tiny amounts** may fail the "subaccount share sufficient" rule [S3]. Handled as a friendly refusal.

@@ -2,6 +2,7 @@ import "server-only";
 
 import { getBookingDateOptions, isBookablePickup, toBookingLineAmount } from "@/lib/booking";
 import { MESSAGE_TEMPLATES } from "@/lib/messages";
+import { PAYSTACK_EMAIL_REQUIRED } from "@/lib/online-payment";
 import { formatNaira, lineTotalKobo } from "@/lib/money";
 import { formatOrderNumber } from "@/lib/orders";
 import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY, toDecimalString, type QuantityProblem } from "@/lib/quantity";
@@ -101,18 +102,22 @@ export interface OnlineBookingActor {
   timeZone: string;
   // HMAC of the booking's IP address (src/lib/client-ip.ts).
   ipHash: string;
+  // A connected store with pay later off: a fixed-price booking is paid at
+  // booking (Book and pay, plan 3.2).
+  payAtBooking: boolean;
 }
 
-export type OnlineOrderError = OrderEntryError | "BOOKING_LIMIT_REACHED" | "NO_ONLINE_BOOKING";
+export type OnlineOrderError = OrderEntryError | "BOOKING_LIMIT_REACHED" | "NO_ONLINE_BOOKING" | "EMAIL_REQUIRED";
 
 export type CreateOnlineOrderResult =
   // The raw tracking token, for the confirmation's link (shown once, never
   // stored). Null only if a repeated booking's order can't be given a new one.
-  | { ok: true; orderId: string; displayNumber: string; trackingToken: string | null }
+  // bookAndPay: the order was created to be paid now (payLater false).
+  | { ok: true; orderId: string; displayNumber: string; trackingToken: string | null; bookAndPay: boolean }
   | { ok: false; error: OnlineOrderError; fieldErrors: Record<string, string> };
 
 // A customer's booking: channel Online, no staff user, starting at Booked,
-// pay later. Created by insertOnlineOrder, which returns an order this
+// pay later unless it is Book and pay. Created by insertOnlineOrder, which returns an order this
 // request already created, then applies the booking limits. Whether the
 // store accepts bookings at all is the caller's check (getStoreAccess).
 export async function createOnlineOrder(
@@ -136,7 +141,7 @@ export async function createOnlineOrder(
     if (result.kind === "limitReached") return { ok: false, error: "BOOKING_LIMIT_REACHED", fieldErrors: {} };
     if (result.kind === "existing") return repeatedBooking(actor, input, result.order, now);
     await sendAfterCommit(result.order.queued);
-    return { ...created(result.order), trackingToken: prepared.trackingToken };
+    return { ...created(result.order), trackingToken: prepared.trackingToken, bookAndPay: !result.order.payLater };
   } catch (error) {
     // The same request with a different phone number: the unique rule
     // refused a second order, so return the first one.
@@ -159,7 +164,7 @@ async function repeatedBooking(
 ): Promise<CreateOnlineOrderResult> {
   const token = generateToken();
   const replaced = await replaceBookingTrackingToken(actor.storeId, input.clientRequestId, hashToken(token), now);
-  return { ...created(order), trackingToken: replaced ? token : null };
+  return { ...created(order), trackingToken: replaced ? token : null, bookAndPay: !order.payLater };
 }
 
 // What the booking is checked against, read in one go.
@@ -215,33 +220,39 @@ async function prepareOnlineOrder(
 
   // Shown once on the confirmation; only its hash is stored.
   const trackingToken = generateToken();
-  return {
-    ok: true,
-    trackingToken,
-    data: assembleOrder({
-      clientRequestId: input.clientRequestId,
-      trackingTokenHash: hashToken(trackingToken),
-      customer: { kind: "new", ...input.customer, fillMissingEmail: true },
-      channel: "ONLINE",
-      fulfilmentType: input.fulfilmentType,
-      lines: serviceLines.lines,
-      fulfilment: fulfilment.fields,
-      internalNote: null,
-      customerNote: input.customerNote,
-      // No online payment yet (Feature 17): every booking is paid later.
-      payLater: true,
-      bookingIpHash: actor.ipHash,
-      actor: { type: "CUSTOMER", userId: null },
-      // The same link the confirmation shows. Counted against the store's
-      // daily booking SMS cap.
-      messages: customerMessages({
-        template: MESSAGE_TEMPLATES.orderLink,
-        createdByUserId: null,
-        link: { token: trackingToken, stored: true },
-      }),
-      now,
-    }),
-  };
+  // The same link the confirmation shows. Counted against the store's daily
+  // booking SMS cap. Book and pay's is always emailed too (plan 3.2).
+  const orderLink = (alwaysEmailTo?: string) =>
+    customerMessages({
+      template: MESSAGE_TEMPLATES.orderLink,
+      createdByUserId: null,
+      link: { token: trackingToken, stored: true },
+      alwaysEmailTo,
+    });
+  const order = assembleOrder({
+    clientRequestId: input.clientRequestId,
+    trackingTokenHash: hashToken(trackingToken),
+    customer: { kind: "new", ...input.customer, fillMissingEmail: true },
+    channel: "ONLINE",
+    fulfilmentType: input.fulfilmentType,
+    lines: serviceLines.lines,
+    fulfilment: fulfilment.fields,
+    internalNote: null,
+    customerNote: input.customerNote,
+    payLater: true,
+    bookingIpHash: actor.ipHash,
+    actor: { type: "CUSTOMER", userId: null },
+    messages: orderLink(),
+    now,
+  });
+
+  // Book and pay: a connected store with pay later off, and an approved
+  // total at creation (no quote-required lines and no quoted charge). Paid
+  // on Paystack, which needs an email.
+  const bookAndPay = actor.payAtBooking && order.revision.approved && order.revision.total > 0;
+  if (!bookAndPay) return { ok: true, trackingToken, data: order };
+  if (!input.customer.email) return fail("EMAIL_REQUIRED", "customer.email", PAYSTACK_EMAIL_REQUIRED);
+  return { ok: true, trackingToken, data: { ...order, payLater: false, messages: orderLink(input.customer.email) } };
 }
 
 // An active area of this store (its fixed charge, or none yet when the store
@@ -418,7 +429,11 @@ function assembleOrder({ lines, fulfilment, ...order }: OrderParts): NewOrderDat
   };
 }
 
-function fail(error: OrderEntryError, field: string, message: string): Failure {
+function fail<E extends OnlineOrderError = OrderEntryError>(
+  error: E,
+  field: string,
+  message: string,
+): { ok: false; error: E; fieldErrors: Record<string, string> } {
   return { ok: false, error, fieldErrors: { [field]: message } };
 }
 

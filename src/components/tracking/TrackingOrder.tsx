@@ -7,15 +7,22 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { TrackingItem, TrackingTimelineStep, TrackingView } from "@/types/tracking";
 
+import { ConfirmingPayment } from "./ConfirmingPayment";
+import { PayNowCard } from "./PayNowCard";
+
 interface TrackingOrderProps {
   view: TrackingView;
   // "/o/{token}", for the review screens.
   basePath: string;
+  // The link's token, for Pay now. Never logged.
+  token: string;
+  // Back from Paystack with this order's attempt still PENDING.
+  confirmingPayment?: boolean;
 }
 
 // The customer's order, in plain words: where it is, what it costs, and
 // anything waiting for them as one calm card at the top.
-export function TrackingOrder({ view, basePath }: TrackingOrderProps) {
+export function TrackingOrder({ view, basePath, token, confirmingPayment = false }: TrackingOrderProps) {
   const { store } = view;
   return (
     <>
@@ -28,6 +35,8 @@ export function TrackingOrder({ view, basePath }: TrackingOrderProps) {
       </section>
 
       {!view.closed && <ActionCard view={view} basePath={basePath} />}
+
+      {confirmingPayment ? <ConfirmingPayment /> : view.payNow && <PayNowCard token={token} offer={view.payNow} />}
 
       <Card title="Progress">
         <Timeline steps={view.timeline} />
@@ -80,7 +89,7 @@ export function TrackingOrder({ view, basePath }: TrackingOrderProps) {
   );
 }
 
-function ActionCard({ view, basePath }: TrackingOrderProps) {
+function ActionCard({ view, basePath }: Pick<TrackingOrderProps, "view" | "basePath">) {
   const card = view.priceUpdate
     ? { icon: ReceiptTextIcon, title: "Price update ready for your approval", href: `${basePath}/price-update` }
     : view.pickupSuggestion

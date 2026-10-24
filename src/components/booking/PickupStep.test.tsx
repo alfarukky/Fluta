@@ -12,6 +12,7 @@ const OPTIONS: BookingOptions = {
   today: "2099-06-15",
   services: [],
   dropOff: true,
+  payAtBooking: false,
   pickup: true,
   areas: [{ id: "wuse", name: "Wuse 2", chargeType: "FIXED", fixedCharge: 150_000 }],
   defaultFee: null,
