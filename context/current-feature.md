@@ -1,77 +1,40 @@
-# Current Feature: Paystack Online Payments — Phase 3, Starting Payments (including Book and pay)
+# Current Feature
 
 ## Status
 
-In Progress
+Not Started
 
 ## Spec
 
-- `context/features/17-paystack-online-payments-spec.md`, Phase 3 only (branch `feat/paystack-3-checkout`)
-- The plan is the specification: `context/docs/paystack-integration-plan.md` sections 3 (Payment availability), 6.3 to 6.6 (initialize, references, callback redirect, server-side verification), 7 (the full flow), and the Phase 3 entry in section 14. Section 5.3 (server action pattern) and the matching rows of 9.2 apply where they describe Phase 3 files.
-- Implements project-overview.md: Payments, Payment states, Monetization (fee field only; the fee stays 0%)
+<!-- The spec file for this feature -->
 
 ## Goals
 
-- `canPayOnline(order, store, now)` in `src/server/domain/online-payment.ts` (3.1): store connected, not Deactivated, tracking link `VALID`, order not Cancelled, positive balance, no price update awaiting approval; returns `{ allowed: false, reason }` for expected refusals
-- `getFlutaFeeKobo(amountKobo, feeBps)` (6.3), rounding down in favour of the store
-- Fluta-generated references (6.4): `FL-` + random characters, nothing identifying, a new reference per attempt, saved on a `PENDING` `Payment` row before Paystack is called
-- Paystack client `initializeTransaction` in `src/server/integrations/paystack.ts` (6.3), plus the fake client for tests
-- `startPayment` service (7): token → order, link valid, `canPayOnline`, amount = full balance due (3.4), fee, insert `PENDING` Payment (reference, amount, `payerEmail`, `flutaFeeBps`, `flutaFeeAmount`) and save the email on the customer only if they have none, then initialize with `subaccount`, `bearer: "subaccount"`, `transaction_charge`, `currency`, `callback_url` (`/o/{token}?paystack=return`), metadata (`payment_id`, `order_id`, `store_id`, `custom_fields` with the order number, `cancel_action`); on failure the Payment → `FAILED` with a short code and a friendly error; insufficient-share 400 → "This amount can't be paid online. Please pay the store directly."
-- `startOnlinePayment(token, { email })` action in `src/actions/online-payments.ts` (5.3); checkout URL must start with `https://checkout.paystack.com/`; browser goes there with `window.location.assign`
-- Pay now on the tracking page: `payment.action` in the tracking service and types; `PayNowCard` with amount, pre-filled email, and the anti-fraud warning line (3.6); button disables while starting; hidden while a `PENDING` attempt under 15 minutes old exists, showing "A payment is being confirmed" with "Pay again" as a secondary link
-- The return page: `?paystack=return&reference=…` with a still-`PENDING` payment shows "Confirming your payment…" (only `reference` is read). The payment stays `PENDING`: verifying and confirming on return (`confirmReturnedPayment`) are Phase 4
-- `verifyTransaction` in the Paystack client, used in this phase only to record real responses as fixtures
-- Book and pay (3.2, decision 13): `createOnlineOrder` sets `payLater = !(connected && !store.payLaterEnabled && hasApprovedTotal)`; for those bookings the review button reads "Book and pay ₦X"; `submitBooking` creates the order (same `clientRequestId` transaction) then starts the payment through `startPayment` and returns the checkout URL with the order link; email required on that path only, hint "For your Paystack receipt"; review line "You'll pay on Paystack's secure page after tapping Book and pay" plus the warning line; if initialize fails, the confirmation screen shows the order link and Pay now
-- Book and pay always emails the order link: `chooseDestinations` gains `alwaysEmail` (true only for that booking's `LINK_CREATED`), sent to the email typed at booking, in the order's transaction
-- Repeated Book and pay submit (same request ID) with a `PENDING` attempt under 15 minutes old returns the order link without starting a new payment
-- Stores not connected: no Pay now anywhere, review keeps "You'll pay the store later", server refuses (3.5)
-- No `channels` list sent (decision 6)
-- Design system shows the Pay now card with sample data
-- Write the answers to the Phase 3 **Unconfirmed** items back into the plan: `transaction_charge: 0` accepted?, `cancel_action` on redirect checkout, appended callback parameter names, the shape of `data.subaccount` in a split verify response
+<!-- The spec's requirements -->
 
 ## Not in this feature
 
-- Phase 4: `confirmPaystackPayment`, verify on return (`confirmReturnedPayment`), the order showing Paid, Payment required to staff, mismatch handling, late payments, the reconciliation job (7.1), timeline entries, and the new `PAYMENT_REQUIRED` / `PENDING` states in `getBalance` and SQL (9.3)
-- Phase 5: a non-zero fee from `onlineFeeBps` (the fee stays 0%; `transaction_charge` is worked out but the rate is 0)
-- Phase 6: live keys, live webhook URL, IP-header check
-- Refunds through Paystack (decision 12)
-- Part payments online (3.4)
+<!-- Out of scope -->
 
 ## Done when
 
-From the plan's Phase 3 entry (section 14):
-
-- **Verify (decided 23 October 2026: payment confirmation stays entirely in Phase 4):**
-  - Pay now on an order link reaches Paystack's checkout, and test cards can be used there
-  - book and pay at FreshFold with pay later off: one tap reaches Paystack's checkout
-  - the `PENDING` `Payment` row is saved before Paystack is called
-  - after paying, the return page shows "Confirming your payment…" and the payment is still `PENDING`
-  - book at a store with pay later on: the button reads "Book", no checkout opens, and the email stays optional
-  - record Paystack's real initialize, verify, and webhook responses and save them as test fixtures
-  - answer the open questions: whether `transaction_charge: 0` is accepted, whether `cancel_action` works, the callback parameter names, and the shape of `data.subaccount` in a split verify response
-- **Ready for next phase when:** payloads are recorded, and the subaccount and fee fields in them are known
+<!-- The spec's Done when items -->
 
 ## Verify with
 
-The Phase 3 Verify list above, in Paystack test mode only (test cards, plan 11.3), plus the workflow checks: lint, typecheck, `npm test`, build, Next.js DevTools, Playwright at ~360px and desktop in both themes.
+<!-- How to verify the feature -->
 
 ## References
 
-- @context/docs/paystack-integration-plan.md (the specification)
-- @context/project-overview.md (Payments, Payment states, Monetization)
-- @context/features/16-store-collected-payments-spec.md
+<!-- Related context files -->
 
 ## Schema changes
 
-None. Phase 1's `add_online_payments` migration already added `onlineFeeBps`, `flutaFeeBps`, `flutaFeeAmount`, `paystackFeeAmount`, `failureCode`, the source/method CHECK, and the `[status, createdAt]` index.
+<!-- Migrations, or None -->
 
 ## Notes
 
-- **Carried over from Phase 2, must pass before Phase 3 merges:** change FreshFold's bank in Settings → Payments (password re-check, `PAYSTACK_BANK_CHANGED` audit entry, owner email), once Paystack's test-mode daily limit of 3 bank resolves resets (UTC day).
-- **Decided 23 October 2026 (owner):** payment confirmation stays entirely in Phase 4. Phase 3's Verify stops at checkout, the pending record, and the "Confirming your payment…" page with the payment still pending; "shows Paid" and "Payment required to staff" moved to Phase 4's Verify (plan section 14 updated).
-- Ask First (ai-interactions.md): every Paystack call (initialize, verify), payments code, the tracking-token checks in the new actions, `chooseDestinations` / booking message changes, and test-mode calls plus development database writes at Verify.
-- FreshFold is connected in test mode (subaccount from Phase 2); the seed never sets a subaccount code, so a reseed disconnects it.
-- `db.json` in the repo root is the Paystack CLI's login file: never commit it.
+<!-- Anything to remember while working -->
 
 ## History
 
@@ -224,3 +187,4 @@ None. Phase 1's `add_online_payments` migration already added `onlineFeeBps`, `f
 - 2026-10-23: Phase 3 Verify in test mode. FreshFold's development connection was gone (reseeded 00:34 UTC); by the owner's choice it was restored by SQL from the existing subaccount `ACCT_b7sms47namw2rzc` (fetched from Paystack: active, 0%), no bank lookup used. Book and pay at FreshFold: one tap reached checkout; PENDING row (₦800, fee 0, `FL-` reference) saved before Paystack; paid with the Success test card; return page showed "Confirming your payment…" with the payment still PENDING. Pay now (Pay again) reached checkout; Cancel Payment returned to `/o/{token}`. Pay later on (set and reset by SQL): email optional, "You'll pay the store later", button "Confirm booking", not submitted. Checked at 360px and desktop, light and dark. Answers written into the plan: `transaction_charge: 0` accepted; `cancel_action` works; Paystack appends `trxref` and `reference`; split verify `data.subaccount` is the full object with `subaccount_code`, plus `fees` and `fees_split`. Fixtures (redacted) in `src/test/fixtures/paystack/`: initialize, verify, and a real signed `charge.success` (received through a Cloudflare tunnel; temporary capture code removed). Paystack's fee on ₦800 was ₦12, from the store's share. Note: development has a real Termii key, so the first test booking's order-link SMS went to a made-up number (+234 803 555 0193). The owner sets the Test Webhook URL back.
 - 2026-10-23: Phase 3 checks: lint, typecheck, unit (896), the new integration file (13), the related integration files (booking, tracking, location and default fee, notifications, orders, payments: 153), and build pass. Fixed the design-system page test (router stubbed for the Pay now preview). Still open before merging: the Phase 2 bank-change test (password, `PAYSTACK_BANK_CHANGED`, owner email); the owner sets the Test Webhook URL back. Not built (not in the Phase 3 entry): the staff notice "An online payment for this order is being confirmed" on the record-payment form, and showing pending online attempts on the order detail page (plan 9.2).
 - 2026-10-23: Phase 2 bank change verified (required before merging Phase 3). The development reseed (00:34 UTC) had recreated Ada as `ada@freshfold.example` and left the old `alfarukky+fluta@gmail.com` user without a store; by the owner's choice the emails were swapped (old account renamed `alfarukky+fluta-old@gmail.com`, nothing deleted). The owner changed FreshFold's bank with the password re-check: `PAYSTACK_BANK_CHANGED` audit entry by Ada; the store and Paystack's subaccount `ACCT_b7sms47namw2rzc` both show OPay •••• 2137, `percentage_charge` 0, active. The owner email was built and sent, but Resend's sandbox refused it ("You can only send testing emails to your own email address"): development email reaches only `alfarukky@gmail.com` exactly, not `+fluta` addresses (corrects the Phase 2 note). Owner's decision: accepted; see the real email on staging.
+- 2026-10-24: Completed Feature 17, Phase 3 — Starting Payments, including Book and pay (spec: `context/features/17-paystack-online-payments-spec.md`, plan sections 3, 6.3 to 6.6, 7). Commit `518cb7e` merged into `staging`. No schema change. Pay now on the tracking page, Book and pay at booking, PENDING payment saved before Paystack, "Confirming your payment…" on return; confirmation stays in Phase 4 (owner's decision; plan section 14 updated). Verify passed in test mode at FreshFold; open questions answered in the plan (`transaction_charge: 0` accepted, `cancel_action` works, `trxref` and `reference` appended, split verify shape); redacted fixtures in `src/test/fixtures/paystack/`. Phase 2 bank change verified first (owner email refused by Resend's sandbox, accepted). Lint, typecheck, unit (896), full integration (31 files, 458), and build pass. Next: Phase 4 (`feat/paystack-4-confirmation`); consider the staff "online payment being confirmed" notice and pending attempts on the order page (plan 9.2) there. Development: Ada is `alfarukky+fluta@gmail.com` (old account renamed `alfarukky+fluta-old@gmail.com`); dev email reaches only `alfarukky@gmail.com`; development Termii is real, so test bookings send real SMS.
