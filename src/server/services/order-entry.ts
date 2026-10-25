@@ -355,7 +355,7 @@ async function prepareOrder(
     fulfilmentCharge,
   });
   if (total < 0) {
-    return fail("NEGATIVE_TOTAL", "adjustments", `Discounts can't make the total less than ₦0 (it would be ${formatNaira(total)}).`);
+    return fail("NEGATIVE_TOTAL", "adjustments", `Discounts can't make the total less than ${formatNaira(0)} (it would be ${formatNaira(total)}).`);
   }
 
   // Sent to the customer in the order link message (never capped), and

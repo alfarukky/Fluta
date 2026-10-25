@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `postinstall` runs `prisma generate` after every `npm install`, so fresh clones, CI and Railway get the client
 - `npm run lint`: ESLint over the whole repo (flat config in `eslint.config.mjs`); lint one file with `npx eslint <path>`
 - `npm run typecheck`: type-check without building (`tsc --noEmit`)
-- `npm run test:unit`: the unit project only (jsdom, fast); `npm run test:watch` for watch mode; run one file with `npx vitest run <path>`
+- `npm run test:unit`: the unit project only (jsdom, fast); `npm run test:watch` watches both projects (add `--project unit` for unit only); run one file with `npx vitest run <path>`
 - `npm run test:integration`: PostgreSQL integration tests on the Neon `test` branch (slower). While building, run only related files, e.g. `npm run test:integration -- path/to/file.test.ts`
 - `npm test`: runs `test:unit`, then `test:integration` (integration is skipped if unit tests fail)
 - `npm run db:seed`: load the FreshFold Laundry sample data

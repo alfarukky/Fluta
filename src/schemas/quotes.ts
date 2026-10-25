@@ -85,7 +85,6 @@ export const recordDecisionSchema = z.discriminatedUnion("decision", [
   }),
 ]);
 
-export type RecordDecisionRequest = z.input<typeof recordDecisionSchema>;
 export type RecordDecisionInput = z.output<typeof recordDecisionSchema>;
 
 export const editAddressSchema = z.object({

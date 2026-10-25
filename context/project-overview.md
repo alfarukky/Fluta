@@ -908,20 +908,26 @@ model Payment {
   payerEmail        String?
   flutaFeeBps       Int? // fee rate used for this online payment (copy)
   flutaFeeAmount    Int? // fee taken in kobo (copy), null for store-collected payments
+  paystackFeeAmount Int? // Paystack's own fee in kobo, from verify
+  failureCode       String? // short code when an online attempt fails or doesn't match
   recordedByUserId  String? // staff who recorded a store-collected payment
+  clientRequestId   String? // the form's request ID: the same request twice records one payment
+  reference         String? // a transfer or POS reference staff entered (store-collected)
   note              String?
   confirmedAt       DateTime?
   voidedAt          DateTime?
   voidedByUserId    String?
   voidReason        String?
-  replacesPaymentId String? // the voided payment this one corrects
+  replacesPaymentId String?       @unique // the voided payment this one corrects (at most one replacement)
   createdAt         DateTime      @default(now())
 
   store Store @relation(fields: [storeId], references: [id])
   order Order @relation(fields: [storeId, orderId], references: [storeId, id])
 
+  @@unique([storeId, clientRequestId])
   @@index([storeId, confirmedAt])
   @@index([orderId])
+  @@index([status, createdAt]) // reconciliation job scans PENDING online payments
 }
 
 // A refund the store has actually paid. "Refund owed" is derived from the balance.

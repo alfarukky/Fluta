@@ -70,8 +70,6 @@ export const payerEmailSchema = z
 
 export const startPaymentSchema = z.object({ email: payerEmailSchema });
 
-export type StartPaymentRequest = z.input<typeof startPaymentSchema>;
-
 // ───────────── Settings → Payments: the store's settlement account ─────────────
 
 // The bank (Paystack's bank id) and account number. Spaces and dashes in the
@@ -107,5 +105,3 @@ export const changeAccountSchema = settlementAccountSchema.extend({
 });
 
 export type SettlementAccountInput = z.infer<typeof settlementAccountSchema>;
-export type ConnectAccountInput = z.infer<typeof connectAccountSchema>;
-export type ChangeAccountInput = z.infer<typeof changeAccountSchema>;

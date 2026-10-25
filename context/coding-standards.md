@@ -120,7 +120,7 @@ Example v4 configuration:
 
 - Tailwind CSS for all styling
 - Use shadcn/ui components where applicable, with Lucide icons
-- No inline styles, **except** the single `style` attribute on the customer layout root that sets validated store brand CSS variables
+- No inline styles, **except** the single `style` attribute on the customer layout root that sets validated store brand CSS variables, and the server-drawn `next/og` images (store app icon and link preview), which can only be styled inline
 - Light and dark themes share the same semantic tokens; light is the default. Components never define their own colours
 - Mobile-first: design for ~360px wide first, then scale up; touch targets at least 44px
 - No horizontal scrolling in primary workflows; wide tables collapse to stacked cards on mobile

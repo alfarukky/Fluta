@@ -1,3 +1,5 @@
+import "server-only";
+
 // Thrown for any failed Paystack call. Its message is a short code only
 // ("HTTP 400 validation_error", "timeout", "unexpected response"), never
 // Paystack's own message. On 429, retryAfterSeconds says when to try again;

@@ -408,5 +408,3 @@ export async function findRevisionAudits(storeId: string, revisionIds: readonly 
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
   });
 }
-
-export type RevisionAuditRecord = Awaited<ReturnType<typeof findRevisionAudits>>[number];

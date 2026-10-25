@@ -24,8 +24,6 @@ export const priceDecisionSchema = z.discriminatedUnion("decision", [
   }),
 ]);
 
-export type PriceDecisionRequest = z.input<typeof priceDecisionSchema>;
-
 export const acceptPickupSchema = z.object({ suggestionId: recordId });
 
 // Staff "Get tracking link".

@@ -2,6 +2,7 @@ import "server-only";
 
 import type { ActorType } from "@/generated/prisma/client";
 import { MESSAGE_TEMPLATES } from "@/lib/messages";
+import { formatNaira } from "@/lib/money";
 import { formatOrderNumber, isAwaitingApproval } from "@/lib/orders";
 import { fromDecimalString, toDecimalString } from "@/lib/quantity";
 import { canReviseQuote, findPendingRevision, isRevisionReasonRequired } from "@/lib/quotes";
@@ -249,7 +250,7 @@ function planRevision(
   if (!built.ok) {
     const messages = {
       NOT_FULLY_PRICED: "Enter every weight, quantity, and the pickup & delivery charge.",
-      NEGATIVE_TOTAL: "Discounts can't make the total less than ₦0.",
+      NEGATIVE_TOTAL: `Discounts can't make the total less than ${formatNaira(0)}.`,
       REASON_REQUIRED: "Add a reason for the customer.",
     };
     return refuse(fail(built.problem, messages[built.problem], { [built.field]: messages[built.problem] }));
