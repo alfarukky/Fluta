@@ -19,6 +19,8 @@ const STAGE_TONES: Record<OrderStage, Tone> = {
 
 const PAYMENT_TONES: Record<PaymentState, Tone> = {
   AWAITING_QUOTE: "neutral",
+  PAYMENT_REQUIRED: "warning",
+  PENDING: "info",
   PAID: "success",
   OUTSTANDING: "warning",
   REFUND_OWED: "error",

@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { describeMessageStatus, getMessageTemplateLabel, isFinallyFailed, MESSAGE_CHANNEL_LABELS } from "@/lib/messages";
 import type { Coordinates } from "@/lib/location";
 import { formatNaira } from "@/lib/money";
+import { isMismatchCode } from "@/lib/online-payment";
 import {
   describeCustomerEstimate,
   FULFILMENT_TYPE_LABELS,
@@ -88,7 +89,9 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
         </div>
         {canChangeStage && (
           <div className="flex flex-wrap items-start gap-2">
-            {recordPrimary && <RecordPaymentButton orderId={order.id} balance={balance} primary />}
+            {recordPrimary && (
+              <RecordPaymentButton orderId={order.id} balance={balance} primary pendingOnline={detail.payments.hasPendingOnlinePayment} />
+            )}
             <OrderStageActions
               orderId={order.id}
               stage={order.stage}
@@ -572,8 +575,9 @@ function PaymentsSection({
 }) {
   const { order, balance } = detail;
   const staffName = (id: string | null) => (id ? (detail.staffNames.get(id) ?? null) : null);
-  // Failed attempts aren't payments; they never show here.
-  const payments = order.payments.filter((payment) => payment.status !== "FAILED");
+  // Failed attempts aren't payments and are hidden, except a Paystack payment
+  // that didn't match: it shows as "Payment needs review" (plan 6.8).
+  const payments = order.payments.filter((payment) => payment.status !== "FAILED" || isMismatchCode(payment.failureCode));
   const empty = payments.length === 0 && order.refunds.length === 0;
   const canRecord = canChangeStage && detail.payments.canRecord;
   const canVoid = canChangeStage && detail.payments.canVoid;
@@ -582,7 +586,16 @@ function PaymentsSection({
   return (
     <Section
       title="Payments"
-      badge={canRecord && <RecordPaymentButton orderId={order.id} balance={balance} primary={false} />}
+      badge={
+        canRecord && (
+          <RecordPaymentButton
+            orderId={order.id}
+            balance={balance}
+            primary={false}
+            pendingOnline={detail.payments.hasPendingOnlinePayment}
+          />
+        )
+      }
     >
       {empty ? (
         <p className="type-body-sm text-muted-foreground">No payments recorded yet.</p>
@@ -644,7 +657,15 @@ interface PaymentRowProps {
 // One payment: struck through once voided, with who voided it and why (staff only).
 function PaymentRow({ payment, staffName, timeZone, voidable, balanceKobo }: PaymentRowProps) {
   const voided = payment.status === "VOIDED";
-  const status = voided ? "Voided" : payment.status === "CONFIRMED" ? "Confirmed" : "Pending";
+  const review = payment.status === "FAILED";
+  // A pending online payment has started on Paystack but isn't confirmed: not counted.
+  const status = voided
+    ? "Voided"
+    : payment.status === "CONFIRMED"
+      ? "Confirmed"
+      : review
+        ? null
+        : "Awaiting confirmation, not counted";
   const recordedBy =
     payment.source === "STORE_COLLECTED" ? `by ${getActorLabel("STAFF", staffName(payment.recordedByUserId))}` : null;
   const reference = payment.paystackReference ?? (payment.reference && `Ref: ${payment.reference}`);
@@ -666,6 +687,14 @@ function PaymentRow({ payment, staffName, timeZone, voidable, balanceKobo }: Pay
         </div>
         <span className="type-body-sm shrink-0 text-right text-foreground">{formatNaira(payment.amount)}</span>
       </div>
+      {review && (
+        <div className="flex flex-col items-start gap-1">
+          <Badge variant="warning">Payment needs review</Badge>
+          <p className="type-caption text-muted-foreground">
+            Paystack reported this payment, but it didn&apos;t match the order, so it isn&apos;t counted. Fluta will check it with you.
+          </p>
+        </div>
+      )}
       {payment.note && <p className="type-caption break-words text-muted-foreground">Note: {payment.note}</p>}
       {voided && (
         <p className="type-caption break-words text-muted-foreground">

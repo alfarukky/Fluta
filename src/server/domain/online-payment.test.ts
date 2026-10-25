@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   canPayOnline,
+  checkPaystackTransaction,
+  isMismatchCode,
+  MISMATCH_CODES,
   generatePaystackReference,
   getFlutaFeeKobo,
   hasRecentPendingAttempt,
@@ -19,6 +22,8 @@ const CONNECTED: OnlinePaymentStore = { status: "ACTIVE", paystackSubaccountCode
 function order(overrides: Partial<OnlinePaymentOrder> = {}): OnlinePaymentOrder {
   return {
     stage: "BOOKED",
+    channel: "ONLINE",
+    payLater: true,
     approvedQuote: { total: 620_000 },
     payments: [],
     refunds: [],
@@ -132,5 +137,43 @@ describe("hasRecentPendingAttempt", () => {
 
   it("ignores store-collected payments", () => {
     expect(hasRecentPendingAttempt([{ source: "STORE_COLLECTED", status: "PENDING", createdAt: at(60_000) }], NOW)).toBe(false);
+  });
+});
+
+describe("checkPaystackTransaction", () => {
+  const expected = { amountKobo: 620_000, paystackReference: "FL-0123456789abcdef0123", subaccountCode: "ACCT_store", mode: "test" as const };
+  const txn = {
+    status: "success",
+    reference: expected.paystackReference,
+    amountKobo: 620_000,
+    currency: "NGN",
+    domain: "test" as const,
+    subaccountCode: "ACCT_store",
+  };
+
+  it("confirms a transaction that matches in every way", () => {
+    expect(checkPaystackTransaction(expected, txn)).toEqual({ ok: true });
+  });
+
+  it.each([
+    ["a status other than success", { status: "abandoned" }, "NOT_SUCCESSFUL"],
+    ["another reference", { reference: "FL-ffffffffffffffffffff" }, "OTHER_REFERENCE"],
+    ["the other mode", { domain: "live" as const }, "MODE_MISMATCH"],
+    ["another currency", { currency: "USD" }, "CURRENCY_MISMATCH"],
+    ["a different amount", { amountKobo: 619_999 }, "AMOUNT_MISMATCH"],
+    ["another store's subaccount", { subaccountCode: "ACCT_other" }, "SUBACCOUNT_MISMATCH"],
+    ["no subaccount", { subaccountCode: null }, "SUBACCOUNT_MISMATCH"],
+  ])("refuses %s", (_, change, reason) => {
+    expect(checkPaystackTransaction(expected, { ...txn, ...change })).toEqual({ ok: false, reason });
+  });
+
+  it("refuses when the store is no longer connected", () => {
+    expect(checkPaystackTransaction({ ...expected, subaccountCode: null }, txn)).toEqual({ ok: false, reason: "SUBACCOUNT_MISMATCH" });
+  });
+
+  it("knows the mismatch codes, and only those", () => {
+    expect(MISMATCH_CODES.every((code) => isMismatchCode(code))).toBe(true);
+    expect(isMismatchCode("PAYSTACK_ABANDONED")).toBe(false);
+    expect(isMismatchCode(null)).toBe(false);
   });
 });

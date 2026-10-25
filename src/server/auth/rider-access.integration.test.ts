@@ -53,7 +53,7 @@ const DELIVERIES_PAGE = "/src/app/(staff)/(workspace)/deliveries/page.tsx";
 
 // Public actions (no workspace membership involved) and the Deliveries
 // actions, which riders may use.
-const NOT_WORKSPACE_ACTIONS = ["auth", "booking", "invitations", "tracking", "deliveries"].map(
+const NOT_WORKSPACE_ACTIONS = ["auth", "booking", "invitations", "tracking", "online-payments", "deliveries"].map(
   (name) => `/src/actions/${name}.ts`,
 );
 const WORKSPACE_ACTIONS = Object.entries(import.meta.glob("/src/actions/*.ts")).filter(

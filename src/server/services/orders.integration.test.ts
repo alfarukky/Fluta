@@ -471,6 +471,8 @@ describe("payment-state filter", () => {
         select: {
           id: true,
           stage: true,
+          channel: true,
+          payLater: true,
           approvedQuote: { select: { total: true } },
           payments: { select: { amount: true, status: true, voidedAt: true } },
           refunds: { select: { amount: true, voidedAt: true } },

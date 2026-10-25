@@ -3,7 +3,14 @@
 import { logger } from "@/lib/logger";
 import { startPaymentSchema } from "@/schemas/online-payments";
 import { trackingTokenSchema } from "@/schemas/tracking";
-import { START_PAYMENT_MESSAGES, startPayment, type StartPaymentResult } from "@/server/services/online-payments";
+import { PAYSTACK_REFERENCE_PATTERN } from "@/server/domain/online-payment";
+import {
+  confirmReturnedPayment as confirmReturned,
+  START_PAYMENT_MESSAGES,
+  startPayment,
+  type ReturnedPaymentStatus,
+  type StartPaymentResult,
+} from "@/server/services/online-payments";
 
 // Pay now on the customer's tracking page (/o/{token}). No sign-in: the token
 // is the credential, and the service checks it (and whether the order can be
@@ -27,6 +34,20 @@ export async function startOnlinePayment(token: unknown, request: unknown): Prom
   } catch (error) {
     logger.error("[online-payments] starting a payment failed:", describeError(error));
     return { ok: false, message: START_PAYMENT_MESSAGES.failed };
+  }
+}
+
+// Back from Paystack: ask Paystack about this order's payment. Only the
+// reference's own order (the token's) is ever checked or changed.
+export async function confirmReturnedPayment(token: unknown, reference: unknown): Promise<ReturnedPaymentStatus> {
+  const parsedToken = trackingTokenSchema.safeParse(token);
+  if (!parsedToken.success || typeof reference !== "string" || !PAYSTACK_REFERENCE_PATTERN.test(reference)) return "NOT_CONFIRMED";
+  try {
+    return await confirmReturned(parsedToken.data, reference, new Date());
+  } catch (error) {
+    logger.error("[online-payments] checking a returned payment failed:", describeError(error));
+    // The webhook or the job will still confirm it.
+    return "PENDING";
   }
 }
 

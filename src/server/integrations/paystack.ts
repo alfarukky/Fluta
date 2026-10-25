@@ -5,6 +5,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 import { getPaystackConfig, type PaystackConfig } from "@/lib/env";
+import { paystackTransactionSchema, type PaystackTransaction } from "@/schemas/online-payments";
 
 import { PaystackError } from "./paystack-error";
 
@@ -79,19 +80,8 @@ export interface InitializedTransaction {
 }
 
 // What Paystack says about one transaction (plan 6.6). `status` is the
-// payment's status, not the API call's. Nothing about the card or payer.
-export interface VerifiedTransaction {
-  status: "abandoned" | "failed" | "ongoing" | "pending" | "processing" | "queued" | "reversed" | "success";
-  reference: string;
-  amountKobo: number;
-  currency: string;
-  domain: "test" | "live";
-  paidAt: Date | null;
-  // Paystack's own fee, in kobo.
-  feesKobo: number | null;
-  // Null when Paystack sends no split details.
-  subaccountCode: string | null;
-}
+// payment's status, not the API call's.
+export type VerifiedTransaction = PaystackTransaction;
 
 export interface PaystackClient {
   // Nigerian banks that can receive settlements (active NUBAN banks).
@@ -175,22 +165,7 @@ const initializeResponseSchema = z.object({
   }),
 });
 
-// Only the fields Fluta checks. The card ("authorization"), the customer,
-// and the full log are dropped here. The split's shape is unconfirmed
-// (plan 6.6), so a subaccount code is read only when present.
-const verifyResponseSchema = z.object({
-  status: z.literal(true),
-  data: z.object({
-    status: z.enum(["abandoned", "failed", "ongoing", "pending", "processing", "queued", "reversed", "success"]),
-    reference: z.string(),
-    amount: z.number().int(),
-    currency: z.string(),
-    domain: z.enum(["test", "live"]),
-    paid_at: z.string().nullable().optional(),
-    fees: z.number().int().nullable().optional(),
-    subaccount: z.object({ subaccount_code: z.string().optional() }).loose().nullable().optional(),
-  }),
-});
+const verifyResponseSchema = z.object({ status: z.literal(true), data: paystackTransactionSchema });
 
 type FetchLike = typeof fetch;
 
@@ -329,18 +304,7 @@ export function createPaystackClient(config: PaystackConfig, fetchImpl: FetchLik
       if (!REFERENCE.test(reference)) throw new PaystackError("invalid reference");
       const parsed = verifyResponseSchema.safeParse(await call("GET", `/transaction/verify/${reference}`));
       if (!parsed.success) throw new PaystackError("unexpected response");
-      const { data } = parsed.data;
-      const paidAt = data.paid_at ? new Date(data.paid_at) : null;
-      return {
-        status: data.status,
-        reference: data.reference,
-        amountKobo: data.amount,
-        currency: data.currency,
-        domain: data.domain,
-        paidAt: paidAt && !Number.isNaN(paidAt.getTime()) ? paidAt : null,
-        feesKobo: data.fees ?? null,
-        subaccountCode: data.subaccount?.subaccount_code ?? null,
-      };
+      return parsed.data.data;
     },
   };
 }

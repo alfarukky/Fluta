@@ -5,17 +5,56 @@ import { PAYSTACK_EMAIL_REQUIRED } from "@/lib/online-payment";
 
 import { MAX_PASSWORD_LENGTH } from "./users";
 
-// A Paystack webhook event, after its signature has been checked. Only the
-// fields Fluta reads are kept: anything else in the body (the payer's email,
-// card details) is dropped here and never passed on.
+// One Paystack transaction, as verify returns it (data) and as charge.success
+// carries it (data): the same shape in both (Phase 3 fixtures). Only the
+// fields Fluta checks are kept. The card ("authorization"), the payer, and
+// the subaccount's account number are dropped here and never passed on.
+export const PAYSTACK_TRANSACTION_STATUSES = [
+  "abandoned",
+  "failed",
+  "ongoing",
+  "pending",
+  "processing",
+  "queued",
+  "reversed",
+  "success",
+] as const;
+
+export const paystackTransactionSchema = z
+  .object({
+    status: z.enum(PAYSTACK_TRANSACTION_STATUSES),
+    reference: z.string().min(1).max(100),
+    amount: z.number().int(),
+    currency: z.string().max(10),
+    domain: z.enum(["test", "live"]),
+    paid_at: z.string().nullable().optional(),
+    fees: z.number().int().nullable().optional(),
+    subaccount: z.object({ subaccount_code: z.string().max(100).optional() }).loose().nullable().optional(),
+  })
+  .transform((data) => {
+    const paidAt = data.paid_at ? new Date(data.paid_at) : null;
+    return {
+      status: data.status,
+      reference: data.reference,
+      amountKobo: data.amount,
+      currency: data.currency,
+      domain: data.domain,
+      paidAt: paidAt && !Number.isNaN(paidAt.getTime()) ? paidAt : null,
+      // Paystack's own fee, in kobo.
+      feesKobo: data.fees ?? null,
+      // Null when Paystack sends no split details.
+      subaccountCode: data.subaccount?.subaccount_code ?? null,
+    };
+  });
+
+export type PaystackTransaction = z.output<typeof paystackTransactionSchema>;
+
+// A Paystack webhook event, after its signature has been checked: its name,
+// and its data still unread (charge.success reads it with
+// paystackTransactionSchema; other events are ignored).
 export const paystackEventSchema = z.object({
   event: z.string().min(1).max(100),
-  data: z
-    .object({
-      reference: z.string().min(1).max(100).optional(),
-    })
-    .loose()
-    .transform(({ reference }) => ({ reference })),
+  data: z.record(z.string(), z.unknown()),
 });
 
 export type PaystackEvent = z.infer<typeof paystackEventSchema>;

@@ -34,6 +34,10 @@ export function getCustomerPaymentText(balance: { state: PaymentState; balanceKo
       return "Paid";
     case "OUTSTANDING":
       return `Balance due: ${formatNaira(balance.balanceKobo ?? 0)}`;
+    case "PAYMENT_REQUIRED":
+      return `Payment due: ${formatNaira(balance.balanceKobo ?? 0)}`;
+    case "PENDING":
+      return "Confirming your payment";
     case "REFUND_OWED":
       return `The store will refund ${formatNaira(-(balance.balanceKobo ?? 0))}`;
     case "NOTHING_DUE":

@@ -129,8 +129,13 @@ describe("timeline wording", () => {
       "Payment recorded: ₦5,000 bank transfer, by Staff",
     );
     expect(describePaymentVoided(cash, "Ada")).toBe("Payment voided: ₦5,000 cash, by Ada");
-    expect(describePaymentRecorded({ amount: 620_000, method: "PAYSTACK", source: "ONLINE" }, null)).toBe(
-      "Payment received online: ₦6,200",
+    const online = { amount: 620_000, method: "PAYSTACK", source: "ONLINE" } as const;
+    expect(describePaymentRecorded(online, null)).toBe("Online payment received: ₦6,200 (Paystack)");
+    expect(describePaymentRecorded({ ...online, receivedAfter: "CANCELLED" }, null)).toBe(
+      "Online payment received: ₦6,200 (Paystack), after the order was cancelled",
+    );
+    expect(describePaymentRecorded({ ...online, receivedAfter: "PAID" }, null)).toBe(
+      "Online payment received: ₦6,200 (Paystack), after it was paid in full",
     );
   });
 });

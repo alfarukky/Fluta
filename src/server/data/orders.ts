@@ -320,6 +320,9 @@ const LIST_ROW_SELECT = {
     select: { description: true, pricingType: true, quantity: true },
     orderBy: { id: "asc" },
   },
+  // getBalance: Payment required applies only to online bookings paid at booking.
+  channel: true,
+  payLater: true,
   approvedQuote: { select: { total: true } },
   payments: { select: { amount: true, status: true, voidedAt: true } },
   refunds: { select: { amount: true, voidedAt: true } },
@@ -385,18 +388,26 @@ async function findOrderPageIds(storeId: string, query: OrderListQuery, limit: n
 // written in SQL, used only to choose rows; every amount and badge shown still
 // comes from getBalance. An integration test checks they agree on every order.
 //   balance = approved total (0 if cancelled) − confirmed payments + refunds paid
+// Above 0: Pending when an online payment is still PENDING; else Payment
+// required for an open online booking paid at booking (payLater false) with
+// no confirmed payment; else Outstanding.
 function paymentStateCondition(state: PaymentState): Prisma.Sql {
   const approvedTotal = Prisma.sql`(
     CASE WHEN o."stage" = 'CANCELLED' THEN 0
     ELSE (SELECT q."total" FROM "QuoteRevision" q WHERE q."storeId" = o."storeId" AND q."id" = o."approvedQuoteId")
     END)`;
-  const confirmedPayments = Prisma.sql`(
-    SELECT COALESCE(SUM(p."amount"), 0) FROM "Payment" p
-    WHERE p."storeId" = o."storeId" AND p."orderId" = o."id" AND p."status" = 'CONFIRMED' AND p."voidedAt" IS NULL)`;
+  const confirmed = Prisma.sql`p."storeId" = o."storeId" AND p."orderId" = o."id" AND p."status" = 'CONFIRMED' AND p."voidedAt" IS NULL`;
+  const confirmedPayments = Prisma.sql`(SELECT COALESCE(SUM(p."amount"), 0) FROM "Payment" p WHERE ${confirmed})`;
   const paidRefunds = Prisma.sql`(
     SELECT COALESCE(SUM(r."amount"), 0) FROM "Refund" r
     WHERE r."storeId" = o."storeId" AND r."orderId" = o."id" AND r."voidedAt" IS NULL)`;
   const balance = Prisma.sql`(${approvedTotal} - ${confirmedPayments} + ${paidRefunds})`;
+  const pending = Prisma.sql`EXISTS (
+    SELECT 1 FROM "Payment" p WHERE p."storeId" = o."storeId" AND p."orderId" = o."id" AND p."status" = 'PENDING')`;
+  const paymentRequired = Prisma.sql`(
+    o."channel" = 'ONLINE' AND o."payLater" = false
+    AND o."stage" NOT IN ('COMPLETED', 'CANCELLED')
+    AND NOT EXISTS (SELECT 1 FROM "Payment" p WHERE ${confirmed}))`;
 
   switch (state) {
     case "AWAITING_QUOTE":
@@ -405,8 +416,12 @@ function paymentStateCondition(state: PaymentState): Prisma.Sql {
       return Prisma.sql`(o."stage" <> 'CANCELLED' AND ${balance} = 0)`;
     case "NOTHING_DUE":
       return Prisma.sql`(o."stage" = 'CANCELLED' AND ${balance} = 0)`;
+    case "PENDING":
+      return Prisma.sql`(${balance} > 0 AND ${pending})`;
+    case "PAYMENT_REQUIRED":
+      return Prisma.sql`(${balance} > 0 AND NOT ${pending} AND ${paymentRequired})`;
     case "OUTSTANDING":
-      return Prisma.sql`${balance} > 0`;
+      return Prisma.sql`(${balance} > 0 AND NOT ${pending} AND NOT ${paymentRequired})`;
     case "REFUND_OWED":
       return Prisma.sql`${balance} < 0`;
   }
@@ -438,6 +453,7 @@ export async function findOrderDetail(storeId: string, orderId: string) {
       stage: true,
       stageBeforeQuote: true,
       approvedQuoteId: true,
+      payLater: true,
       serviceAreaName: true,
       isOutOfArea: true,
       isOutsideSchedule: true,
@@ -499,6 +515,7 @@ export async function findOrderDetail(storeId: string, orderId: string) {
           source: true,
           status: true,
           paystackReference: true,
+          failureCode: true,
           reference: true,
           note: true,
           recordedByUserId: true,

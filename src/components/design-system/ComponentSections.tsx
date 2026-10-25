@@ -379,7 +379,10 @@ export function BadgesSection() {
             <Badge variant="neutral" dot>Completed</Badge>
             <Badge variant="success">Paid</Badge>
             <Badge variant="warning">Outstanding</Badge>
+            <Badge variant="warning">Payment required</Badge>
+            <Badge variant="info">Pending</Badge>
             <Badge variant="error">Refund owed</Badge>
+            <Badge variant="warning">Payment needs review</Badge>
           </div>
         </ShowcaseGroup>
       </div>

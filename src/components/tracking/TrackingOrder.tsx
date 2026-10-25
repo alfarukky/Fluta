@@ -16,13 +16,13 @@ interface TrackingOrderProps {
   basePath: string;
   // The link's token, for Pay now. Never logged.
   token: string;
-  // Back from Paystack with this order's attempt still PENDING.
-  confirmingPayment?: boolean;
+  // Back from Paystack: the reference of this order's attempt, still PENDING.
+  confirmingReference?: string | null;
 }
 
 // The customer's order, in plain words: where it is, what it costs, and
 // anything waiting for them as one calm card at the top.
-export function TrackingOrder({ view, basePath, token, confirmingPayment = false }: TrackingOrderProps) {
+export function TrackingOrder({ view, basePath, token, confirmingReference = null }: TrackingOrderProps) {
   const { store } = view;
   return (
     <>
@@ -36,7 +36,11 @@ export function TrackingOrder({ view, basePath, token, confirmingPayment = false
 
       {!view.closed && <ActionCard view={view} basePath={basePath} />}
 
-      {confirmingPayment ? <ConfirmingPayment /> : view.payNow && <PayNowCard token={token} offer={view.payNow} />}
+      {confirmingReference ? (
+        <ConfirmingPayment token={token} reference={confirmingReference} orderPath={basePath} />
+      ) : (
+        view.payNow && <PayNowCard token={token} offer={view.payNow} />
+      )}
 
       <Card title="Progress">
         <Timeline steps={view.timeline} />

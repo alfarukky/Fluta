@@ -86,6 +86,8 @@ export interface TimelinePayment {
   voidedByUserId: string | null;
   // Staff only: never shown on the tracking page or in customer messages.
   voidReason: string | null;
+  // Online only: money that arrived when nothing was due (plan 6.9).
+  receivedAfter?: "CANCELLED" | "PAID" | null;
 }
 
 export type TimelineEntry =

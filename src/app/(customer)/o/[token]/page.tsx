@@ -19,6 +19,6 @@ export default async function TrackingPage({ params, searchParams }: PageProps<"
   const reference = query.paystack === "return" && typeof query.reference === "string" ? query.reference : null;
   const confirming = reference !== null && (await isPaymentBeingConfirmed(token, reference));
   return renderTrackingPage(token, (view) => (
-    <TrackingOrder view={view} basePath={trackingPath(token)} token={token} confirmingPayment={confirming} />
+    <TrackingOrder view={view} basePath={trackingPath(token)} token={token} confirmingReference={confirming ? reference : null} />
   ));
 }

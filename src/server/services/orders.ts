@@ -22,6 +22,7 @@ import {
 import { buildOrderTimeline, type TimelineEntry } from "@/server/data/order-timeline";
 import { findPickupTimeEvents } from "@/server/data/pickup-times";
 import { findRevisionAudits } from "@/server/data/quotes";
+import { findOnlinePaymentNotes } from "@/server/data/online-payments";
 import { getBalance, type Balance } from "@/server/domain/balance";
 import { getAvailableTransitions, getStageOrderState, type AvailableTransitions } from "@/server/domain/order-stages";
 import { buildOrderListQuery, ORDER_LIST_PAGE_SIZE } from "@/server/domain/order-list";
@@ -124,6 +125,9 @@ export interface OrderPaymentActions {
   recordPrimary: boolean;
   // Owners only, on confirmed store-collected payments.
   canVoid: boolean;
+  // A payment has started on Paystack but isn't confirmed: the record form
+  // says so, so staff don't take the same money again at the counter.
+  hasPendingOnlinePayment: boolean;
 }
 
 export interface OrderPickupTimeState {
@@ -163,12 +167,16 @@ export async function getOrderDetail(
   const order = await findOrderDetail(storeId, orderId);
   if (!order) return null;
 
-  const [audits, pickupTimes] = await Promise.all([
+  const [audits, pickupTimes, onlineNotes] = await Promise.all([
     findRevisionAudits(
       storeId,
       order.quoteRevisions.map((revision) => revision.id),
     ),
     findPickupTimeEvents(storeId, orderId),
+    findOnlinePaymentNotes(
+      storeId,
+      order.payments.filter((payment) => payment.source === "ONLINE" && payment.status === "CONFIRMED").map((payment) => payment.id),
+    ),
   ]);
   const timeline = buildOrderTimeline(
     order.statusEvents,
@@ -176,7 +184,7 @@ export async function getOrderDetail(
     audits,
     pickupTimes.suggestions,
     pickupTimes.resets,
-    order.payments,
+    order.payments.map((payment) => ({ ...payment, receivedAfter: onlineNotes.get(payment.id) ?? null })),
   );
   const actorIds = timeline.flatMap((entry) => {
     const id =
@@ -216,6 +224,7 @@ export async function getOrderDetail(
       canRecord: canRecordPaymentAt(order.stage),
       recordPrimary: isRecordPaymentPrimary(order.stage, balance.state),
       canVoid: role === "OWNER",
+      hasPendingOnlinePayment: order.payments.some((payment) => payment.source === "ONLINE" && payment.status === "PENDING"),
     },
   };
 }

@@ -34,6 +34,8 @@ const TRACKED_ORDER_SELECT = {
   stage: true,
   stageBeforeQuote: true,
   approvedQuoteId: true,
+  channel: true,
+  payLater: true,
   serviceAreaName: true,
   fulfilmentCharge: true,
   requestedPickupDate: true,
@@ -109,6 +111,8 @@ export async function findTrackedOrder(tokenHash: string): Promise<TrackedOrderR
 // What the rules need to decide whether a new link would work.
 const LINK_ORDER_SELECT = {
   stage: true,
+  channel: true,
+  payLater: true,
   completedAt: true,
   cancelledAt: true,
   approvedQuote: { select: { total: true } },
@@ -135,7 +139,7 @@ export async function reissueTrackingToken<T>(
     // One query at a time on the transaction's connection (see readQuoteOrder).
     const order = await tx.order.findUnique({
       where: { storeId_id: { storeId, id: orderId } },
-      select: { stage: true, completedAt: true, cancelledAt: true, approvedQuoteId: true },
+      select: { stage: true, channel: true, payLater: true, completedAt: true, cancelledAt: true, approvedQuoteId: true },
     });
     if (!order) return { status: "NOT_FOUND" };
     const { approvedQuoteId, ...fields } = order;

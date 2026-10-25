@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 
 import type { PaymentSource, PaymentStatus, StoreStatus } from "@/generated/prisma/enums";
 import { isAwaitingApproval, type RevisionStatus } from "@/lib/orders";
+import { isMismatchCode, MISMATCH_CODES, type MismatchCode } from "@/lib/online-payment";
 import { getTrackingLinkStatus } from "@/lib/tokens";
 
 import { getBalance, type BalanceOrder } from "./balance";
@@ -92,3 +93,59 @@ export function hasRecentPendingAttempt(payments: readonly OnlineAttempt[], now:
       payment.source === "ONLINE" && payment.status === "PENDING" && now.getTime() - payment.createdAt.getTime() < RECENT_ATTEMPT_MS,
   );
 }
+
+// ───────────── Confirming a payment (plan 6.6 and 6.8) ─────────────
+
+export { isMismatchCode, MISMATCH_CODES, type MismatchCode };
+
+export interface ExpectedTransaction {
+  // The Payment as saved before Paystack was called.
+  amountKobo: number;
+  paystackReference: string;
+  // The store's subaccount now. Null if the store was disconnected since.
+  subaccountCode: string | null;
+  // PAYSTACK_MODE: a test payment never confirms in live mode, or the reverse.
+  mode: "test" | "live";
+}
+
+export interface ReportedTransaction {
+  status: string;
+  reference: string;
+  amountKobo: number;
+  currency: string;
+  domain: "test" | "live";
+  subaccountCode: string | null;
+}
+
+export type TransactionCheck =
+  | { ok: true }
+  // Not (yet) paid: nothing to confirm, and nothing wrong.
+  | { ok: false; reason: "NOT_SUCCESSFUL" | "OTHER_REFERENCE" }
+  // Paid, but not what Fluta asked for: recorded for review.
+  | { ok: false; reason: MismatchCode };
+
+// Whether Paystack's transaction confirms this payment. Every check must pass:
+// status success, the same reference, the exact amount in kobo, NGN, the
+// mode Fluta runs in, and the store's own subaccount (Paystack always sends
+// it for a split payment, Phase 3 fixtures, so a missing one doesn't match).
+export function checkPaystackTransaction(expected: ExpectedTransaction, txn: ReportedTransaction): TransactionCheck {
+  if (txn.status !== "success") return { ok: false, reason: "NOT_SUCCESSFUL" };
+  if (txn.reference !== expected.paystackReference) return { ok: false, reason: "OTHER_REFERENCE" };
+  if (txn.domain !== expected.mode) return { ok: false, reason: "MODE_MISMATCH" };
+  if (txn.currency !== "NGN") return { ok: false, reason: "CURRENCY_MISMATCH" };
+  if (txn.amountKobo !== expected.amountKobo) return { ok: false, reason: "AMOUNT_MISMATCH" };
+  if (txn.subaccountCode === null || txn.subaccountCode !== expected.subaccountCode) {
+    return { ok: false, reason: "SUBACCOUNT_MISMATCH" };
+  }
+  return { ok: true };
+}
+
+// The reconciliation job (plan 7.1) checks attempts PENDING for 30 minutes,
+// started in the last 48 hours; older ones are failed without asking.
+export const RECONCILE_AFTER_MS = 30 * 60 * 1000;
+export const RECONCILE_UNTIL_MS = 48 * 60 * 60 * 1000;
+export const RECONCILE_BATCH = 20;
+
+// Failure codes for attempts that never completed. Not mismatches, so a late
+// success from Paystack still confirms them.
+export const ATTEMPT_FAILURE_CODES = { abandoned: "PAYSTACK_ABANDONED", failed: "PAYSTACK_FAILED", expired: "EXPIRED" } as const;

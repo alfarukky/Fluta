@@ -24,6 +24,9 @@ export const PAYMENT_AUDIT_ACTIONS = {
 // What getBalance needs, as the order is now.
 const BALANCE_SELECT = {
   stage: true,
+  // getBalance: Payment required applies only to online bookings paid at booking.
+  channel: true,
+  payLater: true,
   approvedQuote: { select: { total: true } },
   payments: { select: { id: true, amount: true, status: true, voidedAt: true } },
   refunds: { select: { amount: true, voidedAt: true } },

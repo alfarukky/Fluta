@@ -406,7 +406,7 @@ function OnlinePaymentPreview() {
     <div className="grid items-start gap-grid md:grid-cols-3">
       <PayNowCard token="" offer={offer} headingLevel="h3" preview />
       <PayNowCard token="" offer={{ ...offer, recentAttempt: true }} headingLevel="h3" preview />
-      <ConfirmingPayment />
+      <ConfirmingPayment token="" reference="" orderPath="" preview />
     </div>
   );
 }

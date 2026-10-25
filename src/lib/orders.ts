@@ -48,11 +48,21 @@ export const FULFILMENT_TYPE_LABELS: Record<FulfilmentType, string> = {
 // online payments (Features 13 and 17).
 // Nothing due: a cancelled order with nothing collected (or everything
 // refunded), so "Paid" always means the customer settled an approved total.
-export const PAYMENT_STATES = ["AWAITING_QUOTE", "PAID", "OUTSTANDING", "REFUND_OWED", "NOTHING_DUE"] as const;
+export const PAYMENT_STATES = [
+  "AWAITING_QUOTE",
+  "PAYMENT_REQUIRED",
+  "PENDING",
+  "PAID",
+  "OUTSTANDING",
+  "REFUND_OWED",
+  "NOTHING_DUE",
+] as const;
 export type PaymentState = (typeof PAYMENT_STATES)[number];
 
 export const PAYMENT_STATE_LABELS: Record<PaymentState, string> = {
   AWAITING_QUOTE: "Awaiting quote",
+  PAYMENT_REQUIRED: "Payment required",
+  PENDING: "Pending",
   PAID: "Paid",
   OUTSTANDING: "Outstanding",
   REFUND_OWED: "Refund owed",

@@ -14,3 +14,13 @@ export function getPaymentWarning(storeName: string): string {
 
 export const PAYSTACK_EMAIL_HINT = "For your Paystack receipt";
 export const PAYSTACK_EMAIL_REQUIRED = "Enter your email for your Paystack receipt";
+
+// A successful Paystack transaction that doesn't match what Fluta asked for.
+// A payment failed with one of these stays for review ("Payment needs
+// review"): it is never confirmed by a retried webhook or verify.
+export const MISMATCH_CODES = ["AMOUNT_MISMATCH", "CURRENCY_MISMATCH", "MODE_MISMATCH", "SUBACCOUNT_MISMATCH"] as const;
+export type MismatchCode = (typeof MISMATCH_CODES)[number];
+
+export function isMismatchCode(code: string | null): code is MismatchCode {
+  return code !== null && (MISMATCH_CODES as readonly string[]).includes(code);
+}
