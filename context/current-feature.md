@@ -1,68 +1,40 @@
-# Current Feature: Paystack Online Payments — Phase 4, Webhook and Verify Processing
+# Current Feature
 
 ## Status
 
-In Progress
+Not Started
 
 ## Spec
 
-- `context/features/17-paystack-online-payments-spec.md`, Phase 4 only (branch `feat/paystack-4-confirmation`)
-- The plan is the specification: `context/docs/paystack-integration-plan.md` sections 6.7 to 6.9 (webhooks, counting each payment once, late payments), 7.1 (reconciliation job), 9.3 (the two new payment states), and the Phase 4 entry in section 14. The return-page part of section 7 (`ConfirmingPayment` calling `confirmReturnedPayment`), the matching rows of 9.2, and the Phase 4 tests in 13.1 and 13.2 apply.
-- Implements project-overview.md: Payments, Payment states
+<!-- The spec file for this feature -->
 
 ## Goals
 
-- `paystackTransactionSchema` and `checkPaystackTransaction` (pure): status `success`, reference, amount (integer kobo), currency `NGN`, domain matching `PAYSTACK_MODE`, and the subaccount code (now known to be in the verify and webhook payloads, Phase 3 fixtures) (6.6, 6.8)
-- `confirmPaystackPayment(txn, now)`, the one function the webhook, the return verify, and the reconciliation job call: unknown reference → nothing written; mismatch → `recordMismatch`; otherwise one conditional update (`PENDING`, or `FAILED` with no failure code or a non-mismatch code → `CONFIRMED`, `confirmedAt` from `paid_at`, `paystackFeeAmount` from `fees`), so duplicates and races count once (6.8)
-- Mismatches: `FAILED` with `AMOUNT_MISMATCH`, `CURRENCY_MISMATCH`, `MODE_MISMATCH`, or `SUBACCOUNT_MISMATCH`, recorded once; never confirmed automatically by a retry; `AuditEvent` `ONLINE_PAYMENT_NEEDS_REVIEW` in the same transaction; one email to `FLUTA_ALERT_EMAIL` after the commit, none to the owner (6.8, decision 8)
-- The webhook route processes `charge.success` through `confirmPaystackPayment` (200 when handled or ignored, 500 on failure so Paystack retries); other events acknowledged and ignored (6.7)
-- Late payments always recorded: on a cancelled order or a fully paid one they become Refund owed; timeline entries "Online payment received: ₦X (Paystack)", "… after the order was cancelled", "… after it was paid in full" (6.9, 9.2 `order-timeline.ts`)
-- Verify on return: `ConfirmingPayment` calls `confirmReturnedPayment(token, reference)` once, retries twice a few seconds apart on `ongoing`/`pending`, then `router.refresh()`; fallback "We're still confirming your payment. This page will update once the store receives it."; the action checks the reference belongs to this token's order (7)
-- Reconciliation job in the 5-minute cron: `ONLINE` payments `PENDING` for over 30 minutes and created in the last 48 hours, at most 20 a run, verified: `success` → confirm, `abandoned`/`failed` → `FAILED`; still `PENDING` after 48 hours → `FAILED`, a late webhook can still confirm it (7.1)
-- `getBalance` gains `channel` and `payLater`: `PENDING` (balance > 0 and a `PENDING` online payment) and `PAYMENT_REQUIRED` (balance > 0, `channel = ONLINE`, `payLater = false`, no confirmed payments, order not closed); staff-entered orders stay Outstanding; pending payments never change the balance (9.3)
-- The two states in `PAYMENT_STATES` and labels ("Payment required", "Pending"), the SQL payment filter in `src/server/data/orders.ts` (agreement test kept passing), and the customer text ("Payment due: ₦6,200", "Confirming your payment") (9.2)
-- Order detail: online payments ("Paystack · confirmed 3:15 PM"), `PENDING` attempts as "Awaiting confirmation" (not counted), mismatches as "Payment needs review", other `FAILED` attempts hidden (9.2)
-- The record-payment form notice "An online payment for this order is being confirmed." when the order has a `PENDING` online attempt; information only, never blocks recording; `hasPendingOnlinePayment` on the order detail data (9.2)
-- Design system shows the new payment badges
+<!-- The spec's requirements -->
 
 ## Not in this feature
 
-- Phase 5: a non-zero Fluta fee (`onlineFeeBps` stays 0; FreshFold at 150 bps by SQL is Phase 5's check)
-- Phase 6: live keys, live webhook URL, IP-header enforcement
-- Refunds through Paystack (decision 12) and recording refunds (Feature 18)
-- Resolving "Payment needs review" in the app (done by hand with Paystack and the store)
+<!-- Out of scope -->
 
 ## Done when
 
-From the plan's Phase 4 entry (section 14):
-
-- **Verify:**
-  - every integration test in 13.2. The webhook and the return verify both run on one payment.
-  - book and pay at FreshFold with pay later off, then pay: the order page shows Paid (moved from Phase 3)
-  - book and pay, then cancel or close checkout: the order exists, shows Payment required to staff, and Pay now on its link completes the payment (moved from Phase 3)
-- **Ready for next phase when:** duplicates count once, and mismatches are refused
+<!-- The spec's Done when items -->
 
 ## Verify with
 
-The Phase 4 Verify list above, in Paystack test mode only, with the webhook reaching this machine through a Cloudflare tunnel (plan 11.2; the owner sets the Test Webhook URL and resets it after), plus the workflow checks: lint, typecheck, `npm test`, build, Next.js DevTools, Playwright at ~360px and desktop in both themes.
+<!-- How to verify the feature -->
 
 ## References
 
-- @context/docs/paystack-integration-plan.md (the specification)
-- @context/project-overview.md (Payments, Payment states)
-- @context/features/16-store-collected-payments-spec.md
-- Phase 3 fixtures: `src/test/fixtures/paystack/` (initialize, verify, `charge.success`)
+<!-- Related context files -->
 
 ## Schema changes
 
-None. Phase 1's `add_online_payments` already added `failureCode`, `paystackFeeAmount`, and the `[status, createdAt]` index the job needs.
+<!-- Migrations, or None -->
 
 ## Notes
 
-- Ask First: every change to `getBalance` (the spec names Phase 4 explicitly), the SQL payment filter, payments and webhook code, the tracking-token check in `confirmReturnedPayment`, and test-mode calls plus development database writes at Verify.
-- Development: Ada is `alfarukky+fluta@gmail.com`; development email reaches only `alfarukky@gmail.com` (Resend sandbox), so the `FLUTA_ALERT_EMAIL` alert can be seen only if it is that address; Termii is not configured on development (the three TERMII_ variables are empty), so SMS are marked sent without sending; the owner's phone number is typed into the form only, never written into any file, commit, fixture, test, log, or this document.
-- FreshFold is connected in test mode (subaccount `ACCT_b7sms47namw2rzc`, now OPay •••• 2137); a reseed disconnects it. Order FF-1014 has two paid test payments still `PENDING`: Phase 4's reconciliation or return verify will confirm them, which makes FF-1014 Refund owed (₦800 extra).
-- `db.json` in the repo root is the Paystack CLI's login file: never commit it.
+<!-- Anything to remember while working -->
 
 ## History
 
@@ -220,3 +192,4 @@ None. Phase 1's `add_online_payments` already added `failureCode`, `paystackFeeA
 - 2026-10-24: Implemented Phase 4 on `feat/paystack-4-confirmation`: `getBalance` gains `channel` and `payLater` with `PENDING` and `PAYMENT_REQUIRED` (staff-entered orders stay Outstanding), mirrored in the SQL filter, labels, badges, and customer text; `paystackTransactionSchema` shared by verify and `charge.success`; `checkPaystackTransaction` (status, reference, mode, NGN, exact amount, the store's subaccount, required since Phase 3 showed Paystack always sends it); `confirmPaystackPayment` with one conditional update (PENDING, or FAILED without a mismatch code), `paystackFeeAmount` saved, `ONLINE_PAYMENT_CONFIRMED` audit with `receivedAfter` (cancelled or paid in full) for the timeline; mismatches FAILED once with `ONLINE_PAYMENT_NEEDS_REVIEW` and one `FLUTA_ALERT_EMAIL` alert; webhook processes `charge.success`; `confirmReturnedPayment` (the token's own order only) and a live `ConfirmingPayment` (two retries, then refresh); `reconcilePendingPayments` in the 5-minute cron (30 minutes to 48 hours, 20 a run, then `EXPIRED`); order page shows "Awaiting confirmation, not counted" and "Payment needs review"; record-payment notice; timeline "Online payment received: ₦X (Paystack)" with the after-cancelled or after-paid wording; badges in the design system. Mismatch codes moved to `src/lib/online-payment.ts`. Lint, typecheck, unit (916), and the new integration file (20) pass.
 - 2026-10-24: Phase 4 Verify passed in test mode at FreshFold (the owner clicked through in their own browser; checked in the database). FF-1015 Book and pay → paid → confirmed once (return verify and webhook through a tunnel), Paystack fee ₦12 saved. FF-1016 cancel → Pay again → confirmed. Reconciliation run by hand on development (no local cron): FF-1014's two paid Phase 3 attempts confirmed (the second "after it was paid in full", so Refund owed ₦800), its cancelled one `PAYSTACK_ABANDONED`. FF-1018 cancel → attempt aged 31 minutes by SQL → job: Paystack "abandoned" → FAILED → staff and customer see Payment required ("Payment due: ₦800") → Pay now → confirmed by the return verify alone (Test Webhook URL emptied). After a cancel, staff see Pending until the job fails the attempt (plan 9.3), then Payment required. Ready for next phase: duplicates count once and mismatches are refused (integration tests). Development memory is tight (6.8 GB): the production server through a tunnel, and later the dev server alone, were used; the owner set the Test Webhook URL back to empty.
 - 2026-10-24: `/feature complete` paused. Lint, typecheck, and unit (916) passed. First full integration run spoiled by a network outage (`getaddrinfo EAI_AGAIN` for the Neon host: 30 files failed creating their first test store, not a code failure); the rerun was stopped at the owner's request after 25 minutes. Next: run the 32 integration files in 4 batches (about 8 each) so an interruption loses one batch, then build, commit, merge, and push. Nothing committed yet.
+- 2026-10-25: Completed Feature 17, Phase 4 — Webhook and Verify Processing (spec: `context/features/17-paystack-online-payments-spec.md`, plan sections 6.7 to 6.9, 7, 7.1, 9.2, 9.3). Commit `cb4b362` merged into `staging`. No schema change. `confirmPaystackPayment` shared by the webhook, the return verify, and the 5-minute reconciliation job (one conditional update, so duplicates count once); mismatches FAILED once with `ONLINE_PAYMENT_NEEDS_REVIEW` and one `FLUTA_ALERT_EMAIL` alert; late payments become Refund owed; `getBalance` gains `PENDING` and `PAYMENT_REQUIRED`; order page, record-payment notice, timeline, and badges updated. Verify passed in test mode at FreshFold (2026-10-24). At complete, the full integration run failed 3 files: rider access (fixed: `online-payments` added to the public actions list, since `confirmReturnedPayment` returns a status, not `{ ok }`); seed data (a `tracking-test-765712a8` store left on the test branch by the stopped 2026-10-24 run, deleted by hand the same way the test's own cleanup does); invitations (Neon closed the connection, P1017; passed on rerun). Lint, typecheck, unit (916), integration (32 files, 478; the three files rerun after the fixes), and build pass. Next: Phase 5 (non-zero Fluta fee).
