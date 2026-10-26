@@ -394,6 +394,18 @@ export function getFlutaFeeKobo(amountKobo: number, feeBps: number): number {
 - ~~Whether Paystack accepts `transaction_charge: 0` is Unconfirmed.~~ **Confirmed in Phase 3 (23 October 2026, test mode):** Paystack accepts `transaction_charge: 0`. The verify response shows `fees_split.params.transaction_charge: "0"`, `integration: 0`, and the store's share reduced only by Paystack's fee (₦800 paid → ₦12 to Paystack, ₦788 to the subaccount). Fixture: `src/test/fixtures/paystack/verify-success.json`.
 - Check in Phase 3. If it is refused, omit the parameter at 0% and, when connecting, assert that the fetched subaccount has `percentage_charge` 0 [S4].
 
+**Confirmed in Phase 5 (26 October 2026, test mode, development database only):** two ₦1,600 Book and pay payments at FreshFold.
+
+| FreshFold `onlineFeeBps` | `Payment.flutaFeeBps` / `flutaFeeAmount` | `transaction_charge` sent | Verify `fees_split` (kobo)                                         |
+| ------------------------ | ---------------------------------------- | ------------------------- | ------------------------------------------------------------------ |
+| 150                      | 150 / 2,400 (₦24)                         | 2,400                     | `paystack` 2,400, `integration` "2400", `subaccount` 155,200       |
+| 0                        | 0 / 0                                     | 0                         | `paystack` 2,400, `integration` 0, `subaccount` 157,600            |
+
+- Both show `bearer: "subaccount"` and `percentage_charge: "0"`. The store's share is `amount − Paystack's fee − transaction_charge`, as 6.10 expects. The owner saw the same split in the test dashboard (₦24 to Fluta, then ₦0).
+- `fees_split.integration` is a string (`"2400"`) when non-zero and the number `0` at 0%. Fluta never reads it (the fee is copied onto `Payment` when the payment starts), so this needs no code change. Anything that reads it later must accept both.
+- The first payment kept `flutaFeeBps` 150 and `flutaFeeAmount` 2,400 after the rate was set back to 0. FreshFold was left at 0.
+- Fixtures (redacted): `src/test/fixtures/paystack/verify-success-fee-150.json` and `verify-success-fee-0.json`.
+
 **Insufficient share:** "When specifying a bearer, you need to ensure that the amount that goes into the subaccount is sufficient to bear the transaction fee. If the amount is insufficient, you'll get a `400 Bad Request` error" [S3]. With a fee capped at 5% this should only affect tiny amounts. Treat it as a refusal ("This amount can't be paid online. Please pay the store directly.") and log it.
 
 **Response:** `data.authorization_url`, `data.access_code`, and `data.reference` [S2].
@@ -993,6 +1005,8 @@ The listed expiry dates (09/27) come from the docs as indexed and may be updated
 | Webhook signatures are verified, and duplicate webhooks do not double-count                                 | Phase 4 unit and integration tests, plus resending a test event [S18]                                                                          |
 | A customer closing checkout early leaves the payment unconfirmed                                            | Phase 3 and 4 manual test above                                                                                                                |
 | Above 0%, Fluta's share reaches Fluta and the rest reaches the store. At 0% the store receives everything   | Test mode shows the configured split only. Final proof is the first live payment (12).                                                         |
+
+**Test-mode results (Phase 5, 26 October 2026):** the last row is checked as far as test mode allows. At 150 bps a ₦1,600 payment split ₦24 to Fluta (`integration`), ₦24 to Paystack, and ₦1,552 to FreshFold's subaccount. At 0% it split ₦0 to Fluta, ₦24 to Paystack, and ₦1,576 to the store. The verify responses (6.3) and the test dashboard agree. Real payouts still need the first live settlement (Phase 6). The second row is also confirmed again: Paystack's fee came from the store's share in both cases.
 
 ---
 

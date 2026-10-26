@@ -369,6 +369,32 @@ describe("recorded Paystack responses (test mode, Phase 3)", () => {
   });
 });
 
+describe("recorded Paystack responses with Fluta's fee (test mode, Phase 5)", () => {
+  const config = { secretKey: SECRET, mode: "test" as const };
+
+  // Two ₦1,600 payments at FreshFold, one at 150 bps and one at 0.
+  it.each([
+    { name: "150 bps", file: "verify-success-fee-150", charge: 2_400 },
+    { name: "0%", file: "verify-success-fee-0", charge: 0 },
+  ])("at $name: the charge goes to Fluta, and the store's share bears Paystack's fee", async ({ file, charge }) => {
+    const recorded = (await import(`@/test/fixtures/paystack/${file}.json`)).default;
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(recorded), { status: 200 }));
+    await expect(createPaystackClient(config, fetchImpl).verifyTransaction(recorded.data.reference)).resolves.toMatchObject({
+      status: "success",
+      amountKobo: 160_000,
+      feesKobo: 2_400,
+      subaccountCode: "ACCT_fixture",
+    });
+
+    const split = recorded.data.fees_split;
+    // Paystack sends `integration` as a string when non-zero and as 0 otherwise.
+    expect(Number(split.integration)).toBe(charge);
+    expect(split.params).toMatchObject({ bearer: "subaccount", transaction_charge: String(charge), percentage_charge: "0" });
+    expect(split.paystack).toBe(2_400);
+    expect(split.subaccount).toBe(160_000 - 2_400 - charge);
+  });
+});
+
 describe("recorded initialize response (test mode, Phase 3)", () => {
   it("reads Paystack's real initialize response", async () => {
     const recorded = (await import("@/test/fixtures/paystack/initialize-success.json")).default;

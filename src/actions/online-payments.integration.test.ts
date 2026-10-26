@@ -33,6 +33,8 @@ let connected: TestStore;
 let payLater: TestStore;
 // Not connected.
 let unconnected: TestStore;
+// Connected, pay later off: its Fluta fee rate changes in the fee tests.
+let feeStore: TestStore;
 
 interface TestStore {
   id: string;
@@ -43,10 +45,11 @@ interface TestStore {
 
 beforeAll(async () => {
   prisma = createTestPrisma();
-  [connected, payLater, unconnected] = await Promise.all([
+  [connected, payLater, unconnected, feeStore] = await Promise.all([
     createStore("Paystack Test Laundry", "PT", { paystackSubaccountCode: "ACCT_phase3test", emailCopiesEnabled: false }),
     createStore("Pay Later Laundry", "PL", { paystackSubaccountCode: "ACCT_phase3later", payLaterEnabled: true }),
     createStore("Unconnected Laundry", "UC", {}),
+    createStore("Fee Test Laundry", "FT", { paystackSubaccountCode: "ACCT_phase5fee", emailCopiesEnabled: false }),
   ]);
 }, 120_000);
 
@@ -57,7 +60,7 @@ beforeEach(() => {
 
 afterAll(async () => {
   // Test cleanup only: the app never deletes orders, payments, or customers.
-  for (const store of [connected, payLater, unconnected]) {
+  for (const store of [connected, payLater, unconnected, feeStore]) {
     const where = { storeId: store.id };
     await prisma.order.updateMany({ where, data: { approvedQuoteId: null } });
     await prisma.$transaction(
@@ -269,6 +272,63 @@ async function loadBookingPageOptions(store: TestStore) {
   if (!page) throw new Error("The booking page should load");
   return page.options;
 }
+
+describe("Fluta's fee", () => {
+  // Fluta admins set the rate (Feature 23); the tests set it directly.
+  async function setFeeRate(onlineFeeBps: number) {
+    await prisma.store.update({ where: { id: feeStore.id }, data: { onlineFeeBps } });
+  }
+
+  async function paymentsByReference(storeId: string) {
+    const payments = await prisma.payment.findMany({ where: { storeId }, select: { id: true, paystackReference: true, flutaFeeBps: true, flutaFeeAmount: true } });
+    return new Map(payments.map((payment) => [payment.paystackReference ?? "", payment]));
+  }
+
+  it("takes the store's rate when the payment starts, sends it to Paystack, and copies it to the payment", async () => {
+    await setFeeRate(150);
+    const request = booking(feeStore);
+    await book(feeStore, request);
+
+    const [payment] = (await orderOf(feeStore, request.clientRequestId)).payments;
+    // 1.5% of ₦1,600 is ₦24.
+    expect(payment).toMatchObject({ status: "PENDING", amount: 160_000, flutaFeeBps: 150, flutaFeeAmount: 2_400 });
+    expect(fakePaystack.transactions.get(payment.paystackReference ?? "")).toMatchObject({
+      amountKobo: 160_000,
+      subaccountCode: "ACCT_phase5fee",
+      transactionChargeKobo: 2_400,
+    });
+  });
+
+  it("keeps each payment's copied rate and amount when the rate changes later", async () => {
+    await setFeeRate(150);
+    const first = booking(feeStore);
+    const firstBooking = await book(feeStore, first);
+    await setFeeRate(500);
+    const second = booking(feeStore);
+    await book(feeStore, second);
+    // Back to 0%, then Pay now on the first order starts a new attempt.
+    await setFeeRate(0);
+    expect(await startOnlinePayment(firstBooking.token, { email: "amina@example.com" })).toMatchObject({ ok: true });
+
+    const firstPayments = (await orderOf(feeStore, first.clientRequestId)).payments;
+    const secondPayments = (await orderOf(feeStore, second.clientRequestId)).payments;
+    expect(firstPayments.map(({ flutaFeeBps, flutaFeeAmount }) => ({ flutaFeeBps, flutaFeeAmount }))).toEqual(
+      expect.arrayContaining([
+        { flutaFeeBps: 150, flutaFeeAmount: 2_400 },
+        { flutaFeeBps: 0, flutaFeeAmount: 0 },
+      ]),
+    );
+    expect(firstPayments).toHaveLength(2);
+    expect(secondPayments).toEqual([expect.objectContaining({ flutaFeeBps: 500, flutaFeeAmount: 8_000 })]);
+
+    // Paystack was sent each payment's own charge.
+    const saved = await paymentsByReference(feeStore.id);
+    for (const [reference, sent] of fakePaystack.transactions) {
+      expect(sent.transactionChargeKobo).toBe(saved.get(reference)?.flutaFeeAmount);
+    }
+    expect(fakePaystack.transactions.size).toBe(3);
+  });
+});
 
 describe("Pay now on the tracking page", () => {
   it("offers the full balance due, pre-filled with the customer's email", async () => {

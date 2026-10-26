@@ -244,6 +244,18 @@ describe("recording a payment", () => {
     expect(Number.isInteger(payment.amount)).toBe(true);
   });
 
+  it("never takes a Fluta fee, even at a store with an online fee rate", async () => {
+    await prisma.store.update({ where: { id: storeId }, data: { onlineFeeBps: 150 } });
+    try {
+      const orderId = await makeOrder();
+      expect(await record(orderId, "2,000")).toMatchObject({ ok: true });
+      const [payment] = await paymentsOf(orderId);
+      expect(payment).toMatchObject({ source: "STORE_COLLECTED", flutaFeeBps: null, flutaFeeAmount: null, paystackReference: null });
+    } finally {
+      await prisma.store.update({ where: { id: storeId }, data: { onlineFeeBps: 0 } });
+    }
+  });
+
   it("moves the order from Outstanding to Paid to Refund owed, through getBalance", async () => {
     const orderId = await makeOrder("READY", 500_000);
     expect(await balanceOf(orderId)).toMatchObject({ state: "OUTSTANDING", balanceKobo: 500_000 });

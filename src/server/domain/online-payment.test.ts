@@ -108,8 +108,14 @@ describe("getFlutaFeeKobo", () => {
     expect(getFlutaFeeKobo(620_000, 150)).toBe(9_300);
   });
 
+  it("takes 5% at the 500 bps cap", () => {
+    expect(getFlutaFeeKobo(620_000, 500)).toBe(31_000);
+    expect(getFlutaFeeKobo(80_001, 500)).toBe(4_000); // 4,000.05
+  });
+
   it("rounds down, in the store's favour", () => {
     expect(getFlutaFeeKobo(999, 150)).toBe(14); // 14.985
+    expect(getFlutaFeeKobo(160_033, 150)).toBe(2_400); // 2,400.495
     expect(getFlutaFeeKobo(1, 500)).toBe(0);
   });
 });
