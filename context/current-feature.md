@@ -1,71 +1,40 @@
-# Current Feature: Paystack Online Payments — Phase 5, The Fluta Fee Split
+# Current Feature
 
 ## Status
 
-In Progress
+Not Started
 
 ## Spec
 
-- `context/features/17-paystack-online-payments-spec.md`, Phase 5 only (branch `feat/paystack-5-fee-split`)
-- The plan is the specification: `context/docs/paystack-integration-plan.md` sections 6.3 (initializing with subaccount, bearer, and Fluta's fee), 6.10 (how settlement splits), 13.4 (the overview's test-mode checklist), and the Phase 5 entry in section 14. Section 4.6 (setting the Fluta fee) applies.
-- Implements project-overview.md: Monetization (the per-transaction Fluta fee), Payments
+<!-- The spec file for this feature -->
 
 ## Goals
 
-- Every online payment's Fluta fee comes from the store's current `onlineFeeBps` at the moment the payment starts, using `getFlutaFeeKobo` (rounded down). It is sent to Paystack as `transaction_charge` and copied onto the payment (`flutaFeeBps`, `flutaFeeAmount`) in the same step that saves the `PENDING` payment (already built in Phase 3's `startPayment`; Phase 5 proves it above 0%)
-- At 0%, `transaction_charge: 0` is sent explicitly (plan 6.3: confirmed accepted in Phase 3, 23 October 2026)
-- Store-collected payments never get a fee. Their fee fields stay empty
-- A rate change affects only payments started after it. Past payments keep their copied rate and amount
-- Unit: `getFlutaFeeKobo` at 0, 150, and 500, with rounding down on odd amounts
-- Integration (fake Paystack client): the fee is computed from the store's rate when the payment starts, sent to the client, and copied to the payment; a later rate change leaves earlier payments unchanged; store-collected payments have no fee
-- Record real Paystack responses for the 150 bps and 0% cases as test fixtures
-- Update the plan's sections 6.3 and 13.4 with what test mode showed
+<!-- The spec's requirements -->
 
 ## Not in this feature
 
-- No schema change. Phase 1 already added every field. If one seems needed, stop and ask
-- No admin screen and no way for owners or staff to change the rate. That is Feature 23
-- No change to how payments are confirmed (Phase 4), to `getBalance`, or to Book and pay, except passing the fee through
-- Every real store stays at 0%. Do not change `onlineFeeBps` on staging, and never in a seed or migration
-- Phase 6: live keys, live webhook URL, IP-header check, the first live settlement
+<!-- Out of scope -->
 
 ## Done when
 
-From the plan's Phase 5 entry (section 14):
-
-- **Build:** fee from `onlineFeeBps` on every transaction, copied to `Payment`. Set FreshFold to 150 bps in development by SQL.
-- **Verify:** the verify response and test dashboard show `transaction_charge` going to the main account. The store share is reduced by the fee and Paystack's fees. At 0 the store gets everything except Paystack's fees.
-- **Ready for next phase when:** the split is confirmed as far as test mode allows
+<!-- The spec's Done when items -->
 
 ## Verify with
 
-Development database only, Paystack test mode only:
-
-1. Set FreshFold's `onlineFeeBps` to 150 with a single SQL update on the development database, and report the exact statement first
-2. Make a test payment. Confirm the payment record shows `flutaFeeBps = 150` and the right `flutaFeeAmount`, and that Paystack's test transaction shows `transaction_charge` going to the main account and the rest to the store's subaccount
-3. Set FreshFold back to 0. Make another test payment and confirm Fluta's share is ₦0 and the store gets everything except Paystack's fee
-4. Record real Paystack responses for both cases as test fixtures
-5. Leave FreshFold at 0 when finished, and say so in the report
-
-Then lint, typecheck, unit tests, the payment integration tests, and build.
+<!-- How to verify the feature -->
 
 ## References
 
-- @context/docs/paystack-integration-plan.md (the specification)
-- @context/project-overview.md (Monetization, Payments)
-- @context/features/17-paystack-online-payments-spec.md
+<!-- Related context files -->
 
 ## Schema changes
 
-None. Phase 1's `add_online_payments` migration already added `Store.onlineFeeBps` (default 0, CHECK 0 to 500), `Payment.flutaFeeBps`, and `Payment.flutaFeeAmount`.
+<!-- Migrations, or None -->
 
 ## Notes
 
-- Already in place from Phase 3: `getFlutaFeeKobo` (`src/server/domain/online-payment.ts`, with unit tests at 0 and 150 and rounding), `startPayment` copying `onlineFeeBps` and the fee onto the `PENDING` payment and passing it as `transactionChargeKobo` (`src/server/services/online-payments.ts`), and the client sending `transaction_charge` (`src/server/integrations/paystack.ts`). Phase 5 is mainly tests, the non-zero test-mode run, fixtures, and plan updates; any code change found necessary is Ask First (money code).
-- Ask First (ai-interactions.md): money code (Paystack integration, payments) and the development database write (the `onlineFeeBps` SQL update, by statement shown first), plus test-mode payments.
-- FreshFold's development connection (subaccount `ACCT_b7sms47namw2rzc`) is lost on a reseed; check it's still connected before the test payments.
-- Test mode doesn't process settlements (plan 6.10), so the split is proven only through the verify response and the test dashboard; real payout proof is Phase 6.
-- `db.json` in the repo root is the Paystack CLI's login file: never commit it.
+<!-- Anything to remember while working -->
 
 ## History
 
@@ -227,3 +196,4 @@ None. Phase 1's `add_online_payments` migration already added `Store.onlineFeeBp
 - 2026-10-25: Completed chore — project cleanup (`/cleanup`, every item except Leftovers, by the owner's choice). Overview schema synced with `schema.prisma` (`Payment.paystackFeeAmount`, `failureCode`, `clientRequestId`, `reference`, `replacesPaymentId @unique`, `@@unique([storeId, clientRequestId])`, `@@index([status, createdAt])`). Roadmap marks 15c done (16b stays open until the owner confirms its staging items). CLAUDE.md says `test:watch` watches both projects. Coding standards allow inline styles in the server-drawn `next/og` images (store app icon and link preview). `import "server-only"` in `paystack-error.ts`. Seven unused type exports removed. The "less than ₦0" messages use `formatNaira(0)`. Empty `ALLOW_STAGING_SEED` added to `.env.local` and `.env.test`. Kept on purpose: `isInvitationListed`, `isPlainText`, `countSmsParts` and `NO_FULFILMENT` (only tests use them, but they are the only checks on those rules). No schema change. Lint, typecheck, unit (916) and build pass. Not done (not chosen): `.playwright-mcp/` contents, `.env.staging`, the unreferenced Paystack research brief.
 - 2026-10-26: Started Feature 17, Phase 5 — The Fluta Fee Split on `feat/paystack-5-fee-split` (from `staging` at `aeeddb3`, pushed first at the owner's request). Approved Ask First items: new money-code tests (`startPayment` fee and store-collected payments), the development `onlineFeeBps` SQL update (150, then back to 0), and two test-mode payments with redacted fixtures. Found that Phase 3 already computes, copies, and sends the fee; Phase 5 adds tests, the non-zero test-mode run, fixtures, and plan updates.
 - 2026-10-26: Phase 5 Verify in test mode (development database only). FreshFold (`freshfold-laundry`, subaccount `ACCT_b7sms47namw2rzc`) set by `UPDATE "Store" SET "onlineFeeBps" = 150 WHERE slug = 'freshfold-laundry'`. The owner made a ₦1,600 Book and pay payment (Playwright's browser crashed the session on this low-memory machine, so the owner paid in their own browser): `FL-9230731b8402f4f6dd35` CONFIRMED with `flutaFeeBps` 150 and `flutaFeeAmount` 2,400; verify `fees_split`: Paystack 2,400, `integration` "2400" (Fluta), subaccount 155,200. Set back with the same statement at 0. Second ₦1,600 payment `FL-2a0978b578d339be3fb6`: fee 0 / 0; `integration` 0, subaccount 157,600 (everything except Paystack's ₦24). The first payment kept 150 / 2,400 after the change. The owner saw ₦24 and then ₦0 to Fluta in the test dashboard. Redacted fixtures `verify-success-fee-150.json` and `verify-success-fee-0.json` with a unit test; plan 6.3 and 13.4 updated (note: `fees_split.integration` is a string when non-zero, unused by Fluta). New tests: `getFlutaFeeKobo` at the 500 cap and more rounding; integration fee from the store's rate, sent and copied, later rate changes leave earlier payments alone, store-collected payments have no fee. No change to app code. FreshFold left at 0. Lint, typecheck, unit (919), build, and all six payment integration files pass (111). At complete: lint, typecheck, unit (919), full integration (32 files, 481), and build pass.
+- 2026-10-26: Completed Feature 17, Phase 5 — The Fluta Fee Split (spec: `context/features/17-paystack-online-payments-spec.md`, plan sections 6.3, 6.10, 13.4). Commit `eed01fc` merged into `staging`. No schema change and no app code change: Phase 3 already took the fee from `onlineFeeBps` when the payment starts, sent it as `transaction_charge`, and copied it onto the payment. Added tests (500 bps cap and rounding; fee from the store's rate, sent and copied; later rate changes leave earlier payments alone; store-collected payments have no fee) and redacted fixtures for 150 bps and 0%. Verify passed in test mode on development: ₦1,600 at 150 bps split ₦24 Fluta / ₦24 Paystack / ₦1,552 store; at 0% ₦0 / ₦24 / ₦1,576; the owner confirmed the same in the Paystack dashboard. FreshFold left at 0. Lint, typecheck, unit (919), full integration (32 files, 481), and build pass. Next: Phase 6 (production), scheduled with Feature 25.
