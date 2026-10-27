@@ -1,119 +1,40 @@
-# Current Feature: Remove Per-kg Pricing, and Staff Notifications (17b)
+# Current Feature
 
 ## Status
 
-In Progress
+Not Started
 
 ## Spec
 
-`context/features/17b-remove-per-kg-and-staff-notifications-spec.md`
-
-Implements, in `context/project-overview.md`:
-
-- **Part A:** §3 Service catalogue (two pricing types, no weighing), §5 Order intake (estimated quantity as counts only), §8 Quotes and revisions (order line rules), §13 Receipts (no kg line), Draft schema (`PricingType`, per-kg CHECK comments), and Sample data
-- **Part B:** Key screens (the top bar's notification area, now a working bell). §11 Notifications covers SMS only; the in-app bell is new
+<!-- The spec file for this feature -->
 
 ## Goals
 
-Built in order, **Part A then Part B**, each with its own commit and its own checks passing before the next begins.
-
-### Part A — Remove per-kg pricing
-
-- Keep only two pricing types, **per item** and **per package**; keep **quote required** (₦0 "Price on inspection" and "from" starting prices), staff setting the unit price when pricing, and the customer's estimated **count** (never billed)
-- Line total is always quoted unit price × whole quantity, worked out by the server
-- Remove `PER_KG` from `PricingType`, the per-kg database rules, all weighing UI/wording (weight fields, "To be weighed", estimated weight, kg labels), and the per-kg rounding helper in `money.ts`
-- Remove per-kg branches from: service form and catalogue (06), staff order entry (09), order detail (10), quote editing (12), customer booking and estimated total (13, 13b), tracking (14), and design system samples
-- Every service line quantity is a **whole number 1–999** for both pricing types, checked by the server; the database also checks `quantity` and `estimatedQuantity` are whole numbers when set (no column type changes)
-- One all-or-nothing migration: refuse with a clear error (naming counts) if any `Service` or `OrderLine` uses `PER_KG`; never delete or convert data; drop the per-kg rules; recreate the enum without `PER_KG`
-- Minimal seed for development and staging: FreshFold and CleanWave, each owner (with `SEED_USER_PASSWORD`), an active subscription each, nothing else
-- Integration tests create their own data (or use a separate full test seed with per-item, per-package and quote-required services), independent of the minimal seed
-- Reset development (`prisma migrate reset`) and staging (staging seed steps with `ALLOW_STAGING_SEED=true`, then remove it, then redeploy); reconnect FreshFold to Paystack in test mode
-- Update `project-overview.md` and `coding-standards.md` (remove the per-kg rounding rule); earlier feature specs stay as written
-
-### Part B — Staff notifications (the bell)
-
-- New `Notification` records for six events, each saved in the **same transaction** as its event: new online booking, customer approves / declines a price update, customer accepts a suggested pickup time, online payment confirmed (owners and staff), payment needs review (owners only)
-- Payment notifications only when Feature 17's conditional update actually changed the payment; never for staff's own actions; never for riders
-- At most one notification per event via unique `[storeId, type, sourceId]`
-- Unread per person via `Membership.notificationsSeenAt`, within the last 30 days; opening the bell takes one database "now", saves it, and lists only notifications up to that moment
-- Bell in the workspace top bar for owners and staff: count badge ("9+" above 9, announced to screen readers), newest 20 with a short line, 12-hour store-time, linking via the shared order-link helper; lines built when shown, no phone or address; empty state "No notifications yet"
-- Polls an unread count every 30 seconds (one indexed count query, number only), pauses while the tab is hidden, stops if signed out or access is lost
-- Feature 15's scheduled job deletes notifications older than 30 days
-- Every request (count, list, mark seen) checks session, active membership and Owner/Staff role; store comes only from the membership
+<!-- The spec's requirements -->
 
 ## Not in this feature
 
-- Phone or browser push notifications, sounds, and per-person notification settings
-- Notifications for riders
-- Marketplace orders (a later feature adds them as a new event)
+<!-- Out of scope -->
 
 ## Done when
 
-### Part A
-
-- No active file references per-kg pricing: schema, code, seeds, tests, design system, the overview, coding standards, and `CLAUDE.md`. The migration itself is the only exception in code
-- Historical feature specifications keep their per-kg wording, because they record what was built at the time
-- The migration stops with a clear error on a database with per-kg rows, and **nothing is changed** (tested). It succeeds on a clean one
-- Development and staging are reset with the minimal seed (stores, owners, subscriptions only), and FreshFold is reconnected in test mode
-- The integration tests use their own data, independent of the minimal seed, and all pass
-- Creating, booking, pricing, and paying for per-item, per-package, and quote-required items all still work
-- A fractional quantity (for example `1.5`) is refused when sent **directly** to every action that takes one: staff order entry, customer booking, and quote editing, not only through the forms. The database refuses one too
-- Lint, typecheck, unit tests, integration tests, and build pass
-
-### Part B
-
-- Each of the six events creates exactly one notification in the same transaction, and a rolled-back event leaves none
-- Staff actions create no notifications
-- A repeated Paystack webhook or verify for the same payment creates no second "payment received" notification
-- Staff never see "needs review" notifications, and riders see nothing
-- Unread counts are per person: one staff member opening the bell doesn't clear another's
-- **Store isolation:** with events happening in both FreshFold and CleanWave at the same time, each store's owners and staff see only their own store's notifications in the count and the list. Sending another store's notification or order ID to any request returns nothing from that store. The database refuses a notification whose store differs from its order's store
-- Retrying the same event (an action, a webhook, or a verify) never creates a second notification, enforced by the unique source rule
-- A notification created a split second after someone opens the bell stays unread for them
-- Riders are refused by the count, list, and mark-seen requests themselves
-- The bell updates within about 30 seconds of a new online booking without a page refresh, and pauses while the tab is hidden
-- The scheduled job removes notifications older than 30 days
-- Lint, typecheck, unit tests, integration tests, and build pass
+<!-- The spec's Done when items -->
 
 ## Verify with
 
-- **Playwright MCP**, at ~360px and desktop, light and dark:
-  - Part A: create per-item, per-package, and quote-required services, book them online, price a quote-required item, and pay. Confirm no kg wording appears anywhere
-  - Part B: with the workspace open as staff, book online in another window and watch the bell's count appear. Approve a price update and accept a pickup time as the customer. Open the bell and confirm the count clears for that person only
-- **Next.js DevTools:** no runtime or build errors
-- **Neon MCP** (`development`, read-only): no `PER_KG` rows, and notifications match each event
+<!-- How to verify the feature -->
 
 ## References
 
-- @context/project-overview.md
-- @context/coding-standards.md
-- Features 06, 09, 10, 12, 13, 13b, 14, 15, and 17 specs, and @context/docs/paystack-integration-plan.md
+<!-- Related context files -->
 
 ## Schema changes
 
-**Part A** (Ask First), one all-or-nothing migration:
-
-- Pre-check: stop with a clear error naming counts if any `Service` or `OrderLine` uses `PER_KG`
-- Drop CHECK constraints `Service_per_kg_requires_quote` and the per-kg order line rule
-- Remove `PER_KG` from `PricingType` (new enum type, switch columns, drop the old one)
-- Add CHECK constraints that `OrderLine.quantity` and `OrderLine.estimatedQuantity` are whole numbers when set (no column type change)
-
-**Part B** (Ask First):
-
-- New enum for the six notification types, and enum `NotificationAudience` (`STAFF_AND_OWNERS`, `OWNERS_ONLY`)
-- New model `Notification`: `id`, `storeId`, `orderId`, `type`, `sourceId`, `audience`, `createdAt`; relation through `[storeId, orderId]` with no cascade delete; `@@unique([storeId, type, sourceId])`; `@@index([storeId, createdAt])`
-- `Membership.notificationsSeenAt DateTime?`
+<!-- Migrations, or None -->
 
 ## Notes
 
-- Per-kg pricing was removed in 17b. Earlier feature specs still describe it; they are history and stay as written
-- Part A decisions: quantities are plain whole numbers in code (no more hundredths); `getLineTotal` (unit price × quantity, no rounding) replaces the per-kg rounding helper; one shared `getQuantityMessage` for every form and action; staff order entry no longer takes a customer estimate (it existed only for unweighed per-kg lines); seed has `minimal` (default) and `full` (`-- --full`, test branch only) modes; the full test seed's "Laundry by weight" is now a quote-required per-item "Duvet" (from ₦1,500)
-- The migration's safety check stays even though development and staging are reset, to protect production data later
-- Confirm how Prisma applies the migration on PostgreSQL and wrap it in one transaction explicitly if needed
-- After the reset, a store's booking page shows "isn't taking online bookings" until its owner adds a service. That's expected
-- Paystack allows only 3 bank checks a day, so reconnect FreshFold once
-- "Needs review" means a payment refused with one of the four mismatch codes in the Paystack plan (section 6.8)
-- Sources for `sourceId`: order (new online booking), revision (approved/declined), status event for the move to Pickup scheduled (pickup accepted), payment (confirmed / needs review)
+<!-- Anything to remember while working -->
 
 ## History
 
@@ -280,3 +201,4 @@ Built in order, **Part A then Part B**, each with its own commit and its own che
 - 2026-10-27: Part A committed after the test and development resets (minimal seed), all 486 integration tests, build, and browser checks at 360px and desktop in both themes (services, booking, pricing, paying; no kg wording). FreshFold's Paystack reconnection and the staging reset are left for the owner
 - 2026-10-27: Part B built: migration `add_staff_notifications` (applied to test and development; adds a CHECK that only "needs review" is owners-only, and `createdAt` defaults to `clock_timestamp()`), `addStaffNotification` in the six events' transactions, `GET /api/v1/notifications` and `POST /api/v1/notifications/seen`, `NotificationBell` in the top bar, 30-day clean-up in the cron job, shared `getOrderPath`. Test clean-ups and the seed's clear step delete notifications before orders
 - 2026-10-27: Part B checked: unit (934), lint, typecheck, build; integration 494 passed, the 5 failures (Neon timeouts and dropped connections in online-payments, staff and fulfilment) passed on rerun (47/47). Migration applied to development. Browser at 360px and desktop, light and dark: two online bookings, a price approval and a pickup acceptance raised the owner's count without a reload; a newly invited staff member saw 5 while the owner saw 4; opening the owner's bell cleared it for the owner only. Next DevTools: no errors. Neon (development): 5 notifications, one per event
+- 2026-10-27: Completed Feature 17b — Remove Per-kg Pricing, and Staff Notifications. Part A (`e458fee`): per-kg pricing removed and quantities are whole numbers. Part B (`5477305`): staff notifications bell. Migration `add_staff_notifications` adds a `Notification` table (unique per store, type and source; a CHECK that only "payment needs review" is owners-only) and `Membership.notificationsSeenAt`. Six events add a notification inside their own transaction: online booking, price approved, price declined, pickup accepted, payment received, payment needs review. `GET /api/v1/notifications` returns the unread count and `POST /api/v1/notifications/seen` marks seen and returns the newest 20; riders are refused. The cron job deletes notifications after 30 days. Final gate: lint, typecheck, test:unit (934) and build pass; the full integration rerun was skipped at the user's request (the earlier run had 494 passed, and the 5 Neon timeouts passed on rerun). Development has FF-1002 to FF-1004, the Lekki Phase 1 area and staff member Kemi from verification. Staging still needs its reset and FreshFold's Paystack test-mode reconnection
