@@ -16,6 +16,7 @@ import { InputWithPrefix } from "@/components/ui/input-with-prefix";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAreaCharge, formatNaira, formatServicePrice } from "@/lib/money";
+import { getOrderPath } from "@/lib/order-links";
 import { describeCustomerEstimate } from "@/lib/orders";
 import { formatDifference, REVISION_REASON_MAX } from "@/lib/quotes";
 import { AREA_NAME_MAX } from "@/schemas/fulfilment";
@@ -56,7 +57,7 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
   const { ref, scrollToFirstError } = useScrollToFirstError();
 
   const review = reviewQuoteDraft(draft, editor, areas);
-  const orderHref = `/orders/${editor.orderId}`;
+  const orderHref = getOrderPath(editor.orderId);
   const busy = pending || sent;
 
   function change(update: Partial<QuoteDraft>) {

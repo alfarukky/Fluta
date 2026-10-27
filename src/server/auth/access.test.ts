@@ -28,6 +28,7 @@ function lookupFor(
     membership: {
       id: "membership-1",
       role,
+      notificationsSeenAt: null,
       store: {
         id: "store-1",
         name: "FreshFold Laundry",

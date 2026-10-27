@@ -10,7 +10,7 @@ These rules apply to all Fluta code. Product rules live in `project-overview.md`
 - Use type inference where obvious, explicit types where helpful
 - Use the Prisma-generated types for database models; do not hand-write duplicates
 - Use TypeScript enums only through Prisma's generated enums (`OrderStage`, `PaymentStatus`, …); elsewhere use string literal unions
-- Money is always an integer number of **kobo** (`number`, never a float); weights use Prisma `Decimal`, never `number`
+- Money is always an integer number of **kobo** (`number`, never a float); quantities are whole numbers (`number` in code, stored in Prisma `Decimal` columns as text such as `"3"`)
 - Never assert types (`as`) on external input; parse it with Zod instead
 
 ## React
@@ -195,6 +195,8 @@ Example v4 configuration:
 - Clear `MessageEvent.body` once the message is `SENT` or finally `FAILED`
 - Automatic SMS only to `+234` numbers, and only within the store's daily booking-SMS cap
 - Every message starts with the store name
+- Staff bell: add a `Notification` with `addStaffNotification` as the **last write inside the event's own transaction**, only when the event actually changed something (never for staff's own actions, never for riders). One per event via `[storeId, type, sourceId]`
+- Build lines when shown, from the order: no phone numbers or addresses in notifications
 
 ## Error Handling
 

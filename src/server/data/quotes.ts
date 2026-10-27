@@ -6,6 +6,7 @@ import { getPrisma } from "./client";
 import { isUniqueViolation } from "./errors";
 import { queueOrderMessages, type MessageRequest, type QueuedMessages } from "./messages";
 import type { NewOrderLineData } from "./orders";
+import { addStaffNotification } from "./staff-notifications";
 
 // Quote revisions, decisions, and address changes. storeId always comes from
 // the caller's membership and is part of every where clause, so an order,
@@ -333,6 +334,16 @@ export async function decideRevision<T>(
           metadata: { orderId, version: decision.audit.version },
           createdAt: now,
         },
+      });
+    }
+    // The staff bell hears about the customer's decisions only, never a
+    // decision staff recorded themselves.
+    if (decision.actorType === "CUSTOMER") {
+      await addStaffNotification(tx, {
+        storeId,
+        orderId,
+        type: approve ? "PRICE_APPROVED" : "PRICE_DECLINED",
+        sourceId: decision.revisionId,
       });
     }
     return { status: "DECIDED" };

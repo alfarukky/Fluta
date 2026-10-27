@@ -8,6 +8,7 @@ import { loadMorePayments } from "@/actions/payments";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getOrderPath } from "@/lib/order-links";
 import { PAYMENT_METHOD_LABELS } from "@/lib/orders";
 import { PAYMENT_SOURCE_LABELS } from "@/lib/payments";
 import { cn } from "@/lib/utils";
@@ -105,7 +106,7 @@ function PaymentTable({ rows }: { rows: PaymentListRow[] }) {
               <div className="flex min-w-0 flex-col">
                 {/* The link covers the whole row, so any part of it opens the order. */}
                 <Link
-                  href={`/orders/${row.orderId}`}
+                  href={getOrderPath(row.orderId)}
                   className="type-label text-foreground outline-none after:absolute after:inset-0 focus-visible:underline"
                 >
                   {row.displayNumber}
@@ -139,7 +140,7 @@ function PaymentCard({ row }: { row: PaymentListRow }) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col">
           <Link
-            href={`/orders/${row.orderId}`}
+            href={getOrderPath(row.orderId)}
             className="type-h3 text-foreground outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-[3px] focus-visible:after:ring-ring/50"
           >
             {row.displayNumber}

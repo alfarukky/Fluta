@@ -73,6 +73,7 @@ afterAll(async () => {
         prisma.statusEvent.deleteMany({ where }),
         prisma.quoteRevision.deleteMany({ where }),
         prisma.orderLine.deleteMany({ where }),
+        prisma.notification.deleteMany({ where }),
         prisma.order.deleteMany({ where }),
         prisma.customer.deleteMany({ where }),
         prisma.service.deleteMany({ where }),
@@ -258,6 +259,10 @@ describe("creating an online order", () => {
     expect(order.approvedQuoteId).toBe(v1.id);
     expect(order.statusEvents).toEqual([
       expect.objectContaining({ fromStage: null, toStage: "BOOKED", actorType: "CUSTOMER", actorUserId: null }),
+    ]);
+    // The staff bell hears about it once.
+    expect(await prisma.notification.findMany({ where: { orderId: order.id }, select: { storeId: true, type: true, sourceId: true, audience: true } })).toEqual([
+      { storeId: main.id, type: "ONLINE_BOOKING", sourceId: order.id, audience: "STAFF_AND_OWNERS" },
     ]);
   });
 
@@ -519,6 +524,8 @@ describe("repeated submissions", () => {
     const displayNumber = first.ok ? first.displayNumber : null;
     for (const result of [again, a, b]) expect(result).toMatchObject({ ok: true, displayNumber });
     expect(await prisma.order.count({ where: { storeId: main.id, clientRequestId: booking.clientRequestId } })).toBe(1);
+    // Repeats of the same booking never notify staff again.
+    expect(await prisma.notification.count({ where: { storeId: main.id, type: "ONLINE_BOOKING", order: { clientRequestId: booking.clientRequestId } } })).toBe(1);
 
     // Each response carries a fresh link (the first was never seen), and only
     // the one stored last opens the order.
@@ -612,6 +619,8 @@ describe("booking limits", () => {
     expect(results.filter((result) => result.ok)).toHaveLength(5);
     expect(results.filter((result) => !result.ok && result.code === "BOOKING_LIMIT_REACHED")).toHaveLength(5);
     expect(await prisma.order.count({ where: { storeId: main.id, customer: { phone } } })).toBe(5);
+    // Refused bookings leave no notification.
+    expect(await prisma.notification.count({ where: { storeId: main.id, order: { customer: { phone } } } })).toBe(5);
   }, 180_000);
 
   it("clears the IP hash on that store's orders older than 24 hours", async () => {

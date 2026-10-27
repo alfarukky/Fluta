@@ -119,6 +119,7 @@ afterAll(async () => {
       prisma.payment.deleteMany({ where }),
       prisma.quoteRevision.deleteMany({ where }),
       prisma.orderLine.deleteMany({ where }),
+      prisma.notification.deleteMany({ where }),
       prisma.order.deleteMany({ where }),
       prisma.customer.deleteMany({ where }),
       prisma.service.deleteMany({ where }),
@@ -347,6 +348,15 @@ async function sendPriceUpdate(
   return (await readOrder(orderId)).quoteRevisions.at(-1)?.id ?? "";
 }
 
+// The staff bell's notifications for an order, oldest first.
+async function notificationsOf(orderId: string) {
+  return prisma.notification.findMany({
+    where: { orderId },
+    select: { type: true, sourceId: true, audience: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 async function asStaff<T>(action: () => Promise<T>): Promise<T> {
   request.headers = staff.headers;
   return action();
@@ -541,6 +551,8 @@ describe("approving and declining a price update", () => {
     });
     expect(after.quoteRevisions.at(-1)).toMatchObject({ status: "APPROVED", approvedByActor: "CUSTOMER" });
     expect(after.statusEvents.at(-1)).toMatchObject({ fromStage: "QUOTE_AWAITING_APPROVAL", toStage: "BOOKED", actorType: "SYSTEM" });
+    // Staff sending the update made none; the customer's approval made one.
+    expect(await notificationsOf(order.id)).toEqual([{ type: "PRICE_APPROVED", sourceId: revisionId, audience: "STAFF_AND_OWNERS" }]);
   });
 
   it("keeps the progress shown while a price update waits during cleaning", async () => {
@@ -588,6 +600,7 @@ describe("approving and declining a price update", () => {
     expect(restAfter).toEqual(restBefore);
     expect(revisionsAfter.slice(0, -1)).toEqual(revisionsBefore.slice(0, -1));
     expect(revisionsAfter.at(-1)).toMatchObject({ status: "DECLINED", customerMessage: "Can you check the count again?" });
+    expect(await notificationsOf(order.id)).toEqual([{ type: "PRICE_DECLINED", sourceId: revisionId, audience: "STAFF_AND_OWNERS" }]);
     expect((await getOrderDetail(storeId, order.id, "STAFF"))?.balance).toEqual(balanceBefore);
   });
 
@@ -609,6 +622,8 @@ describe("approving and declining a price update", () => {
     expect([customer.ok, store.ok].filter(Boolean)).toHaveLength(1);
     const revision = (await readOrder(order.id)).quoteRevisions.at(-1);
     expect(revision?.status).toBe(customer.ok ? "APPROVED" : "DECLINED");
+    // Only the customer's decision notifies staff, and only if it applied.
+    expect(await notificationsOf(order.id)).toEqual(customer.ok ? [{ type: "PRICE_APPROVED", sourceId: revisionId, audience: "STAFF_AND_OWNERS" }] : []);
   });
 
   it("refuses every customer action once the order is closed or the link expired", async () => {
@@ -688,6 +703,9 @@ describe("pickup times", () => {
       requestedWindowStart: "10:00",
     });
     expect(after.statusEvents.at(-1)).toEqual({ fromStage: "BOOKED", toStage: "PICKUP_SCHEDULED", actorType: "CUSTOMER", actorUserId: null });
+    // One notification, from the accepted time only (not the refused one, nor staff's suggestions).
+    const accepted = await prisma.statusEvent.findFirstOrThrow({ where: { orderId: order.id, toStage: "PICKUP_SCHEDULED" }, select: { id: true } });
+    expect(await notificationsOf(order.id)).toEqual([{ type: "PICKUP_ACCEPTED", sourceId: accepted.id, audience: "STAFF_AND_OWNERS" }]);
 
     // One audit event per suggestion, both shown in the staff timeline.
     const detail = await getOrderDetail(storeId, order.id, "STAFF");
@@ -779,6 +797,8 @@ describe("pickup times", () => {
     const after = await readOrder(order.id);
     if (customer.ok) expect(after).toMatchObject({ stage: "PICKUP_SCHEDULED", scheduledWindowStart: "08:00" });
     else expect(after).toMatchObject({ stage: "BOOKED", pickupWindowStatus: "PROPOSED_BY_STORE", scheduledWindowStart: "12:00" });
+    // A refused or rolled-back acceptance leaves no notification.
+    expect((await notificationsOf(order.id)).map((n) => n.type)).toEqual(customer.ok ? ["PICKUP_ACCEPTED"] : []);
   });
 
   it("refuses staff changes to another store's order", async () => {

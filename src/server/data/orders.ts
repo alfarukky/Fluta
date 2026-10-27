@@ -23,6 +23,7 @@ import type { OrderListQuery } from "@/types/orders";
 import { getPrisma } from "./client";
 import { upsertCustomerByPhone, type NewCustomerData } from "./customers";
 import { queueOrderMessages, type MessageRequest, type QueuedMessages } from "./messages";
+import { addStaffNotification } from "./staff-notifications";
 
 // A store's orders. storeId always comes from the caller's membership, never
 // from the request, and is part of every where clause: an order ID from
@@ -123,7 +124,8 @@ export type OnlineOrderInsert =
 // comes first in every booking, so two bookings can't each hold the lock the
 // other is waiting for.
 //
-// It also clears the IP hash of this store's orders older than 24 hours.
+// It also clears the IP hash of this store's orders older than 24 hours, and
+// adds the staff bell's "new online booking" notification last.
 export async function insertOnlineOrder(storeId: string, data: NewOrderData): Promise<OnlineOrderInsert> {
   if (data.customer.kind !== "new" || data.bookingIpHash === null) {
     throw new Error("An online booking needs the customer's phone number and the IP hash.");
@@ -164,7 +166,9 @@ export async function insertOnlineOrder(storeId: string, data: NewOrderData): Pr
       data: { bookingIpHash: null },
     });
 
-    return { kind: "created", order: await createOrderRecords(tx, storeId, data) };
+    const order = await createOrderRecords(tx, storeId, data);
+    await addStaffNotification(tx, { storeId, orderId: order.id, type: "ONLINE_BOOKING", sourceId: order.id });
+    return { kind: "created", order };
   }, ONLINE_TRANSACTION_OPTIONS);
 }
 

@@ -8,6 +8,7 @@ import { QuoteEditor } from "@/components/orders/QuoteEditor";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/workspace/PageHeader";
+import { getOrderPath } from "@/lib/order-links";
 import { canReviseQuote } from "@/lib/quotes";
 import { orderIdSchema } from "@/schemas/orders";
 import { requireStoreMember } from "@/server/auth/session";
@@ -26,7 +27,7 @@ export default async function EditQuotePage({ params }: PageProps<"/orders/[id]/
   if (!loaded) notFound();
 
   const { editor, services, areas } = loaded;
-  const orderHref = `/orders/${editor.orderId}`;
+  const orderHref = getOrderPath(editor.orderId);
   const locked = !member.access.canWorkOnExistingOrders || !canReviseQuote(editor.stage);
 
   return (

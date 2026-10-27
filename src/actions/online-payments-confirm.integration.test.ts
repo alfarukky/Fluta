@@ -78,6 +78,7 @@ afterAll(async () => {
         prisma.statusEvent.deleteMany({ where }),
         prisma.quoteRevision.deleteMany({ where }),
         prisma.orderLine.deleteMany({ where }),
+        prisma.notification.deleteMany({ where }),
         prisma.order.deleteMany({ where }),
         prisma.customer.deleteMany({ where }),
         prisma.service.deleteMany({ where }),
@@ -197,6 +198,14 @@ async function paymentOf(id: string) {
   return prisma.payment.findUniqueOrThrow({ where: { id } });
 }
 
+// The staff bell's payment notifications for one payment.
+async function paymentNotifications(paymentId: string) {
+  return prisma.notification.findMany({
+    where: { sourceId: paymentId },
+    select: { storeId: true, type: true, audience: true },
+  });
+}
+
 async function audits(paymentId: string, action: string) {
   return prisma.auditEvent.findMany({ where: { targetId: paymentId, action } });
 }
@@ -228,6 +237,10 @@ describe("the webhook", () => {
     expect(await paymentOf(booked.paymentId)).toMatchObject({ status: "CONFIRMED", paystackFeeAmount: 2_400 });
     expect(await audits(booked.paymentId, "ONLINE_PAYMENT_CONFIRMED")).toHaveLength(1);
     expect(await balanceOf(booked.orderId)).toMatchObject({ state: "PAID", balanceKobo: 0 });
+    // One "payment received" for owners and staff, however many webhooks arrive.
+    expect(await paymentNotifications(booked.paymentId)).toEqual([
+      { storeId: store.id, type: "PAYMENT_RECEIVED", audience: "STAFF_AND_OWNERS" },
+    ]);
   });
 
   it("refuses a bad signature and writes nothing", async () => {
@@ -251,6 +264,7 @@ describe("counting each payment once", () => {
     const outcomes = await Promise.all([confirmPaystackPayment(success(booked), new Date()), confirmPaystackPayment(success(booked), new Date())]);
     expect(outcomes.map((outcome) => outcome.kind).sort()).toEqual(["ALREADY_HANDLED", "CONFIRMED"]);
     expect(await audits(booked.paymentId, "ONLINE_PAYMENT_CONFIRMED")).toHaveLength(1);
+    expect(await paymentNotifications(booked.paymentId)).toHaveLength(1);
     expect(await balanceOf(booked.orderId)).toMatchObject({ confirmedPaymentsKobo: 160_000 });
   });
 
@@ -282,6 +296,10 @@ describe("mismatched payments", () => {
     expect((await webhookPOST(webhook(wrong))).status).toBe(200);
     expect(await audits(booked.paymentId, "ONLINE_PAYMENT_NEEDS_REVIEW")).toHaveLength(1);
     expect(fakeMailer.sent.filter((message) => message.to === ALERT_EMAIL)).toHaveLength(1);
+    // One "needs review", for owners only; never "payment received".
+    expect(await paymentNotifications(booked.paymentId)).toEqual([
+      { storeId: store.id, type: "PAYMENT_NEEDS_REVIEW", audience: "OWNERS_ONLY" },
+    ]);
 
     // Staff see it as "Payment needs review", never as counted.
     const detail = await getOrderDetail(store.id, booked.orderId, "OWNER");

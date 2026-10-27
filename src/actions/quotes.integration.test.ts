@@ -104,6 +104,7 @@ afterAll(async () => {
       prisma.payment.deleteMany({ where }),
       prisma.quoteRevision.deleteMany({ where }),
       prisma.orderLine.deleteMany({ where }),
+      prisma.notification.deleteMany({ where }),
       prisma.order.deleteMany({ where }),
       prisma.customer.deleteMany({ where }),
       prisma.service.deleteMany({ where }),

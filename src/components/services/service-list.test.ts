@@ -74,8 +74,8 @@ describe("categoryOptions", () => {
 describe("filterServices", () => {
   it("searches names ignoring case and extra spaces", () => {
     expect(names(filterServices(SERVICES, { query: "  SHI ", category: ALL_CATEGORIES }))).toEqual(["Shirt"]);
-    expect(names(filterServices([service("Laundry  by weight", null)], { query: "laundry by", category: ALL_CATEGORIES }))).toEqual([
-      "Laundry  by weight",
+    expect(names(filterServices([service("Wash  and fold", null)], { query: "wash and", category: ALL_CATEGORIES }))).toEqual([
+      "Wash  and fold",
     ]);
   });
 

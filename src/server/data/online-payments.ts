@@ -6,6 +6,7 @@ import { MISMATCH_CODES } from "@/lib/online-payment";
 
 import { getPrisma } from "./client";
 import { lockOrder } from "./payments";
+import { addStaffNotification } from "./staff-notifications";
 
 // Online (Paystack) payment attempts. Every attempt is a PENDING Payment
 // saved before Paystack is called, under Fluta's own reference (plan 6.4).
@@ -190,6 +191,9 @@ export async function confirmOnlinePayment(
         createdAt: now,
       },
     });
+    // Only here, where this call's conditional update confirmed the payment:
+    // a repeated webhook or verify returned ALREADY_HANDLED above.
+    await addStaffNotification(tx, { storeId, orderId: payment.orderId, type: "PAYMENT_RECEIVED", sourceId: paymentId });
     return { status: "CONFIRMED", receivedAfter };
   }, TRANSACTION_OPTIONS);
 }
@@ -221,6 +225,7 @@ export async function recordOnlinePaymentMismatch(
       data: { status: "FAILED", failureCode: mismatch.code },
     });
     if (count === 0) return false;
+    const { orderId } = await tx.payment.findFirstOrThrow({ where: { storeId, id: paymentId }, select: { orderId: true } });
     await tx.auditEvent.create({
       data: {
         storeId,
@@ -232,6 +237,8 @@ export async function recordOnlinePaymentMismatch(
         createdAt: now,
       },
     });
+    // Owners only. Only when this call's conditional update changed the payment.
+    await addStaffNotification(tx, { storeId, orderId, type: "PAYMENT_NEEDS_REVIEW", sourceId: paymentId });
     return true;
   }, TRANSACTION_OPTIONS);
 }

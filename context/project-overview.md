@@ -300,6 +300,13 @@ All stage changes go through **one function**, `canTransition(from, to, context)
   - Manual WhatsApp is not queued; it is only logged as opened.
 - **Manual WhatsApp:** staff open a WhatsApp conversation with a prepared message or order link. Fluta records only that the action was **opened**; it never claims the message was delivered.
 - **Email copies:** when the customer has an email and the store's email copies setting is on, every message (order link, price update, ready, on its way) is also sent by email. Email stays optional for customers.
+- **Staff bell (in the workspace top bar, owners and staff only, never riders):**
+  - One `Notification` per event, saved in the **same transaction** as the event, so a rolled-back event leaves none: new online booking, customer approves or declines a price update, customer accepts a suggested pickup time, online payment confirmed, and online payment needs review (**owners only**).
+  - Payment notifications only when the payment's conditional update actually changed it, so a repeated webhook or verify adds nothing. Staff's own actions never notify. The unique `[storeId, type, sourceId]` rule keeps one per event.
+  - Unread is per person: notifications after `Membership.notificationsSeenAt` and within the last 30 days. Opening the bell saves one database "now" and lists the newest 20 up to that moment, so one arriving a moment later stays unread.
+  - The bell polls the unread count every 30 seconds (a number only), pauses while the tab is hidden, and stops if the person is signed out or loses access. The badge shows "9+" above 9 and is announced to screen readers.
+  - Each line is built when shown (the customer's name and order number, store time), never a phone number or address. The scheduled job deletes notifications older than 30 days.
+  - No push notifications, sounds, or per-person settings in the MVP.
 
 ### 12. Payments
 
@@ -389,6 +396,7 @@ Balance                         ₦0   PAID
 | `QuoteRevision`                             | Proposed totals, versions, and customer approval                                                                               |
 | `Payment`, `Refund`                         | Online and store-collected payments; refunds paid by the store; voids and replacements                                         |
 | `StatusEvent`, `MessageEvent`, `AuditEvent` | Order history, notification history, sensitive access/change history                                                           |
+| `Notification`                              | The staff bell: one row per customer or payment event, read per member, kept 30 days                                          |
 | `Subscription`, `SubscriptionInvoice`       | Store plan, manual billing records                                                                                             |
 
 ### Modelling rules
@@ -538,6 +546,21 @@ enum MessageStatus {
   REPLACED // a newer link was issued before it was sent; final, never sent
 }
 
+// Feature 17b: the staff bell. One per event, saved in the event's transaction.
+enum NotificationType {
+  ONLINE_BOOKING // source: the order
+  PRICE_APPROVED // source: the quote revision
+  PRICE_DECLINED // source: the quote revision
+  PICKUP_ACCEPTED // source: the status event for the move to Pickup scheduled
+  PAYMENT_RECEIVED // source: the payment
+  PAYMENT_NEEDS_REVIEW // source: the payment
+}
+
+enum NotificationAudience {
+  STAFF_AND_OWNERS
+  OWNERS_ONLY
+}
+
 enum InvoiceStatus {
   OPEN
   PAID
@@ -571,6 +594,9 @@ model Membership {
   isActive      Boolean   @default(true)
   deactivatedAt DateTime?
   createdAt     DateTime  @default(now())
+  // When this person last opened the bell (database time). Notifications
+  // after it, and within the last 30 days, are unread for them.
+  notificationsSeenAt DateTime?
 
   user  User  @relation(fields: [userId], references: [id])
   store Store @relation(fields: [storeId], references: [id])
@@ -702,6 +728,7 @@ model Store {
   statusEvents  StatusEvent[]
   messageEvents MessageEvent[]
   auditEvents   AuditEvent[]
+  notifications Notification[]
   subscription  Subscription?
 }
 
@@ -831,6 +858,7 @@ model Order {
   refunds        Refund[]
   statusEvents   StatusEvent[]
   messageEvents  MessageEvent[]
+  notifications  Notification[]
 
   @@unique([storeId, orderNumber])
   @@unique([storeId, clientRequestId])
@@ -1052,6 +1080,28 @@ model SubscriptionInvoice {
   @@unique([subscriptionId, periodStart]) // never two invoices for the same period
   @@index([subscriptionId, status])
 }
+
+// A staff notification (the bell), for owners and staff, never riders. The
+// line shown is built when it is read, so nothing personal is stored here.
+// Deleted after 30 days by the scheduled job.
+model Notification {
+  id        String               @id @default(cuid())
+  storeId   String
+  orderId   String
+  type      NotificationType
+  sourceId  String // the record the event created or changed (see NotificationType)
+  audience  NotificationAudience
+  // Database time when the row is written (clock_timestamp(), not the
+  // transaction's start), so it compares with Membership.notificationsSeenAt.
+  createdAt DateTime             @default(dbgenerated("clock_timestamp()"))
+
+  store Store @relation(fields: [storeId], references: [id])
+  // Through [storeId, orderId]: the database refuses an order from another store.
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id])
+
+  @@unique([storeId, type, sourceId])
+  @@index([storeId, createdAt])
+}
 ```
 
 ---
@@ -1160,7 +1210,7 @@ Stores, Subscriptions, Revenue, Support, store detail, and read-only order/custo
 
 **Overview (dashboard)**
 
-- Top bar: store name, today's date, a small notification/action area, profile menu.
+- Top bar: store name, today's date, the notification bell (owners and staff), profile menu.
 - **Attention required** is the most prominent section, for example: _3 quotes awaiting customer approval · 2 payments outstanding · 1 pickup window awaiting confirmation · 1 revised total awaiting approval · 1 refund owed._
 - **Orders by stage** as one compact summary row, not eight large cards.
 - **Financial overview (owner only)** with a Today / This month toggle: order value, confirmed payments, outstanding balances, refunds owed.

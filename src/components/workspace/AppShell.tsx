@@ -1,10 +1,10 @@
-import { BellIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { getFirstName } from "@/lib/names";
 import { formatLongDate, getGreeting } from "@/lib/time";
 
 import { MobileNav } from "./MobileNav";
+import { NotificationBell } from "./NotificationBell";
 import { Sidebar } from "./Sidebar";
 import { TopBarGreeting } from "./TopBarGreeting";
 import type { NavCounts, WorkspaceMember } from "./types";
@@ -41,13 +41,7 @@ export function AppShell({ member, navCounts, timeZone, now, children }: AppShel
               serverDate={formatLongDate(now, timeZone)}
               serverGreeting={getGreeting(now, timeZone)}
             />
-            {/* Display only until notifications exist. */}
-            <span
-              aria-hidden
-              className="flex size-10 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted-foreground"
-            >
-              <BellIcon className="size-4" />
-            </span>
+            {member.role !== "RIDER" && <NotificationBell />}
             <UserMenu member={member} />
           </div>
         </header>

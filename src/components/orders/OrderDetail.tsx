@@ -27,6 +27,7 @@ import {
   ORDER_CHANNEL_LABELS,
   PAYMENT_METHOD_LABELS,
 } from "@/lib/orders";
+import { getOrderQuotePath } from "@/lib/order-links";
 import { describeBalance, describePaymentRecorded, describePaymentVoided, PAYMENT_SOURCE_LABELS } from "@/lib/payments";
 import { formatPhone } from "@/lib/phone";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
@@ -63,7 +64,7 @@ interface OrderDetailProps {
 // member may take.
 export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }: OrderDetailProps) {
   const { order, displayNumber, balance, quote, pickupTime } = detail;
-  const editQuoteHref = `/orders/${order.id}/quote`;
+  const editQuoteHref = getOrderQuotePath(order.id);
   // Ready or Completed with a balance due: Record payment is the main action.
   const recordPrimary = canChangeStage && detail.payments.canRecord && detail.payments.recordPrimary;
 

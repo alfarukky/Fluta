@@ -120,6 +120,7 @@ afterAll(async () => {
       prisma.statusEvent.deleteMany({ where }),
       prisma.quoteRevision.deleteMany({ where }),
       prisma.orderLine.deleteMany({ where }),
+      prisma.notification.deleteMany({ where }),
       prisma.order.deleteMany({ where }),
       prisma.customer.deleteMany({ where }),
       prisma.service.deleteMany({ where }),
@@ -292,6 +293,8 @@ describe("creating an order", () => {
     expect(order.statusEvents).toEqual([
       expect.objectContaining({ fromStage: null, toStage: "RECEIVED_BY_STORE", actorType: "STAFF" }),
     ]);
+    // Staff's own orders never notify staff.
+    expect(await prisma.notification.count({ where: { orderId: order.id } })).toBe(0);
   });
 
   it("keeps nothing, and uses no number, when any part fails", async () => {

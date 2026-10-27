@@ -125,6 +125,21 @@ enum MessageStatus {
   REPLACED // a newer link was issued before it was sent; final, never sent
 }
 
+// Feature 17b: the staff bell. One per event, saved in the event's transaction.
+enum NotificationType {
+  ONLINE_BOOKING // source: the order
+  PRICE_APPROVED // source: the quote revision
+  PRICE_DECLINED // source: the quote revision
+  PICKUP_ACCEPTED // source: the status event for the move to Pickup scheduled
+  PAYMENT_RECEIVED // source: the payment
+  PAYMENT_NEEDS_REVIEW // source: the payment
+}
+
+enum NotificationAudience {
+  STAFF_AND_OWNERS
+  OWNERS_ONLY
+}
+
 enum InvoiceStatus {
   OPEN
   PAID
@@ -156,13 +171,16 @@ model User {
 }
 
 model Membership {
-  id            String    @id @default(cuid())
-  userId        String
-  storeId       String
-  role          StoreRole
-  isActive      Boolean   @default(true)
-  deactivatedAt DateTime?
-  createdAt     DateTime  @default(now())
+  id                  String    @id @default(cuid())
+  userId              String
+  storeId             String
+  role                StoreRole
+  isActive            Boolean   @default(true)
+  deactivatedAt       DateTime?
+  createdAt           DateTime  @default(now())
+  // When this person last opened the bell (database time). Notifications
+  // after it, and within the last 30 days, are unread for them.
+  notificationsSeenAt DateTime?
 
   user  User  @relation(fields: [userId], references: [id])
   store Store @relation(fields: [storeId], references: [id])
@@ -292,6 +310,7 @@ model Store {
   statusEvents  StatusEvent[]
   messageEvents MessageEvent[]
   auditEvents   AuditEvent[]
+  notifications Notification[]
   subscription  Subscription?
 }
 
@@ -375,9 +394,9 @@ model Order {
   serviceAreaId     String?
   serviceAreaName   String? // copy of the area's name at order time (or the typed name of an out-of-area order); shown instead of the live area name
   clientRequestId   String? // one-time ID from the order form; prevents duplicate orders on double submit
-  isOutsideSchedule Boolean @default(false) // staff booked a pickup outside the normal schedule (note required)
+  isOutsideSchedule Boolean  @default(false) // staff booked a pickup outside the normal schedule (note required)
   addressText       String? // used for BOTH pickup and delivery in the MVP
-  isOutOfArea       Boolean @default(false)
+  isOutOfArea       Boolean  @default(false)
   fulfilmentCharge  Int? // null = quote pending or not applicable
   // The customer's shared location, only for "Open in Maps" (never used for the
   // area, price, or address). Both set or both NULL (CHECK). Cleared by the
@@ -419,6 +438,7 @@ model Order {
   refunds        Refund[]
   statusEvents   StatusEvent[]
   messageEvents  MessageEvent[]
+  notifications  Notification[]
 
   @@unique([storeId, orderNumber])
   @@unique([storeId, clientRequestId])
@@ -648,4 +668,26 @@ model SubscriptionInvoice {
 
   @@unique([subscriptionId, periodStart]) // never two invoices for the same period
   @@index([subscriptionId, status])
+}
+
+// A staff notification (the bell), for owners and staff, never riders. The
+// line shown is built when it is read, so nothing personal is stored here.
+// Deleted after 30 days by the scheduled job.
+model Notification {
+  id        String               @id @default(cuid())
+  storeId   String
+  orderId   String
+  type      NotificationType
+  sourceId  String // the record the event created or changed (see NotificationType)
+  audience  NotificationAudience
+  // Database time when the row is written (clock_timestamp(), not the
+  // transaction's start), so it compares with Membership.notificationsSeenAt.
+  createdAt DateTime             @default(dbgenerated("clock_timestamp()"))
+
+  store Store @relation(fields: [storeId], references: [id])
+  // Through [storeId, orderId]: the database refuses an order from another store.
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id])
+
+  @@unique([storeId, type, sourceId])
+  @@index([storeId, createdAt])
 }
