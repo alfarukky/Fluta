@@ -7,7 +7,7 @@ import { formatOrderNumber, summarizeServices } from "@/lib/orders";
 import { canRecordPaymentAt, isRecordPaymentPrimary } from "@/lib/payments";
 import { canReviseQuote, findDeclinedRevision, findPendingRevision } from "@/lib/quotes";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
-import { fromDecimalString } from "@/lib/quantity";
+import { fromStoredQuantity } from "@/lib/quantity";
 import { formatCalendarDate, formatDateTime, toDateKey } from "@/lib/time";
 import { encodeOrderListCursor, type OrderListFilters } from "@/schemas/orders";
 import {
@@ -65,8 +65,7 @@ function toListRow(order: OrderListRecord, store: OrderListStore): OrderListRow 
     services: summarizeServices(
       order.lines.map((line) => ({
         description: line.description,
-        pricingType: line.pricingType,
-        quantity: line.quantity === null ? null : fromDecimalString(line.quantity.toString()),
+        quantity: line.quantity === null ? null : fromStoredQuantity(line.quantity.toString()),
       })),
     ),
     total: order.approvedQuote ? formatNaira(order.approvedQuote.total) : null,

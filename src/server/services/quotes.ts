@@ -4,7 +4,7 @@ import type { ActorType } from "@/generated/prisma/client";
 import { MESSAGE_TEMPLATES } from "@/lib/messages";
 import { formatNaira } from "@/lib/money";
 import { formatOrderNumber, isAwaitingApproval } from "@/lib/orders";
-import { fromDecimalString, toDecimalString } from "@/lib/quantity";
+import { fromStoredQuantity, toStoredQuantity } from "@/lib/quantity";
 import { canReviseQuote, findPendingRevision, isRevisionReasonRequired } from "@/lib/quotes";
 import { generateToken } from "@/lib/tokens";
 import type { EditAddressInput, IssueRevisionInput, RecordDecisionInput } from "@/schemas/quotes";
@@ -119,8 +119,8 @@ export async function loadQuoteEditor(storeId: string, orderId: string): Promise
                 pricingType: line.pricingType,
                 requiresQuote: line.requiresQuote,
                 unitPrice: line.unitPrice,
-                quantity: line.quantity === null ? null : fromDecimalString(line.quantity.toString()),
-                estimate: line.estimatedQuantity === null ? null : fromDecimalString(line.estimatedQuantity.toString()),
+                quantity: line.quantity === null ? null : fromStoredQuantity(line.quantity.toString()),
+                estimate: line.estimatedQuantity === null ? null : fromStoredQuantity(line.estimatedQuantity.toString()),
               },
             ]
           : [],
@@ -225,7 +225,7 @@ function planRevision(
       pricingType: line.pricingType,
       requiresQuote: line.requiresQuote,
       unitPrice: line.unitPrice,
-      estimate: line.estimatedQuantity === null ? null : fromDecimalString(line.estimatedQuantity.toString()),
+      estimate: line.estimatedQuantity === null ? null : fromStoredQuantity(line.estimatedQuantity.toString()),
     }),
   );
   const priced = priceRevisionLines(existing, catalogue, { lines: input.lines, adjustments: input.adjustments });
@@ -249,7 +249,7 @@ function planRevision(
   });
   if (!built.ok) {
     const messages = {
-      NOT_FULLY_PRICED: "Enter every weight, quantity, and the pickup & delivery charge.",
+      NOT_FULLY_PRICED: "Enter every quantity and the pickup & delivery charge.",
       NEGATIVE_TOTAL: `Discounts can't make the total less than ${formatNaira(0)}.`,
       REASON_REQUIRED: "Add a reason for the customer.",
     };
@@ -293,8 +293,8 @@ function toLineData(line: PricedOrderLine): NewOrderLineData {
     pricingType: line.pricingType,
     requiresQuote: line.requiresQuote,
     unitPrice: line.unitPrice,
-    estimatedQuantity: line.estimate === null ? null : toDecimalString(line.estimate),
-    quantity: line.quantity === null ? null : toDecimalString(line.quantity),
+    estimatedQuantity: line.estimate === null ? null : toStoredQuantity(line.estimate),
+    quantity: line.quantity === null ? null : toStoredQuantity(line.quantity),
     lineTotal: line.lineTotal,
   };
 }

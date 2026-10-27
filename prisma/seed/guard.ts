@@ -21,6 +21,24 @@ export function assertSeedAllowed(env: Pick<ServerEnv, "DATABASE_BRANCH"> & { AL
   }
 }
 
+export type SeedMode = "minimal" | "full";
+
+// `prisma db seed` loads the minimal seed (stores, owners, subscriptions).
+// The full sample data is for the integration tests only: `-- --full`, and
+// only on the test branch.
+export function getSeedMode(args: readonly string[], env: Pick<ServerEnv, "DATABASE_BRANCH">): SeedMode {
+  const unknown = args.filter((arg) => arg !== "--full");
+  if (unknown.length > 0) throw new Error(`Unknown seed option: ${unknown.join(" ")}. The only option is --full.`);
+  if (!args.includes("--full")) return "minimal";
+  if (env.DATABASE_BRANCH !== "test") {
+    throw new Error(
+      `Refusing the full seed: DATABASE_BRANCH is "${env.DATABASE_BRANCH}". The full sample data is for the ` +
+        "integration tests on the test branch only.",
+    );
+  }
+  return "full";
+}
+
 const seedPasswordSchema = z
   .string({ error: "is missing" })
   .min(MIN_PASSWORD_LENGTH, `must be at least ${MIN_PASSWORD_LENGTH} characters`)

@@ -16,7 +16,7 @@ export function ReviewSection({ review, showCharge }: ReviewSectionProps) {
     ...review.serviceLines.map((line) => ({
       key: line.key,
       label: line.description,
-      value: line.awaitingWeight ? "Weigh later" : line.lineTotal === null ? "—" : formatNaira(line.lineTotal),
+      value: line.lineTotal === null ? "—" : formatNaira(line.lineTotal),
     })),
     ...review.adjustments.map((line) => ({
       key: line.key,
@@ -54,7 +54,7 @@ export function ReviewSection({ review, showCharge }: ReviewSectionProps) {
       </div>
       {!review.fullyPriced && (
         <p className="type-caption text-muted-foreground">
-          Some lines still need weighing, so this is an estimate. The priced quote comes after weighing.
+          Some prices still need confirming, so this is an estimate. The priced quote comes later.
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">

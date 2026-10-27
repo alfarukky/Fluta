@@ -1,9 +1,9 @@
 import type { FulfilmentType } from "@/generated/prisma/enums";
 import { getBookingPriceSummary, toBookingLineAmount, type BookingPriceSummary } from "@/lib/booking";
 import type { Coordinates } from "@/lib/location";
-import { lineTotalKobo } from "@/lib/money";
+import { getLineTotal } from "@/lib/money";
 import { PAYSTACK_EMAIL_REQUIRED } from "@/lib/online-payment";
-import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY, parseHundredths } from "@/lib/quantity";
+import { getQuantityMessage, parseQuantity } from "@/lib/quantity";
 import { UNLISTED_AREA_ID, UNLISTED_AREA_NAME_MIN, type BookingRequest } from "@/schemas/booking";
 import { ADDRESS_MAX, CUSTOMER_NAME_MAX, CUSTOMER_NOTE_MAX } from "@/schemas/field-limits";
 import { AREA_NAME_MAX } from "@/schemas/fulfilment";
@@ -95,26 +95,18 @@ function validateServices(draft: BookingDraft, services: readonly BookingService
       errors[`service.${line.serviceId}`] = "This service isn't available any more. Remove it.";
       continue;
     }
-    const message = getAmountMessage(service, line.amount);
+    const message = getAmountMessage(line.amount);
     if (message) errors[`service.${line.serviceId}`] = message;
   }
   if (draft.note.trim().length > CUSTOMER_NOTE_MAX) errors.note = `Note must be ${CUSTOMER_NOTE_MAX} characters or fewer`;
   return errors;
 }
 
-// How many (required, 1–999), or the estimated weight (optional, 0.1–999.99 kg).
-export function getAmountMessage(service: Pick<BookingService, "pricingType">, text: string): string | null {
-  const weighed = isWeighed(service.pricingType);
-  if (!text.trim()) return weighed ? null : "Enter how many";
-  const hundredths = parseHundredths(text);
-  const problem = hundredths === null ? "INVALID" : getQuantityProblem(hundredths, service.pricingType);
-  if (!problem) return null;
-  if (weighed) {
-    return { INVALID: "Enter the weight in kg, like 2.5", TOO_SMALL: "Enter at least 0.1 kg", TOO_LARGE: "Enter 999.99 kg or less" }[
-      problem
-    ];
-  }
-  return { INVALID: "Enter a whole number", TOO_SMALL: "Enter at least 1", TOO_LARGE: `Enter ${MAX_ITEM_QUANTITY} or fewer` }[problem];
+// How many: a whole number from 1 to 999, for every service.
+export function getAmountMessage(text: string): string | null {
+  if (!text.trim()) return getQuantityMessage(null);
+  const quantity = parseQuantity(text);
+  return quantity === null ? "Enter a whole number" : getQuantityMessage(quantity);
 }
 
 function validatePickup(draft: BookingDraft, options: BookingOptions): DraftErrors {
@@ -249,7 +241,7 @@ export function fromServerErrors(fieldErrors: Record<string, string>, draft: Boo
 export interface ReviewLine {
   serviceId: string;
   name: string;
-  amount: number | null; // hundredths, as entered
+  amount: number | null; // the whole number entered
   isEstimate: boolean;
   lineTotal: number | null; // null when the store prices it
 }
@@ -266,7 +258,7 @@ export function reviewBooking(draft: BookingDraft, options: BookingOptions): Boo
   const priced = draft.lines.flatMap((line) => {
     const service = options.services.find((candidate) => candidate.id === line.serviceId);
     if (!service) return [];
-    const amount = line.amount.trim() ? parseHundredths(line.amount) : null;
+    const amount = parseQuantity(line.amount);
     return [{ service, amount, ...toBookingLineAmount(service, amount) }];
   });
   const pickupCharge = getChosenArea(draft, options)?.charge ?? null;
@@ -281,7 +273,7 @@ export function reviewBooking(draft: BookingDraft, options: BookingOptions): Boo
       name: service.name,
       amount,
       isEstimate: quantity === null,
-      lineTotal: quantity === null ? null : lineTotalKobo(service.price, quantity),
+      lineTotal: quantity === null ? null : getLineTotal(service.price, quantity),
     })),
     pickupCharge,
     summary,

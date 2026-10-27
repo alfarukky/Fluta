@@ -1,9 +1,9 @@
 import "server-only";
 
 import type { OrderLineType, PricingType } from "@/generated/prisma/client";
-import { lineTotalKobo } from "@/lib/money";
+import { getLineTotal } from "@/lib/money";
 import { getClockTimeProblem, getPickupWindows, parseClockTime, type PickupSchedule } from "@/lib/pickup-schedule";
-import { toDecimalString } from "@/lib/quantity";
+import { toStoredQuantity } from "@/lib/quantity";
 import { fromDateKey } from "@/lib/time";
 
 // Order rules. The pricing and stage rules live in src/lib so the new-order
@@ -64,8 +64,8 @@ export interface PricedOrderLine {
   pricingType: PricingType | null;
   requiresQuote: boolean;
   unitPrice: number | null;
-  quantity: number | null; // hundredths
-  estimate: number | null; // hundredths
+  quantity: number | null; // null until staff price a quote-required line
+  estimate: number | null; // the customer's count, never billed
   lineTotal: number | null;
 }
 
@@ -101,9 +101,9 @@ export interface SnapshotFulfilment {
 export const NO_FULFILMENT: SnapshotFulfilment = { areaName: null, isOutOfArea: false, charge: null };
 
 // What a revision shows the customer, frozen in QuoteRevision.linesSnapshot.
-// An unweighed line shows the customer's estimate when there is one (priced
-// at the unit price) and is left out otherwise; such a version is only ever
-// an estimate and is never approved.
+// A line without its quantity yet shows the customer's estimate when there is
+// one (priced at the unit price) and is left out otherwise; such a version is
+// only ever an estimate and is never approved.
 export function buildQuoteSnapshot(
   lines: readonly PricedOrderLine[],
   fulfilment: SnapshotFulfilment,
@@ -111,7 +111,7 @@ export function buildQuoteSnapshot(
   const snapshotLines = lines.flatMap((line): QuoteSnapshotLine[] => {
     const shown = line.quantity ?? line.estimate;
     if (line.lineType === "SERVICE" && shown === null) return [];
-    const lineTotal = line.lineTotal ?? lineTotalKobo(line.unitPrice ?? 0, shown ?? 0);
+    const lineTotal = line.lineTotal ?? getLineTotal(line.unitPrice ?? 0, shown ?? 0);
     return [
       {
         lineType: line.lineType,
@@ -120,7 +120,7 @@ export function buildQuoteSnapshot(
         pricingType: line.pricingType,
         requiresQuote: line.requiresQuote,
         unitPrice: line.unitPrice,
-        quantity: shown === null ? null : toDecimalString(shown),
+        quantity: shown === null ? null : toStoredQuantity(shown),
         quantityIsEstimate: line.quantity === null && shown !== null,
         lineTotal,
       },

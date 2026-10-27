@@ -4,11 +4,8 @@ import type {
   OrderChannel,
   OrderStage,
   PaymentMethod,
-  PricingType,
   QuoteStatus,
 } from "@/generated/prisma/enums";
-
-import { formatQuantity } from "./quantity";
 
 // Order wording and the rules both the new-order form (its review) and the
 // server use. src/server/domain/orders.ts re-exports the rules for the server.
@@ -171,29 +168,25 @@ export function getActorLabel(actorType: ActorType, staffName: string | null): s
   }
 }
 
-// "Customer's estimate: 2.5 kg (not billed)", "Customer's estimate: 2 (not
-// billed)": what the customer entered on a line the store still weighs or
-// counts. Staff screens only.
-export function describeCustomerEstimate(estimate: number, pricingType: PricingType): string {
-  return `Customer's estimate: ${formatQuantity(estimate, pricingType)} (not billed)`;
+// "Customer's estimate: 2 (not billed)": what the customer entered on a line
+// the store still counts. Staff screens only.
+export function describeCustomerEstimate(estimate: number): string {
+  return `Customer's estimate: ${estimate} (not billed)`;
 }
 
 export interface SummaryLine {
   description: string;
-  pricingType: PricingType | null;
-  quantity: number | null; // hundredths; null until weighed
+  quantity: number | null; // null until staff price a quote-required line
 }
 
 const SUMMARY_LINES_SHOWN = 2;
 
 // "Shirt × 4, Trousers × 2 +2 more": the first service lines of an order,
-// for the orders list. Weights show in kg; an unweighed line shows its name.
+// for the orders list. A line still to be counted shows its name.
 export function summarizeServices(lines: readonly SummaryLine[]): string {
-  const shown = lines.slice(0, SUMMARY_LINES_SHOWN).map((line) => {
-    if (line.quantity === null || line.pricingType === null) return line.description;
-    const quantity = formatQuantity(line.quantity, line.pricingType);
-    return line.pricingType === "PER_KG" ? `${line.description} ${quantity}` : `${line.description} × ${quantity}`;
-  });
+  const shown = lines
+    .slice(0, SUMMARY_LINES_SHOWN)
+    .map((line) => (line.quantity === null ? line.description : `${line.description} × ${line.quantity}`));
   const more = lines.length - shown.length;
   return more > 0 ? `${shown.join(", ")} +${more} more` : shown.join(", ");
 }

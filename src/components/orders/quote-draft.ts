@@ -1,7 +1,7 @@
 import type { PricingType } from "@/generated/prisma/enums";
-import { formatNaira, formatNairaInput, lineTotalKobo, parseNairaToKobo } from "@/lib/money";
+import { formatNaira, formatNairaInput, getLineTotal, parseNairaToKobo } from "@/lib/money";
 import { getOrderTotal, isOrderFullyPriced } from "@/lib/order-pricing";
-import { getQuantityProblem, isWeighed, parseHundredths } from "@/lib/quantity";
+import { getQuantityProblem, parseQuantity } from "@/lib/quantity";
 import { getTotalDifference } from "@/lib/quotes";
 import type { IssueRevisionRequest } from "@/schemas/quotes";
 import { MAX_SERVICE_PRICE } from "@/schemas/services";
@@ -31,7 +31,8 @@ export interface QuoteLineDraft {
   // A quote-required line's unit price as typed ("" on any other line).
   price: string;
   quantity: string;
-  // The customer's estimate on an unweighed line (shown as a hint, never billed).
+  // The customer's estimate on a line still to be counted (shown as a hint,
+  // never billed).
   estimate: number | null;
 }
 
@@ -45,14 +46,6 @@ export interface QuoteDraft {
   reason: string;
 }
 
-// "3", "4.25": a quantity as staff would type it.
-export function quantityInput(hundredths: number | null): string {
-  if (hundredths === null) return "";
-  const whole = Math.trunc(hundredths / 100);
-  const fraction = String(hundredths % 100).padStart(2, "0").replace(/0+$/, "");
-  return fraction ? `${whole}.${fraction}` : String(whole);
-}
-
 export function initialQuoteDraft(editor: QuoteEditorData): QuoteDraft {
   return {
     lines: editor.lines.map((line) => ({
@@ -63,7 +56,7 @@ export function initialQuoteDraft(editor: QuoteEditorData): QuoteDraft {
       requiresQuote: line.requiresQuote,
       unitPrice: line.unitPrice,
       price: line.requiresQuote ? formatNairaInput(line.unitPrice) : "",
-      quantity: quantityInput(line.quantity),
+      quantity: line.quantity === null ? "" : String(line.quantity),
       estimate: line.estimate,
     })),
     adjustments: editor.adjustments.map((adjustment, index) => ({
@@ -95,14 +88,13 @@ export function addQuoteService(lines: readonly QuoteLineDraft[], service: Order
         requiresQuote: service.requiresQuote,
         unitPrice: service.price,
         price: service.requiresQuote ? formatNairaInput(service.price) : "",
-        quantity: isWeighed(service.pricingType) ? "" : "1",
+        quantity: "1",
         estimate: null,
       },
     ];
   }
-  if (isWeighed(service.pricingType)) return [...lines];
-  const current = parseHundredths(added.quantity);
-  const next = current === null ? "1" : String(Math.floor(current / 100) + 1);
+  const current = parseQuantity(added.quantity);
+  const next = current === null ? "1" : String(current + 1);
   return lines.map((line) => (line === added ? { ...line, quantity: next } : line));
 }
 
@@ -182,10 +174,10 @@ export interface QuoteReview {
 export function reviewQuoteDraft(draft: QuoteDraft, editor: QuoteEditorData, areas: readonly OrderEntryArea[]): QuoteReview {
   const lineTotals = new Map<string, number | null>();
   const priced = draft.lines.map((line) => {
-    const parsed = parseHundredths(line.quantity);
-    const quantity = parsed !== null && getQuantityProblem(parsed, line.pricingType) === null ? parsed : null;
+    const parsed = parseQuantity(line.quantity);
+    const quantity = parsed !== null && getQuantityProblem(parsed) === null ? parsed : null;
     const unitPrice = getDraftUnitPrice(line);
-    const total = quantity === null || unitPrice === null ? null : lineTotalKobo(unitPrice, quantity);
+    const total = quantity === null || unitPrice === null ? null : getLineTotal(unitPrice, quantity);
     lineTotals.set(line.key, total);
     // Every line needs its quantity (and a quote-required one its price) in a revision.
     return { requiresQuote: true, quantity: total === null ? null : quantity, total };

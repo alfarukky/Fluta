@@ -12,8 +12,9 @@ import type {
 } from "@/generated/prisma/client";
 
 // A catalogue service line (by name) or an "Others" adjustment line.
-// `quantity` is the billed quantity; leave it out on a quote-required line that
-// hasn't been weighed or inspected yet. `estimate` is the customer's estimate.
+// `quantity` is the billed quantity (a whole number); leave it out on a
+// quote-required line that hasn't been counted yet. `estimate` is the
+// customer's count.
 export type SeedLine =
   | { service: string; quantity?: string; estimate?: string }
   | { adjustment: string; amount: number };

@@ -53,7 +53,7 @@ export function getBalance(order: BalanceOrder): Balance {
   const paidRefundsKobo = sum(order.refunds.filter((refund) => refund.voidedAt === null));
 
   const approvedTotalKobo = order.stage === "CANCELLED" ? 0 : (order.approvedQuote?.total ?? null);
-  // No approved quote yet (an unweighed per-kg order, say): there is no
+  // No approved quote yet (a quote-required item still to be priced, say): there is no
   // balance, and none is ever worked out from estimates.
   if (approvedTotalKobo === null) {
     return { state: "AWAITING_QUOTE", approvedTotalKobo: null, confirmedPaymentsKobo, paidRefundsKobo, balanceKobo: null };

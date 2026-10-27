@@ -36,7 +36,7 @@ describe("buildOrderTimeline", () => {
   const revisions = [
     // Priced at creation and agreed there and then: no entries of its own.
     revision({ id: "r1", version: 1, total: 1_000_000, approvedAt: at(0), approvedByActor: "STAFF" }),
-    revision({ id: "r2", version: 2, total: 1_250_000, reason: "Actual weight 4.2 kg", createdAt: at(10), approvedAt: at(20), approvedByActor: "STAFF" }),
+    revision({ id: "r2", version: 2, total: 1_250_000, reason: "Counted 3 duvets, not 2", createdAt: at(10), approvedAt: at(20), approvedByActor: "STAFF" }),
     revision({ id: "r3", version: 3, status: "DECLINED", total: 1_400_000, reason: "Extra duvet", createdAt: at(30), declinedAt: at(40), customerMessage: "Too expensive" }),
   ];
   const events = [stage("e1", 0, null, "RECEIVED_BY_STORE"), stage("e2", 5, "RECEIVED_BY_STORE", "IN_PROGRESS")];
@@ -111,7 +111,7 @@ describe("buildOrderTimeline", () => {
 
   it("gives each moment its difference, reason, and who decided", () => {
     const timeline = buildOrderTimeline(events, revisions, audits);
-    expect(timeline.find((entry) => entry.key === "issued-r2")).toMatchObject({ difference: 250_000, reason: "Actual weight 4.2 kg", staffUserId: "ada" });
+    expect(timeline.find((entry) => entry.key === "issued-r2")).toMatchObject({ difference: 250_000, reason: "Counted 3 duvets, not 2", staffUserId: "ada" });
     // Compared with v2, approved by then.
     expect(timeline.find((entry) => entry.key === "issued-r3")).toMatchObject({ difference: 150_000 });
     expect(timeline.find((entry) => entry.key === "approved-r2")).toMatchObject({ decidedBy: "STAFF", staffUserId: "kemi" });

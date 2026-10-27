@@ -6,7 +6,7 @@ import {
   formatNaira,
   formatNairaInput,
   formatServicePrice,
-  lineTotalKobo,
+  getLineTotal,
   parseNairaToKobo,
 } from "./money";
 
@@ -82,7 +82,6 @@ describe("parseNairaToKobo", () => {
 describe("formatServicePrice", () => {
   it("shows the price per unit for every pricing type", () => {
     expect(formatServicePrice({ price: 80_000, pricingType: "PER_ITEM", requiresQuote: false })).toBe("₦800 / item");
-    expect(formatServicePrice({ price: 150_000, pricingType: "PER_KG", requiresQuote: false })).toBe("₦1,500 / kg");
     expect(formatServicePrice({ price: 250_000, pricingType: "PER_PACKAGE", requiresQuote: false })).toBe(
       "₦2,500 / package",
     );
@@ -92,13 +91,13 @@ describe("formatServicePrice", () => {
     expect(formatServicePrice({ price: 500_000, pricingType: "PER_ITEM", requiresQuote: true })).toBe(
       "from ₦5,000 / item",
     );
-    expect(formatServicePrice({ price: 150_000, pricingType: "PER_KG", requiresQuote: true })).toBe(
-      "from ₦1,500 / kg",
+    expect(formatServicePrice({ price: 1_200_000, pricingType: "PER_PACKAGE", requiresQuote: true })).toBe(
+      "from ₦12,000 / package",
     );
   });
 
   it("shows a quote-required ₦0 price as price on inspection", () => {
-    for (const pricingType of ["PER_ITEM", "PER_KG", "PER_PACKAGE"] as const) {
+    for (const pricingType of ["PER_ITEM", "PER_PACKAGE"] as const) {
       expect(formatServicePrice({ price: 0, pricingType, requiresQuote: true })).toBe("Price on inspection");
     }
   });
@@ -112,40 +111,19 @@ describe("formatAreaCharge", () => {
   });
 });
 
-describe("lineTotalKobo", () => {
-  it("multiplies whole items exactly", () => {
-    expect(lineTotalKobo(80_000, 300)).toBe(240_000); // 3 × ₦800
-    expect(lineTotalKobo(0, 500)).toBe(0);
-  });
-
-  it("prices weights in hundredths of a kg", () => {
-    expect(lineTotalKobo(150_000, 250)).toBe(375_000); // 2.5 kg × ₦1,500
-    expect(lineTotalKobo(150_000, 10)).toBe(15_000); // 0.1 kg
-  });
-
-  it("rounds an exact half kobo up", () => {
-    expect(lineTotalKobo(10, 15)).toBe(2); // 0.15 kg × 10 kobo = 1.5 kobo
-    expect(lineTotalKobo(1, 50)).toBe(1); // 0.5 kobo
-    expect(lineTotalKobo(333, 250)).toBe(833); // 832.5 kobo
-  });
-
-  it("rounds below half down and above half up", () => {
-    expect(lineTotalKobo(1, 49)).toBe(0); // 0.49 kobo
-    expect(lineTotalKobo(1, 51)).toBe(1); // 0.51 kobo
-    expect(lineTotalKobo(333, 251)).toBe(836); // 835.83 kobo
-    expect(lineTotalKobo(333, 249)).toBe(829); // 829.17 kobo
-  });
-
-  it("is exact where decimal maths would drift", () => {
-    // 1.005 kg isn't allowed, but 0.29 × 100 is 28.999… in floating point.
-    expect(lineTotalKobo(100, 29)).toBe(29);
-    expect(lineTotalKobo(1_000_000_000, 99_999)).toBe(999_990_000_000);
+describe("getLineTotal", () => {
+  it("multiplies the unit price by the whole quantity", () => {
+    expect(getLineTotal(80_000, 3)).toBe(240_000); // 3 × ₦800
+    expect(getLineTotal(500_000, 2)).toBe(1_000_000); // 2 × ₦5,000
+    expect(getLineTotal(0, 5)).toBe(0);
+    expect(getLineTotal(1_000_000_000, 999)).toBe(999_000_000_000);
   });
 
   it("refuses fractions and negative values", () => {
-    expect(() => lineTotalKobo(1.5, 100)).toThrow(RangeError);
-    expect(() => lineTotalKobo(100, 2.5)).toThrow(RangeError);
-    expect(() => lineTotalKobo(-100, 100)).toThrow(RangeError);
+    expect(() => getLineTotal(1.5, 1)).toThrow(RangeError);
+    expect(() => getLineTotal(100, 1.5)).toThrow(RangeError);
+    expect(() => getLineTotal(-100, 1)).toThrow(RangeError);
+    expect(() => getLineTotal(100, -1)).toThrow(RangeError);
   });
 });
 

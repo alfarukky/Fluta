@@ -5,49 +5,49 @@ import { getOrderTotal, isOrderFullyPriced, mergeServiceLines } from "./order-pr
 describe("mergeServiceLines", () => {
   it("combines repeated services into one line, in first-seen order", () => {
     const merged = mergeServiceLines([
-      { serviceId: "shirt", quantity: 200, estimate: null },
-      { serviceId: "duvet", quantity: 100, estimate: null },
-      { serviceId: "shirt", quantity: 300, estimate: null },
+      { serviceId: "shirt", quantity: 2, estimate: null },
+      { serviceId: "duvet", quantity: 1, estimate: null },
+      { serviceId: "shirt", quantity: 3, estimate: null },
     ]);
     expect(merged).toEqual([
-      { serviceId: "shirt", quantity: 500, estimate: null },
-      { serviceId: "duvet", quantity: 100, estimate: null },
+      { serviceId: "shirt", quantity: 5, estimate: null },
+      { serviceId: "duvet", quantity: 1, estimate: null },
     ]);
   });
 
-  it("adds weights and estimates", () => {
+  it("adds estimates", () => {
     expect(
       mergeServiceLines([
-        { serviceId: "wash", quantity: 250, estimate: 300 },
-        { serviceId: "wash", quantity: 125, estimate: null },
+        { serviceId: "gown", quantity: null, estimate: 2 },
+        { serviceId: "gown", quantity: null, estimate: 1 },
       ]),
-    ).toEqual([{ serviceId: "wash", quantity: 375, estimate: 300 }]);
+    ).toEqual([{ serviceId: "gown", quantity: null, estimate: 3 }]);
   });
 
-  it("keeps the line unweighed if any part is still to be weighed", () => {
+  it("keeps the line waiting for its quantity if any part is still to be counted", () => {
     expect(
       mergeServiceLines([
-        { serviceId: "wash", quantity: 250, estimate: null },
-        { serviceId: "wash", quantity: null, estimate: 400 },
+        { serviceId: "gown", quantity: 2, estimate: null },
+        { serviceId: "gown", quantity: null, estimate: 4 },
       ]),
-    ).toEqual([{ serviceId: "wash", quantity: null, estimate: 400 }]);
+    ).toEqual([{ serviceId: "gown", quantity: null, estimate: 4 }]);
   });
 
   it("leaves the input untouched", () => {
     const lines = [
-      { serviceId: "shirt", quantity: 200, estimate: null },
-      { serviceId: "shirt", quantity: 300, estimate: null },
+      { serviceId: "shirt", quantity: 2, estimate: null },
+      { serviceId: "shirt", quantity: 3, estimate: null },
     ];
     mergeServiceLines(lines);
-    expect(lines[0].quantity).toBe(200);
+    expect(lines[0].quantity).toBe(2);
   });
 });
 
 describe("getOrderTotal", () => {
   it("adds service lines, adjustments, and the charge", () => {
     expect(
-      getOrderTotal({ serviceLineTotals: [240_000, 375_000], adjustments: [50_000, -20_000], fulfilmentCharge: 150_000 }),
-    ).toBe(795_000);
+      getOrderTotal({ serviceLineTotals: [240_000, 300_000], adjustments: [50_000, -20_000], fulfilmentCharge: 150_000 }),
+    ).toBe(720_000);
   });
 
   it("counts only what is priced so far", () => {
@@ -60,16 +60,16 @@ describe("getOrderTotal", () => {
 });
 
 describe("isOrderFullyPriced", () => {
-  const priced = { requiresQuote: false, quantity: 200 };
-  const weighed = { requiresQuote: true, quantity: 250 };
-  const unweighed = { requiresQuote: true, quantity: null };
+  const priced = { requiresQuote: false, quantity: 2 };
+  const counted = { requiresQuote: true, quantity: 3 };
+  const uncounted = { requiresQuote: true, quantity: null };
 
   it("is priced when every quote-required line has its quantity", () => {
-    expect(isOrderFullyPriced({ fulfilmentType: "DROP_OFF", lines: [priced, weighed], fulfilmentCharge: null })).toBe(true);
+    expect(isOrderFullyPriced({ fulfilmentType: "DROP_OFF", lines: [priced, counted], fulfilmentCharge: null })).toBe(true);
   });
 
-  it("isn't while a quote-required line is unweighed", () => {
-    expect(isOrderFullyPriced({ fulfilmentType: "DROP_OFF", lines: [priced, unweighed], fulfilmentCharge: null })).toBe(
+  it("isn't while a quote-required line has no quantity yet", () => {
+    expect(isOrderFullyPriced({ fulfilmentType: "DROP_OFF", lines: [priced, uncounted], fulfilmentCharge: null })).toBe(
       false,
     );
   });

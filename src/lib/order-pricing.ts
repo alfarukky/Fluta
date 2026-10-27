@@ -2,20 +2,20 @@ import type { FulfilmentType } from "@/generated/prisma/enums";
 
 // Order pricing rules shared by the new-order form (its live review) and the
 // server, which always recomputes them from the catalogue and area. Amounts
-// are integer kobo; quantities are hundredths (src/lib/quantity.ts). Line
-// totals come from lineTotalKobo in money.ts.
+// are integer kobo; quantities are whole numbers (src/lib/quantity.ts). Line
+// totals come from getLineTotal in money.ts.
 
 export interface ServiceLineQuantities {
   serviceId: string;
-  // Null on a quote-required line that hasn't been weighed yet.
+  // Null on a quote-required line booked online, until staff price it.
   quantity: number | null;
   // The customer's estimate, never billed.
   estimate: number | null;
 }
 
 // One line per service, in the order each service first appears. "Shirt × 2"
-// and "Shirt × 3" become "Shirt × 5". A line still waiting to be weighed keeps
-// the merged line unweighed (staff weigh everything together later), and
+// and "Shirt × 3" become "Shirt × 5". A line still waiting for its quantity
+// keeps the merged line waiting (staff count everything together later), and
 // estimates add up.
 export function mergeServiceLines<T extends ServiceLineQuantities>(lines: readonly T[]): T[] {
   const merged = new Map<string, T>();
@@ -35,7 +35,7 @@ export function mergeServiceLines<T extends ServiceLineQuantities>(lines: readon
 }
 
 export interface OrderAmounts {
-  // Service line totals; null for a line that isn't priced yet (unweighed).
+  // Service line totals; null for a line that isn't priced yet.
   serviceLineTotals: readonly (number | null)[];
   // Signed "Others" amounts: positive extra charges, negative discounts.
   adjustments: readonly number[];
@@ -58,8 +58,7 @@ export interface PricingState {
   fulfilmentCharge: number | null;
 }
 
-// Fully priced: every quote-required line has its quantity (weighed or
-// counted), and a pickup order's charge is known. A fully priced order's
+// Fully priced: every quote-required line has its counted quantity, and a pickup order's charge is known. A fully priced order's
 // version 1 can be agreed at once; otherwise the priced quote comes later.
 export function isOrderFullyPriced({ fulfilmentType, lines, fulfilmentCharge }: PricingState): boolean {
   const linesPriced = lines.every((line) => !line.requiresQuote || (line.quantity !== null && line.quantity !== undefined));

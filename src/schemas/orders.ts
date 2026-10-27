@@ -6,7 +6,7 @@ import { formatNaira, parseNairaToKobo } from "@/lib/money";
 import { PAYMENT_STATES, STAFF_CHANNELS } from "@/lib/orders";
 import { normalizePhone } from "@/lib/phone";
 import { parseClockTime } from "@/lib/pickup-schedule";
-import { parseHundredths } from "@/lib/quantity";
+import { parseQuantity } from "@/lib/quantity";
 import { parseDateKey } from "@/lib/time";
 
 import { ADDRESS_MAX, CUSTOMER_NAME_MAX } from "./field-limits";
@@ -68,27 +68,26 @@ const customerSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
-// Up to two decimal places, as hundredths ("2.5" → 250). Blank is null. The
-// server checks the range for the service's pricing type (getQuantityProblem).
+// A whole number ("3"). Blank is null. A fraction ("1.5") is refused here,
+// and the server checks the range (getQuantityProblem).
 export const quantityText = z
   .string()
-  .max(12, "Enter a number")
+  .max(12, "Enter a whole number")
   .transform((value, ctx) => {
     const text = value.trim();
     if (!text) return null;
-    const hundredths = parseHundredths(text);
-    if (hundredths === null) {
-      ctx.addIssue({ code: "custom", message: "Enter a number, like 3 or 2.5" });
+    const quantity = parseQuantity(text);
+    if (quantity === null) {
+      ctx.addIssue({ code: "custom", message: "Enter a whole number, like 3" });
       return z.NEVER;
     }
-    return hundredths;
+    return quantity;
   });
 
 // Only the service and how much: the price always comes from the catalogue.
 const serviceLineSchema = z.object({
   serviceId: recordId,
   quantity: quantityText,
-  estimate: quantityText,
 });
 
 const AMOUNT_FORMAT_MESSAGE = "Enter an amount in Naira, like 500 or 1,500.50";

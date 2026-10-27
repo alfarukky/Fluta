@@ -9,13 +9,11 @@ export const SERVICE_CATEGORY_MAX = 40;
 
 export const PRICING_TYPE_LABELS: Record<PricingType, string> = {
   PER_ITEM: "Per item",
-  PER_KG: "Per kg",
   PER_PACKAGE: "Per package",
 };
 
-// The add/edit form, as sent. Per-kg services always require a quote, whatever
-// the form says; the price must be above ₦0 unless a quote is required (it is
-// then the "from" price).
+// The add/edit form, as sent. The price must be above ₦0 unless a quote is
+// required (it is then the "from" price).
 export const serviceFormSchema = z
   .object({
     name: z
@@ -45,10 +43,6 @@ export const serviceFormSchema = z
     // A checkbox: "on" when ticked, missing (or "") when not.
     requiresQuote: z.string().transform((value) => value === "on" || value === "true"),
   })
-  .transform((service) => ({
-    ...service,
-    requiresQuote: service.pricingType === PricingType.PER_KG || service.requiresQuote,
-  }))
   .superRefine((service, ctx) => {
     if (service.price === 0 && !service.requiresQuote) {
       ctx.addIssue({

@@ -41,7 +41,7 @@ export interface NewOrderLineData {
   pricingType: PricingType | null;
   requiresQuote: boolean;
   unitPrice: number | null;
-  estimatedQuantity: string | null; // Decimal, e.g. "2.50"
+  estimatedQuantity: string | null; // Decimal column, a whole number such as "3"
   quantity: string | null;
   lineTotal: number | null;
 }
@@ -317,7 +317,7 @@ const LIST_ROW_SELECT = {
   customer: { select: { name: true } },
   lines: {
     where: { lineType: "SERVICE" },
-    select: { description: true, pricingType: true, quantity: true },
+    select: { description: true, quantity: true },
     orderBy: { id: "asc" },
   },
   // getBalance: Payment required applies only to online bookings paid at booking.

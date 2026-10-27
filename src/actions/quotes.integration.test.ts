@@ -29,16 +29,16 @@ const PASSWORD = "test-password-1234";
 const CHANGED = "This order was just updated. Refresh to see the latest.";
 const NOTE = "Approved by phone, 2:15 PM";
 
-// Catalogue prices (kobo): Shirt ₦800 per item; Wash & fold ₦1,500 per kg
+// Catalogue prices (kobo): Shirt ₦800 per item; Duvet from ₦1,500 per item
 // (quote required). Areas: Wuse 2 fixed ₦1,500; Maitama quote required.
 const SHIRT_PRICE = 80_000;
-const WASH_PRICE = 150_000;
+const DUVET_PRICE = 150_000;
 const WUSE_CHARGE = 150_000;
 
 let prisma: PrismaClient;
 let storeId: string;
 let customerId: string;
-let ids: { shirt: string; wash: string; wuse: string; maitama: string };
+let ids: { shirt: string; duvet: string; wuse: string; maitama: string };
 let users: Record<"owner" | "staff", { id: string; headers: Headers }>;
 let freshFoldStaff: Headers;
 let cleanWave: { orderId: string; revisionId: string | null; version: number };
@@ -60,9 +60,9 @@ beforeAll(async () => {
   storeId = store.id;
   customerId = store.customers[0].id;
 
-  const service = (name: string, pricingType: "PER_ITEM" | "PER_KG", price: number) =>
+  const service = (name: string, price: number, requiresQuote: boolean) =>
     prisma.service.create({
-      data: { storeId, name, nameKey: toMatchKey(name), pricingType, price, requiresQuote: pricingType === "PER_KG" },
+      data: { storeId, name, nameKey: toMatchKey(name), pricingType: "PER_ITEM", price, requiresQuote },
       select: { id: true },
     });
   const area = (name: string, fixedCharge: number | null) =>
@@ -70,13 +70,13 @@ beforeAll(async () => {
       data: { storeId, name, nameKey: toMatchKey(name), chargeType: fixedCharge === null ? "QUOTE_REQUIRED" : "FIXED", fixedCharge },
       select: { id: true },
     });
-  const [shirt, wash, wuse, maitama] = await Promise.all([
-    service("Shirt", "PER_ITEM", SHIRT_PRICE),
-    service("Wash & fold", "PER_KG", WASH_PRICE),
+  const [shirt, duvet, wuse, maitama] = await Promise.all([
+    service("Shirt", SHIRT_PRICE, false),
+    service("Duvet", DUVET_PRICE, true),
     area("Wuse 2", WUSE_CHARGE),
     area("Maitama", null),
   ]);
-  ids = { shirt: shirt.id, wash: wash.id, wuse: wuse.id, maitama: maitama.id };
+  ids = { shirt: shirt.id, duvet: duvet.id, wuse: wuse.id, maitama: maitama.id };
 
   users = { owner: await addUser("owner", "OWNER"), staff: await addUser("staff", "STAFF") };
   freshFoldStaff = await signInHeaders("kemi@freshfold.example");
@@ -135,8 +135,8 @@ async function addUser(label: string, role: "OWNER" | "STAFF"): Promise<{ id: st
 // ───────────── Building orders ─────────────
 
 interface LineSpec {
-  service: "shirt" | "wash";
-  quantity: number | null; // hundredths; null = not weighed yet
+  service: "shirt" | "duvet";
+  quantity: number | null; // null = not counted yet (a quote-required line booked online)
   unitPrice?: number; // what the line was added at (defaults to today's price)
 }
 
@@ -152,8 +152,8 @@ interface OrderSpec {
   address?: string;
 }
 
-const priceOf = (line: LineSpec) => line.unitPrice ?? (line.service === "shirt" ? SHIRT_PRICE : WASH_PRICE);
-const totalOf = (line: LineSpec) => (line.quantity === null ? 0 : Math.round((priceOf(line) * line.quantity) / 100));
+const priceOf = (line: LineSpec) => line.unitPrice ?? (line.service === "shirt" ? SHIRT_PRICE : DUVET_PRICE);
+const totalOf = (line: LineSpec) => (line.quantity === null ? 0 : priceOf(line) * line.quantity);
 
 // An order exactly as order entry and earlier moves would have left it.
 async function makeOrder(spec: OrderSpec): Promise<string> {
@@ -192,11 +192,11 @@ async function makeOrder(spec: OrderSpec): Promise<string> {
       orderId: order.id,
       lineType: "SERVICE" as const,
       serviceId: ids[line.service],
-      description: line.service === "shirt" ? "Shirt" : "Wash & fold",
-      pricingType: line.service === "shirt" ? ("PER_ITEM" as const) : ("PER_KG" as const),
-      requiresQuote: line.service === "wash",
+      description: line.service === "shirt" ? "Shirt" : "Duvet",
+      pricingType: "PER_ITEM" as const,
+      requiresQuote: line.service === "duvet",
       unitPrice: priceOf(line),
-      quantity: line.quantity === null ? null : (line.quantity / 100).toFixed(2),
+      quantity: line.quantity === null ? null : String(line.quantity),
       lineTotal: line.quantity === null ? null : totalOf(line),
     })),
   });
@@ -292,9 +292,9 @@ async function currentBody(orderId: string, quantities: Record<string, number | 
     lines: order.lines
       .filter((line) => line.lineType === "SERVICE")
       .map((line) => {
-        const service = line.serviceId === ids.shirt ? "shirt" : "wash";
-        const quantity = service in quantities ? quantities[service] : line.quantity === null ? null : Number(line.quantity) * 100;
-        return { kind: "existing" as const, lineId: line.id, quantity: quantity === null ? "" : String(quantity / 100) };
+        const service = line.serviceId === ids.shirt ? "shirt" : "duvet";
+        const quantity = service in quantities ? quantities[service] : line.quantity === null ? null : Number(line.quantity);
+        return { kind: "existing" as const, lineId: line.id, quantity: quantity === null ? "" : String(quantity) };
       }),
     adjustments: [],
   };
@@ -333,10 +333,10 @@ async function latestRevisionId(orderId: string): Promise<string> {
 // ───────────── First priced quote ─────────────
 
 describe("the first priced quote", () => {
-  it("weighs an unweighed per-kg order, moves it to Quote awaiting approval, and an approval returns it exactly", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "wash", quantity: null }], approved: false });
+  it("counts a quote-required order booked online, moves it to Quote awaiting approval, and an approval returns it exactly", async () => {
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "duvet", quantity: null }], approved: false });
 
-    const issued = await issue(orderId, await currentBody(orderId, { wash: 420 }));
+    const issued = await issue(orderId, await currentBody(orderId, { duvet: 4 }));
     expect(issued).toEqual({ ok: true, message: "Quote v2 sent for approval" });
 
     let order = await readOrder(orderId);
@@ -348,12 +348,12 @@ describe("the first priced quote", () => {
       [1, "SUPERSEDED"],
       [2, "PENDING"],
     ]);
-    // 4.2 kg × ₦1,500 = ₦6,300.
-    expect(order.quoteRevisions[1].total).toBe(630_000);
-    expect(order.lines).toEqual([expect.objectContaining({ quantity: expect.anything(), lineTotal: 630_000 })]);
-    expect(Number(order.lines[0].quantity)).toBe(4.2);
+    // 4 × ₦1,500 = ₦6,000.
+    expect(order.quoteRevisions[1].total).toBe(600_000);
+    expect(order.lines).toEqual([expect.objectContaining({ quantity: expect.anything(), lineTotal: 600_000 })]);
+    expect(Number(order.lines[0].quantity)).toBe(4);
     expect(order.quoteRevisions[1].linesSnapshot).toMatchObject({
-      lines: [expect.objectContaining({ serviceId: ids.wash, requiresQuote: true, quantity: "4.20", unitPrice: WASH_PRICE })],
+      lines: [expect.objectContaining({ serviceId: ids.duvet, requiresQuote: true, quantity: "4", unitPrice: DUVET_PRICE })],
       areaName: null,
       isOutOfArea: false,
       fulfilmentCharge: null,
@@ -387,7 +387,7 @@ describe("the first priced quote", () => {
     const orderId = await makeOrder({
       fulfilmentType: "PICKUP_DELIVERY",
       path: ["BOOKED"],
-      lines: [{ service: "shirt", quantity: 300 }],
+      lines: [{ service: "shirt", quantity: 3 }],
       area: "maitama",
       charge: null,
       approved: false,
@@ -404,9 +404,9 @@ describe("the first priced quote", () => {
   });
 
   it("never changes stageBeforeQuote on a later revision", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "wash", quantity: null }], approved: false });
-    await issue(orderId, await currentBody(orderId, { wash: 300 }));
-    expect(await issue(orderId, { ...(await currentBody(orderId, { wash: 350 })), reason: "Re-weighed" })).toMatchObject({ ok: true });
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "duvet", quantity: null }], approved: false });
+    await issue(orderId, await currentBody(orderId, { duvet: 3 }));
+    expect(await issue(orderId, { ...(await currentBody(orderId, { duvet: 4 })), reason: "Recounted" })).toMatchObject({ ok: true });
 
     const order = await readOrder(orderId);
     expect(order.stage).toBe("QUOTE_AWAITING_APPROVAL");
@@ -421,7 +421,7 @@ describe("the first priced quote", () => {
 
 describe("revising an approved order", () => {
   it("leaves the stage alone after work has started, blocks completion until approved, and moves the balance only on approval", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 300 }] });
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 3 }] });
     const balance = async () => (await getOrderDetail(storeId, orderId, "STAFF"))?.balance;
     expect(await balance()).toMatchObject({ state: "OUTSTANDING", balanceKobo: 240_000 });
 
@@ -458,23 +458,23 @@ describe("revising an approved order", () => {
   });
 
   it("shows Refund owed when a paid order's total goes down, and Outstanding when it goes up", async () => {
-    const lower = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 500 }], paid: 400_000 });
-    const higher = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 500 }], paid: 400_000 });
+    const lower = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 5 }], paid: 400_000 });
+    const higher = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 5 }], paid: 400_000 });
 
-    await issue(lower, { ...(await currentBody(lower, { shirt: 400 })), reason: "One shirt was a duplicate" });
+    await issue(lower, { ...(await currentBody(lower, { shirt: 4 })), reason: "One shirt was a duplicate" });
     await approve(lower, await latestRevisionId(lower));
     expect((await getOrderDetail(storeId, lower, "STAFF"))?.balance).toMatchObject({ state: "REFUND_OWED", balanceKobo: -80_000 });
 
-    await issue(higher, { ...(await currentBody(higher, { shirt: 600 })), reason: "One more shirt" });
+    await issue(higher, { ...(await currentBody(higher, { shirt: 6 })), reason: "One more shirt" });
     await approve(higher, await latestRevisionId(higher));
     expect((await getOrderDetail(storeId, higher, "STAFF"))?.balance).toMatchObject({ state: "OUTSTANDING", balanceKobo: 80_000 });
   });
 
   it("supersedes the pending revision, which can no longer be approved", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 300 }] });
-    await issue(orderId, { ...(await currentBody(orderId, { shirt: 400 })), reason: "One more" });
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 3 }] });
+    await issue(orderId, { ...(await currentBody(orderId, { shirt: 4 })), reason: "One more" });
     const first = await latestRevisionId(orderId);
-    await issue(orderId, { ...(await currentBody(orderId, { shirt: 500 })), reason: "Two more" });
+    await issue(orderId, { ...(await currentBody(orderId, { shirt: 5 })), reason: "Two more" });
 
     expect(await approve(orderId, first)).toEqual({ ok: false, code: "CONFLICT", message: CHANGED });
     const order = await readOrder(orderId);
@@ -487,7 +487,7 @@ describe("revising an approved order", () => {
     const orderId = await makeOrder({
       fulfilmentType: "PICKUP_DELIVERY",
       path: ["PICKUP_SCHEDULED", "PICKED_UP", "RECEIVED_BY_STORE"],
-      lines: [{ service: "shirt", quantity: 200, unitPrice: 70_000 }],
+      lines: [{ service: "shirt", quantity: 2, unitPrice: 70_000 }],
     });
     const body = await currentBody(orderId);
     const tampered = {
@@ -512,7 +512,7 @@ describe("revising an approved order", () => {
   });
 
   it("refuses a negative total", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 100 }] });
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 1 }] });
     const body = {
       ...(await currentBody(orderId)),
       adjustments: [{ description: "Goodwill", kind: "DISCOUNT" as const, amount: "1,000" }],
@@ -526,7 +526,7 @@ describe("revising an approved order", () => {
     const orderId = await makeOrder({
       fulfilmentType: "PICKUP_DELIVERY",
       path: ["PICKUP_SCHEDULED", "PICKED_UP", "RECEIVED_BY_STORE", "IN_PROGRESS", "READY", "OUT_FOR_DELIVERY"],
-      lines: [{ service: "shirt", quantity: 200 }],
+      lines: [{ service: "shirt", quantity: 2 }],
     });
     expect(await issue(orderId, { ...(await currentBody(orderId)), reason: "Late change" })).toMatchObject({
       ok: false,
@@ -539,30 +539,43 @@ describe("revising an approved order", () => {
 
 // ───────────── Declining ─────────────
 
+describe("quantities", () => {
+  it("refuses a fractional or out-of-range quantity sent directly, changing nothing", async () => {
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "duvet", quantity: null }], approved: false });
+    const before = await readOrder(orderId);
+    for (const quantity of ["1.5", "2.0", "0", "1000", ""]) {
+      const body = await currentBody(orderId);
+      const result = await issue(orderId, { ...body, lines: [{ ...body.lines[0], quantity }] });
+      expect(result).toMatchObject({ ok: false, fieldErrors: { "lines.0.quantity": expect.any(String) } });
+    }
+    expect(await readOrder(orderId)).toEqual(before);
+  });
+});
+
 describe("pricing quote-required lines", () => {
   it("issues a revision with the new unit price, and moves the balance only on approval", async () => {
-    // 2 kg weighed at the ₦1,500 "from" price and approved: ₦3,000.
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "wash", quantity: 200 }, { service: "shirt", quantity: 100 }] });
+    // 2 duvets at the ₦1,500 "from" price, approved: ₦3,000.
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "duvet", quantity: 2 }, { service: "shirt", quantity: 1 }] });
     const balance = async () => (await getOrderDetail(storeId, orderId, "STAFF"))?.balance;
     expect(await balance()).toMatchObject({ balanceKobo: 300_000 + SHIRT_PRICE });
 
-    const washId = (await readOrder(orderId)).lines.find((line) => line.serviceId === ids.wash)!.id;
-    const body = withPrices(await currentBody(orderId), { [washId]: "₦2,250.50" });
+    const duvetId = (await readOrder(orderId)).lines.find((line) => line.serviceId === ids.duvet)!.id;
+    const body = withPrices(await currentBody(orderId), { [duvetId]: "₦2,250.50" });
     expect(await issue(orderId, { ...body, reason: "Heavy items, priced after inspection" })).toMatchObject({ ok: true });
 
     const order = await readOrder(orderId);
     const latest = order.quoteRevisions.at(-1);
-    // 2 kg × ₦2,250.50 = ₦4,501, plus the shirt at its fixed ₦800.
+    // 2 × ₦2,250.50 = ₦4,501, plus the shirt at its fixed ₦800.
     expect(latest).toMatchObject({ version: 2, status: "PENDING", total: 450_100 + SHIRT_PRICE });
     const snapshot = latest?.linesSnapshot as { lines: { serviceId: string; unitPrice: number; lineTotal: number }[] };
     expect(snapshot.lines).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ serviceId: ids.wash, unitPrice: 225_050, lineTotal: 450_100 }),
+        expect.objectContaining({ serviceId: ids.duvet, unitPrice: 225_050, lineTotal: 450_100 }),
         expect.objectContaining({ serviceId: ids.shirt, unitPrice: SHIRT_PRICE, lineTotal: SHIRT_PRICE }),
       ]),
     );
     // The working line carries the new price once issued; the revision before it is untouched.
-    expect(order.lines.find((line) => line.serviceId === ids.wash)).toMatchObject({ unitPrice: 225_050, lineTotal: 450_100 });
+    expect(order.lines.find((line) => line.serviceId === ids.duvet)).toMatchObject({ unitPrice: 225_050, lineTotal: 450_100 });
     expect(order.quoteRevisions[0]).toMatchObject({ status: "APPROVED", total: 300_000 + SHIRT_PRICE });
     expect(await balance()).toMatchObject({ balanceKobo: 300_000 + SHIRT_PRICE });
 
@@ -571,22 +584,22 @@ describe("pricing quote-required lines", () => {
   });
 
   it("keeps a quote-required line's price when none is sent", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "wash", quantity: null }], approved: false });
-    expect(await issue(orderId, await currentBody(orderId, { wash: 300 }))).toMatchObject({ ok: true });
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "duvet", quantity: null }], approved: false });
+    expect(await issue(orderId, await currentBody(orderId, { duvet: 3 }))).toMatchObject({ ok: true });
     const order = await readOrder(orderId);
-    expect(order.lines[0]).toMatchObject({ unitPrice: WASH_PRICE, lineTotal: 450_000 });
+    expect(order.lines[0]).toMatchObject({ unitPrice: DUVET_PRICE, lineTotal: 450_000 });
     expect(order.quoteRevisions.at(-1)?.total).toBe(450_000);
   });
 
   it("refuses a price for a fixed-price line, or an invalid price, creating nothing", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "wash", quantity: 200 }, { service: "shirt", quantity: 100 }] });
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "duvet", quantity: 2 }, { service: "shirt", quantity: 1 }] });
     const before = await readOrder(orderId);
     const body = { ...(await currentBody(orderId)), reason: "Repriced" };
     const shirtId = before.lines.find((line) => line.serviceId === ids.shirt)!.id;
-    const washId = before.lines.find((line) => line.serviceId === ids.wash)!.id;
+    const duvetId = before.lines.find((line) => line.serviceId === ids.duvet)!.id;
 
     // Even the shirt's current price, alongside a valid quote-required price.
-    expect(await issue(orderId, withPrices(body, { [shirtId]: "800", [washId]: "2,000" }))).toMatchObject({
+    expect(await issue(orderId, withPrices(body, { [shirtId]: "800", [duvetId]: "2,000" }))).toMatchObject({
       ok: false,
       code: "PRICE_NOT_ALLOWED",
       message: CHANGED,
@@ -596,8 +609,8 @@ describe("pricing quote-required lines", () => {
       await issue(orderId, { ...body, lines: [...body.lines, { kind: "new", serviceId: ids.shirt, quantity: "1", unitPrice: "1" }] }),
     ).toMatchObject({ ok: false, code: "PRICE_NOT_ALLOWED" });
     for (const price of ["-5", "10,000,000.01", "1.234", "two thousand"]) {
-      const index = body.lines.findIndex((line) => line.kind === "existing" && line.lineId === washId);
-      const result = await issue(orderId, withPrices(body, { [washId]: price }));
+      const index = body.lines.findIndex((line) => line.kind === "existing" && line.lineId === duvetId);
+      const result = await issue(orderId, withPrices(body, { [duvetId]: price }));
       expect(result).toMatchObject({ ok: false, fieldErrors: { [`lines.${index}.unitPrice`]: expect.any(String) } });
     }
     expect(await readOrder(orderId)).toEqual(before);
@@ -606,8 +619,8 @@ describe("pricing quote-required lines", () => {
 
 describe("recording a decline", () => {
   it("stores the customer's reason and the audit note separately, keeps the order where it is, and allows a new revision", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "wash", quantity: null }], approved: false });
-    await issue(orderId, await currentBody(orderId, { wash: 500 }));
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "duvet", quantity: null }], approved: false });
+    await issue(orderId, await currentBody(orderId, { duvet: 5 }));
     const v2 = await latestRevisionId(orderId);
 
     request.headers = users.owner.headers;
@@ -627,15 +640,15 @@ describe("recording a decline", () => {
     // A declined revision can't be approved afterwards.
     expect(await approve(orderId, v2)).toMatchObject({ ok: false, code: "CONFLICT" });
 
-    expect(await issue(orderId, { ...(await currentBody(orderId, { wash: 450 })), reason: "Re-weighed" })).toMatchObject({ ok: true });
+    expect(await issue(orderId, { ...(await currentBody(orderId, { duvet: 4 })), reason: "Recounted" })).toMatchObject({ ok: true });
     order = await readOrder(orderId);
     expect(order.quoteRevisions.map((revision) => revision.status)).toEqual(["SUPERSEDED", "DECLINED", "PENDING"]);
     expect(order.stageBeforeQuote).toBe("RECEIVED_BY_STORE");
   });
 
   it("requires the customer's reason", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "wash", quantity: null }], approved: false });
-    await issue(orderId, await currentBody(orderId, { wash: 500 }));
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "duvet", quantity: null }], approved: false });
+    await issue(orderId, await currentBody(orderId, { duvet: 5 }));
     request.headers = users.staff.headers;
     expect(
       await recordDecision({ decision: "DECLINE", orderId, revisionId: await latestRevisionId(orderId), customerMessage: "  " }),
@@ -647,10 +660,10 @@ describe("recording a decline", () => {
 
 describe("concurrent requests", () => {
   it("lets one of two revisions issued at the same moment through, with unique versions", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 300 }] });
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 3 }] });
     const [a, b] = await Promise.all([
-      issue(orderId, { ...(await currentBody(orderId, { shirt: 400 })), reason: "One more" }),
-      issue(orderId, { ...(await currentBody(orderId, { shirt: 500 })), reason: "Two more" }),
+      issue(orderId, { ...(await currentBody(orderId, { shirt: 4 })), reason: "One more" }),
+      issue(orderId, { ...(await currentBody(orderId, { shirt: 5 })), reason: "Two more" }),
     ]);
     expect([a, b].filter((result) => result.ok)).toHaveLength(1);
     expect([a, b].filter((result) => !result.ok)).toEqual([{ ok: false, code: "CONFLICT", message: CHANGED }]);
@@ -660,8 +673,8 @@ describe("concurrent requests", () => {
   });
 
   it("lets exactly one of two approvals of the same revision through", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "wash", quantity: null }], approved: false });
-    await issue(orderId, await currentBody(orderId, { wash: 500 }));
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "duvet", quantity: null }], approved: false });
+    await issue(orderId, await currentBody(orderId, { duvet: 5 }));
     const v2 = await latestRevisionId(orderId);
 
     const results = await Promise.all([approve(orderId, v2, users.staff.headers), approve(orderId, v2, users.staff.headers)]);
@@ -677,8 +690,8 @@ describe("concurrent requests", () => {
   });
 
   it("refuses an editor opened on an older version", async () => {
-    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 300 }] });
-    const body = { ...(await currentBody(orderId, { shirt: 400 })), reason: "One more" };
+    const orderId = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"], lines: [{ service: "shirt", quantity: 3 }] });
+    const body = { ...(await currentBody(orderId, { shirt: 4 })), reason: "One more" };
     await issue(orderId, body);
     expect(await issue(orderId, body, { basedOnVersion: 1 })).toEqual({ ok: false, code: "CONFLICT", message: CHANGED });
   });
@@ -711,7 +724,7 @@ describe("store isolation", () => {
       }),
     ).toEqual({ ok: false, code: "NOT_FOUND", message: "Order not found." });
     // A FreshFold order ID with a CleanWave revision ID matches nothing either.
-    const own = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "shirt", quantity: 100 }] });
+    const own = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "shirt", quantity: 1 }] });
     if (cleanWave.revisionId) expect(await approve(own, cleanWave.revisionId)).toMatchObject({ ok: false, code: "NOT_FOUND" });
     // A FreshFold order sent with a CleanWave line ID and a price: that line isn't this order's.
     request.headers = users.staff.headers;
@@ -735,7 +748,7 @@ describe("editing the address", () => {
     const orderId = await makeOrder({
       fulfilmentType: "PICKUP_DELIVERY",
       path: ["PICKUP_SCHEDULED"],
-      lines: [{ service: "shirt", quantity: 100 }],
+      lines: [{ service: "shirt", quantity: 1 }],
       address: "1 Old Road",
     });
     request.headers = users.staff.headers;
@@ -750,11 +763,11 @@ describe("editing the address", () => {
   });
 
   it("works only for pickup orders, and not once the order is out for delivery", async () => {
-    const dropOff = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "shirt", quantity: 100 }] });
+    const dropOff = await makeOrder({ path: ["RECEIVED_BY_STORE"], lines: [{ service: "shirt", quantity: 1 }] });
     const delivering = await makeOrder({
       fulfilmentType: "PICKUP_DELIVERY",
       path: ["PICKUP_SCHEDULED", "PICKED_UP", "RECEIVED_BY_STORE", "IN_PROGRESS", "READY", "OUT_FOR_DELIVERY"],
-      lines: [{ service: "shirt", quantity: 100 }],
+      lines: [{ service: "shirt", quantity: 1 }],
     });
     request.headers = users.staff.headers;
     expect(await editAddress({ orderId: dropOff, address: "3 Somewhere" })).toMatchObject({

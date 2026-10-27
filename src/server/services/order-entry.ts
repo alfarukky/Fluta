@@ -3,9 +3,9 @@ import "server-only";
 import { getBookingDateOptions, isBookablePickup, toBookingLineAmount } from "@/lib/booking";
 import { MESSAGE_TEMPLATES } from "@/lib/messages";
 import { PAYSTACK_EMAIL_REQUIRED } from "@/lib/online-payment";
-import { formatNaira, lineTotalKobo } from "@/lib/money";
+import { formatNaira, getLineTotal } from "@/lib/money";
 import { formatOrderNumber } from "@/lib/orders";
-import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY, toDecimalString, type QuantityProblem } from "@/lib/quantity";
+import { getQuantityMessage, toStoredQuantity } from "@/lib/quantity";
 import { fromDateKey, getLocalDateKey, getMinutesInTimeZone } from "@/lib/time";
 import { generateToken, hashToken } from "@/lib/tokens";
 import { UNLISTED_AREA_ID, type BookingInput } from "@/schemas/booking";
@@ -412,11 +412,11 @@ function assembleOrder({ lines, fulfilment, ...order }: OrderParts): NewOrderDat
     fulfilmentType: order.fulfilmentType,
     lines: lines
       .filter((line) => line.lineType === "SERVICE")
-      .map((line) => ({ requiresQuote: line.requiresQuote, quantity: line.quantityHundredths })),
+      .map((line) => ({ requiresQuote: line.requiresQuote, quantity: line.quantity })),
     fulfilmentCharge,
   });
   const snapshot = buildQuoteSnapshot(
-    lines.map((line) => ({ ...line, quantity: line.quantityHundredths, estimate: line.estimateHundredths })),
+    lines,
     { areaName: fulfilment.serviceAreaName, isOutOfArea: fulfilment.isOutOfArea, charge: fulfilmentCharge },
   );
 
@@ -448,30 +448,15 @@ async function resolveCustomer(
 }
 
 interface PricedLine extends Omit<NewOrderLineData, "quantity" | "estimatedQuantity"> {
-  quantityHundredths: number | null;
-  estimateHundredths: number | null;
+  quantity: number | null;
+  estimate: number | null;
 }
-
-const QUANTITY_MESSAGES: Record<"ITEMS" | "WEIGHT", Record<QuantityProblem | "REQUIRED", string>> = {
-  ITEMS: {
-    REQUIRED: "Enter how many",
-    INVALID: "Enter a whole number",
-    TOO_SMALL: "Enter at least 1",
-    TOO_LARGE: `Enter ${MAX_ITEM_QUANTITY} or fewer`,
-  },
-  WEIGHT: {
-    REQUIRED: "Enter the weight",
-    INVALID: "Enter the weight in kg, like 2.5",
-    TOO_SMALL: "Enter at least 0.1 kg",
-    TOO_LARGE: "Enter 999.99 kg or less",
-  },
-};
 
 // Each line's name, price, pricing type, and quote flag come from the store's
 // own active service; repeated services become one line. Online, the
 // customer's amount is billed only on a fixed-price line: on a quote-required
-// one it is an estimate (toBookingLineAmount), and the store weighs or counts
-// the items later.
+// one it is an estimate (toBookingLineAmount), and the store counts the items
+// later. Staff always enter the billed quantity.
 async function priceServiceLines(
   storeId: string,
   requested: CreateOrderInput["serviceLines"],
@@ -480,7 +465,7 @@ async function priceServiceLines(
   catalogue?: readonly OrderableService[],
 ): Promise<{ ok: true; lines: PricedLine[] } | Failure> {
   const merged = mergeServiceLines(
-    requested.map((line) => ({ serviceId: line.serviceId, quantity: line.quantity, estimate: line.estimate })),
+    requested.map((line) => ({ serviceId: line.serviceId, quantity: line.quantity, estimate: null })),
   );
   const active = catalogue ?? (await findActiveServices(storeId, merged.map((line) => line.serviceId)));
   const services = new Map(active.map((service) => [service.id, service]));
@@ -493,9 +478,10 @@ async function priceServiceLines(
       fieldErrors[`serviceLines.${index}.serviceId`] = "This service isn't available any more. Remove it.";
       continue;
     }
-    const problem = online ? getBookingAmountProblem(service, line.quantity) : getLineQuantityProblem(service, line.quantity, line.estimate);
+    // Every line needs a whole number from 1 to 999, billed or estimated.
+    const problem = getQuantityMessage(line.quantity);
     if (problem) {
-      fieldErrors[`serviceLines.${index}.${problem.field}`] = problem.message;
+      fieldErrors[`serviceLines.${index}.quantity`] = problem;
       continue;
     }
     const { quantity, estimate } = online ? toBookingLineAmount(service, line.quantity) : line;
@@ -508,36 +494,6 @@ async function priceServiceLines(
   return { ok: false, error, fieldErrors };
 }
 
-// Items and packages always need a quantity; a per-kg line may wait to be
-// weighed (per-kg services always require a quote).
-function getLineQuantityProblem(
-  service: OrderableService,
-  quantity: number | null,
-  estimate: number | null,
-): { field: "quantity" | "estimate"; message: string } | null {
-  const messages = QUANTITY_MESSAGES[isWeighed(service.pricingType) ? "WEIGHT" : "ITEMS"];
-  if (quantity === null) {
-    if (!isWeighed(service.pricingType)) return { field: "quantity", message: messages.REQUIRED };
-  } else {
-    const problem = getQuantityProblem(quantity, service.pricingType);
-    if (problem) return { field: "quantity", message: messages[problem] };
-  }
-  const estimateProblem = estimate === null ? null : getQuantityProblem(estimate, service.pricingType);
-  return estimateProblem ? { field: "estimate", message: messages[estimateProblem] } : null;
-}
-
-// A customer's amount: how many items or packages (required), or an
-// estimated weight (optional).
-function getBookingAmountProblem(
-  service: OrderableService,
-  amount: number | null,
-): { field: "quantity"; message: string } | null {
-  const messages = QUANTITY_MESSAGES[isWeighed(service.pricingType) ? "WEIGHT" : "ITEMS"];
-  if (amount === null) return isWeighed(service.pricingType) ? null : { field: "quantity", message: messages.REQUIRED };
-  const problem = getQuantityProblem(amount, service.pricingType);
-  return problem ? { field: "quantity", message: messages[problem] } : null;
-}
-
 function toServiceLine(service: OrderableService, quantity: number | null, estimate: number | null): PricedLine {
   return {
     lineType: "SERVICE",
@@ -546,9 +502,9 @@ function toServiceLine(service: OrderableService, quantity: number | null, estim
     pricingType: service.pricingType,
     requiresQuote: service.requiresQuote,
     unitPrice: service.price,
-    quantityHundredths: quantity,
-    estimateHundredths: estimate,
-    lineTotal: quantity === null ? null : lineTotalKobo(service.price, quantity),
+    quantity,
+    estimate,
+    lineTotal: quantity === null ? null : getLineTotal(service.price, quantity),
   };
 }
 
@@ -560,17 +516,17 @@ function toAdjustmentLine(adjustment: CreateOrderInput["adjustments"][number]): 
     pricingType: null,
     requiresQuote: false,
     unitPrice: null,
-    quantityHundredths: null,
-    estimateHundredths: null,
+    quantity: null,
+    estimate: null,
     lineTotal: adjustment.amount,
   };
 }
 
-function toLineData({ quantityHundredths, estimateHundredths, ...line }: PricedLine): NewOrderLineData {
+function toLineData({ quantity, estimate, ...line }: PricedLine): NewOrderLineData {
   return {
     ...line,
-    quantity: quantityHundredths === null ? null : toDecimalString(quantityHundredths),
-    estimatedQuantity: estimateHundredths === null ? null : toDecimalString(estimateHundredths),
+    quantity: quantity === null ? null : toStoredQuantity(quantity),
+    estimatedQuantity: estimate === null ? null : toStoredQuantity(estimate),
   };
 }
 

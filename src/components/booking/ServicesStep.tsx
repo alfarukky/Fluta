@@ -5,10 +5,8 @@ import { MinusIcon, PlusIcon } from "lucide-react";
 import { QuantityStepper } from "@/components/forms/QuantityStepper";
 import { describedBy, FormField } from "@/components/settings/FormField";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatServicePrice } from "@/lib/money";
-import { isWeighed } from "@/lib/quantity";
 import { CUSTOMER_NOTE_MAX } from "@/schemas/field-limits";
 import type { BookingService } from "@/types/booking";
 
@@ -25,14 +23,14 @@ interface ServicesStepProps {
 
 const NOTE_HINT = "Optional. For example: 2 curtains, 1 rug, or please iron the shirts only.";
 
-// Active services with their prices. Added ones ask how many, or for an
-// estimated weight that the store weighs later. Anything not listed goes in
+// Active services with their prices. Added ones ask how many (an estimate on
+// items the store inspects). Anything not listed goes in
 // the note, which the store reads and prices itself.
 export function ServicesStep({ services, lines, note, errors, onChange, onNoteChange }: ServicesStepProps) {
   const categories = groupByCategory(services);
 
   function add(service: BookingService) {
-    onChange([...lines, { serviceId: service.id, amount: isWeighed(service.pricingType) ? "" : "1" }]);
+    onChange([...lines, { serviceId: service.id, amount: "1" }]);
   }
   function remove(serviceId: string) {
     onChange(lines.filter((line) => line.serviceId !== serviceId));
@@ -118,40 +116,18 @@ interface AmountFieldProps {
 
 function AmountField({ service, value, error, onChange }: AmountFieldProps) {
   const id = `amount-${service.id}`;
-  const weighed = isWeighed(service.pricingType);
-  const label = weighed ? "Estimated weight (kg), optional" : "How many";
-  const hint = weighed
-    ? "Your estimate. The store will weigh it."
-    : service.requiresQuote
-      ? "The store will confirm the price after checking your items."
-      : undefined;
+  const hint = service.requiresQuote ? "The store will confirm the price after checking your items." : undefined;
   return (
-    <FormField id={id} label={label} hint={hint} error={error}>
-      {weighed ? (
-        // Weights need decimals, so no stepper.
-        <Input
-          id={id}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          inputMode="decimal"
-          autoComplete="off"
-          maxLength={7}
-          placeholder="e.g. 2.5"
-          className="max-w-40"
-          aria-invalid={error ? true : undefined}
-          aria-describedby={describedBy(id, hint, error)}
-        />
-      ) : (
-        <QuantityStepper
-          id={id}
-          value={value}
-          onChange={onChange}
-          label={`how many ${service.name}`}
-          maxLength={7}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={describedBy(id, hint, error)}
-        />
-      )}
+    <FormField id={id} label="How many" hint={hint} error={error}>
+      <QuantityStepper
+        id={id}
+        value={value}
+        onChange={onChange}
+        label={`how many ${service.name}`}
+        maxLength={7}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={describedBy(id, hint, error)}
+      />
     </FormField>
   );
 }

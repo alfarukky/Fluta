@@ -1,9 +1,9 @@
 import "server-only";
 
 import type { FulfilmentType, OrderLineType, PricingType } from "@/generated/prisma/client";
-import { lineTotalKobo } from "@/lib/money";
+import { getLineTotal } from "@/lib/money";
 import { getOrderTotal, isOrderFullyPriced, mergeServiceLines } from "@/lib/order-pricing";
-import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY } from "@/lib/quantity";
+import { getQuantityMessage } from "@/lib/quantity";
 import { isRevisionReasonRequired } from "@/lib/quotes";
 import { MAX_SERVICE_PRICE } from "@/schemas/services";
 
@@ -13,7 +13,7 @@ import { buildQuoteSnapshot, type PricedOrderLine, type QuoteSnapshot, type Snap
 // catalogue, and the area. Existing service lines keep the unit price they
 // were added at; newly added lines use today's catalogue price. The browser
 // sends IDs, quantities, and Others lines, and a unit price only for a
-// quote-required line (one the store prices after inspecting or weighing):
+// quote-required line (one the store prices after inspecting it):
 // whether a line is quote-required comes from the order's line or the
 // catalogue, never from the request. Every total is built here.
 
@@ -26,7 +26,7 @@ export interface ExistingOrderLine {
   pricingType: PricingType | null;
   requiresQuote: boolean;
   unitPrice: number | null;
-  estimate: number | null; // hundredths
+  estimate: number | null; // the customer's count, never billed
 }
 
 // An active catalogue service, priced today.
@@ -60,20 +60,6 @@ export type RevisionProblem =
 export type PricedRevisionLines =
   | { ok: true; lines: PricedOrderLine[] }
   | { ok: false; problem: RevisionProblem; fieldErrors: Record<string, string> };
-
-const QUANTITY_REQUIRED = { weight: "Enter the weight", items: "Enter how many" };
-const QUANTITY_MESSAGES = {
-  weight: { INVALID: "Enter the weight in kg, like 2.5", TOO_SMALL: "Enter at least 0.1 kg", TOO_LARGE: "Enter 999.99 kg or less" },
-  items: { INVALID: "Enter a whole number", TOO_SMALL: "Enter at least 1", TOO_LARGE: `Enter ${MAX_ITEM_QUANTITY} or fewer` },
-};
-
-// Every service line needs its quantity: a revision is always fully priced.
-function getQuantityMessage(pricingType: PricingType, quantity: number | null): string | null {
-  const kind = isWeighed(pricingType) ? "weight" : "items";
-  if (quantity === null) return QUANTITY_REQUIRED[kind];
-  const problem = getQuantityProblem(quantity, pricingType);
-  return problem ? QUANTITY_MESSAGES[kind][problem] : null;
-}
 
 // The unit price a line goes out at: the one sent for a quote-required line,
 // otherwise its own. A price for any other line is refused (fixed prices
@@ -134,9 +120,10 @@ export function priceRevisionLines(
     // unless staff priced this quote-required line.
     const price = resolveUnitPrice(current.requiresQuote, current.unitPrice, line.unitPrice);
     if (!price.ok) report(`lines.${index}.unitPrice`, price.message, price.problem);
-    const message = getQuantityMessage(current.pricingType, line.quantity);
+    // Every service line needs its quantity: a revision is always fully priced.
+    const message = getQuantityMessage(line.quantity);
     if (message || line.quantity === null) {
-      report(`lines.${index}.quantity`, message ?? QUANTITY_REQUIRED.items, "INVALID_QUANTITY");
+      report(`lines.${index}.quantity`, message ?? "Enter how many", "INVALID_QUANTITY");
       continue;
     }
     if (!price.ok) continue;
@@ -149,7 +136,7 @@ export function priceRevisionLines(
       unitPrice: price.unitPrice,
       quantity: line.quantity,
       estimate: current.estimate,
-      lineTotal: lineTotalKobo(price.unitPrice, line.quantity),
+      lineTotal: getLineTotal(price.unitPrice, line.quantity),
     });
   }
 
@@ -168,9 +155,9 @@ export function priceRevisionLines(
     const sent = addedPrices.get(line.serviceId);
     const price = resolveUnitPrice(service.requiresQuote, service.price, sent?.unitPrice);
     if (!price.ok) report(`lines.${sent?.index ?? index}.unitPrice`, price.message, price.problem);
-    const message = getQuantityMessage(service.pricingType, line.quantity);
+    const message = getQuantityMessage(line.quantity);
     if (message || line.quantity === null) {
-      report(`lines.${index}.quantity`, message ?? QUANTITY_REQUIRED.items, "INVALID_QUANTITY");
+      report(`lines.${index}.quantity`, message ?? "Enter how many", "INVALID_QUANTITY");
       continue;
     }
     if (!price.ok) continue;
@@ -183,7 +170,7 @@ export function priceRevisionLines(
       unitPrice: price.unitPrice,
       quantity: line.quantity,
       estimate: null,
-      lineTotal: lineTotalKobo(price.unitPrice, line.quantity),
+      lineTotal: getLineTotal(price.unitPrice, line.quantity),
     });
   }
 

@@ -17,7 +17,7 @@ export interface TrackingTimelineStep {
 export interface TrackingItem {
   key: string;
   name: string;
-  // "2 × ₦800", "2.5 kg × ₦1,500", "About 3 kg. The store will weigh it."
+  // "2 × ₦800", "× 2", "About 3. The store will count it."
   detail: string | null;
   // Only from an approved price (or the price update under review).
   amount: string | null;

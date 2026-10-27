@@ -1,55 +1,66 @@
 import { describe, expect, it } from "vitest";
 
-import { formatQuantity, fromDecimalString, getQuantityProblem, parseHundredths, toDecimalString } from "./quantity";
+import { fromStoredQuantity, getQuantityMessage, getQuantityProblem, parseQuantity, toStoredQuantity } from "./quantity";
 
-describe("parseHundredths", () => {
-  it("reads whole numbers and up to two decimal places", () => {
-    expect(parseHundredths("3")).toBe(300);
-    expect(parseHundredths(" 2.5 ")).toBe(250);
-    expect(parseHundredths("0.15")).toBe(15);
-    expect(parseHundredths("999.99")).toBe(99_999);
+describe("parseQuantity", () => {
+  it("reads whole numbers", () => {
+    expect(parseQuantity("3")).toBe(3);
+    expect(parseQuantity(" 12 ")).toBe(12);
+    expect(parseQuantity("999")).toBe(999);
+    expect(parseQuantity("0")).toBe(0);
   });
 
-  it("rejects anything else", () => {
-    for (const text of ["", "2.555", "-1", "1e2", "2,5", ".5", "abc", "1234567"]) {
-      expect(parseHundredths(text)).toBeNull();
+  it("rejects fractions and anything else", () => {
+    for (const text of ["", "1.5", "2.0", "0.5", "-1", "1e2", "2,5", ".5", "2 pcs", "abc", "1234567"]) {
+      expect(parseQuantity(text)).toBeNull();
     }
   });
 });
 
 describe("getQuantityProblem", () => {
-  it("allows 1–999 whole items or packages", () => {
-    expect(getQuantityProblem(100, "PER_ITEM")).toBeNull();
-    expect(getQuantityProblem(99_900, "PER_PACKAGE")).toBeNull();
-    expect(getQuantityProblem(0, "PER_ITEM")).toBe("TOO_SMALL");
-    expect(getQuantityProblem(100_000, "PER_ITEM")).toBe("TOO_LARGE");
-    expect(getQuantityProblem(250, "PER_ITEM")).toBe("INVALID");
+  it("allows whole numbers from 1 to 999", () => {
+    expect(getQuantityProblem(1)).toBeNull();
+    expect(getQuantityProblem(999)).toBeNull();
   });
 
-  it("allows 0.1–999.99 kg", () => {
-    expect(getQuantityProblem(10, "PER_KG")).toBeNull();
-    expect(getQuantityProblem(99_999, "PER_KG")).toBeNull();
-    expect(getQuantityProblem(9, "PER_KG")).toBe("TOO_SMALL");
-    expect(getQuantityProblem(100_000, "PER_KG")).toBe("TOO_LARGE");
+  it("refuses anything outside that range", () => {
+    expect(getQuantityProblem(0)).toBe("TOO_SMALL");
+    expect(getQuantityProblem(-3)).toBe("TOO_SMALL");
+    expect(getQuantityProblem(1000)).toBe("TOO_LARGE");
+    expect(getQuantityProblem(1.5)).toBe("INVALID");
+    expect(getQuantityProblem(Number.NaN)).toBe("INVALID");
   });
 });
 
-describe("decimal strings", () => {
-  it("writes and reads the Decimal column form", () => {
-    expect(toDecimalString(250)).toBe("2.50");
-    expect(toDecimalString(5)).toBe("0.05");
-    expect(toDecimalString(300)).toBe("3.00");
-    expect(fromDecimalString("2.500")).toBe(250);
-    expect(fromDecimalString("3")).toBe(300);
-    expect(fromDecimalString("0.050")).toBe(5);
+describe("stored quantities", () => {
+  it("writes whole numbers as text", () => {
+    expect(toStoredQuantity(3)).toBe("3");
+    expect(toStoredQuantity(999)).toBe("999");
+  });
+
+  it("never writes a fraction or an out-of-range quantity", () => {
+    expect(() => toStoredQuantity(1.5)).toThrow(RangeError);
+    expect(() => toStoredQuantity(0)).toThrow(RangeError);
+    expect(() => toStoredQuantity(1000)).toThrow(RangeError);
+  });
+
+  it("reads stored Decimals and older snapshot text", () => {
+    expect(fromStoredQuantity("3")).toBe(3);
+    expect(fromStoredQuantity("3.000")).toBe(3);
+    expect(fromStoredQuantity("12.00")).toBe(12);
+  });
+
+  it("refuses a stored fraction", () => {
+    expect(() => fromStoredQuantity("2.5")).toThrow(RangeError);
   });
 });
 
-describe("formatQuantity", () => {
-  it("drops trailing zeros and labels weights", () => {
-    expect(formatQuantity(500, "PER_ITEM")).toBe("5");
-    expect(formatQuantity(250, "PER_KG")).toBe("2.5 kg");
-    expect(formatQuantity(205, "PER_KG")).toBe("2.05 kg");
-    expect(formatQuantity(300, "PER_KG")).toBe("3 kg");
+describe("getQuantityMessage", () => {
+  it("explains a missing or unusable quantity", () => {
+    expect(getQuantityMessage(null)).toBe("Enter how many");
+    expect(getQuantityMessage(0)).toBe("Enter at least 1");
+    expect(getQuantityMessage(1000)).toBe("Enter 999 or fewer");
+    expect(getQuantityMessage(1.5)).toBe("Enter a whole number");
+    expect(getQuantityMessage(3)).toBeNull();
   });
 });

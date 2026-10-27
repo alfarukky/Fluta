@@ -8,7 +8,7 @@ import type { OrderStage } from "@/generated/prisma/client";
 import { CLOSED_STAGES, formatOrderNumber } from "@/lib/orders";
 import { maskPhone } from "@/lib/phone";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
-import { formatQuantity, fromDecimalString, isWeighed } from "@/lib/quantity";
+import { fromStoredQuantity } from "@/lib/quantity";
 import { findPendingRevision, formatDifference, getTotalDifference } from "@/lib/quotes";
 import { formatCalendarDate, formatDateTime, toDateKey } from "@/lib/time";
 import { getTrackingLinkStatus, hashToken, isWellFormedToken } from "@/lib/tokens";
@@ -200,8 +200,8 @@ function buildPrice(order: TrackedOrderRecord): TrackingPrice {
       price: line.unitPrice ?? 0,
       pricingType: line.pricingType ?? "PER_ITEM",
       requiresQuote: line.requiresQuote,
-      quantity: toHundredths(line.quantity),
-      estimate: toHundredths(line.estimatedQuantity),
+      quantity: toQuantity(line.quantity),
+      estimate: toQuantity(line.estimatedQuantity),
     })),
     fulfilmentCharge: order.fulfilmentCharge,
   });
@@ -210,21 +210,18 @@ function buildPrice(order: TrackedOrderRecord): TrackingPrice {
   return { kind: "estimate", items, total: formatNaira(summary.total + others) };
 }
 
-function toHundredths(value: { toString(): string } | null): number | null {
-  return value === null ? null : fromDecimalString(value.toString());
+function toQuantity(value: { toString(): string } | null): number | null {
+  return value === null ? null : fromStoredQuantity(value.toString());
 }
 
 type ServiceLine = TrackedOrderRecord["lines"][number];
 
 function describeUnpricedLine(line: ServiceLine): string | null {
-  const pricingType = line.pricingType ?? "PER_ITEM";
-  const quantity = toHundredths(line.quantity);
-  // "× 2" for items or packages, "3.5 kg" for a weight.
-  if (quantity !== null) return isWeighed(pricingType) ? formatQuantity(quantity, pricingType) : `× ${formatQuantity(quantity, pricingType)}`;
-  const estimate = toHundredths(line.estimatedQuantity);
-  const what = pricingType === "PER_KG" ? "weigh" : "count";
-  if (estimate !== null) return `About ${formatQuantity(estimate, pricingType)}. The store will ${what} it.`;
-  return `The store will ${what} it.`;
+  const quantity = toQuantity(line.quantity);
+  if (quantity !== null) return `× ${quantity}`;
+  const estimate = toQuantity(line.estimatedQuantity);
+  if (estimate !== null) return `About ${estimate}. The store will count it.`;
+  return "The store will count it.";
 }
 
 function snapshotItems(snapshot: QuoteSnapshot): TrackingItem[] {
@@ -237,9 +234,8 @@ function snapshotItems(snapshot: QuoteSnapshot): TrackingItem[] {
         amount: formatNaira(line.lineTotal),
       };
     }
-    const quantity = line.quantity === null ? null : fromDecimalString(line.quantity);
-    const detail =
-      quantity === null ? null : `${formatQuantity(quantity, line.pricingType ?? "PER_ITEM")} × ${formatNaira(line.unitPrice ?? 0)}`;
+    const quantity = line.quantity === null ? null : fromStoredQuantity(line.quantity);
+    const detail = quantity === null ? null : `${quantity} × ${formatNaira(line.unitPrice ?? 0)}`;
     return { key: `${index}`, name: line.description, detail, amount: formatNaira(line.lineTotal) };
   });
 }

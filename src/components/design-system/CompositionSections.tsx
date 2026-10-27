@@ -370,7 +370,7 @@ function MobileTrackingPreview() {
           <div className="flex flex-col gap-0.5">
             <span className="type-label">Your quote is ready</span>
             <span className="type-body-sm text-muted-foreground">
-              The store weighed 3.5 kg of laundry. New total ₦5,250.
+              The store counted 3 duvets. New total ₦4,500.
             </span>
           </div>
           <Button className="w-full">Review quote</Button>

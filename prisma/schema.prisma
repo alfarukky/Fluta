@@ -32,7 +32,6 @@ enum StoreStatus {
 
 enum PricingType {
   PER_ITEM
-  PER_KG
   PER_PACKAGE
 }
 
@@ -332,8 +331,8 @@ model Service {
   nameKey       String // name lowercased, trimmed, repeated spaces collapsed; unique per store
   category      String?
   pricingType   PricingType
-  price         Int // minor units per item / kg / package; a "from" price when requiresQuote
-  requiresQuote Boolean     @default(false) // always true when pricingType = PER_KG (CHECK Service_per_kg_requires_quote)
+  price         Int // minor units per item / package; a "from" price when requiresQuote
+  requiresQuote Boolean     @default(false)
   isActive      Boolean     @default(true)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -432,9 +431,9 @@ model Order {
 
 // Migration adds a CHECK constraint (Prisma cannot express it):
 //   SERVICE:    serviceId, pricingType, unitPrice >= 0 all set; quantity > 0 and lineTotal >= 0
-//               both set, or both NULL only while requiresQuote (not yet weighed/inspected)
+//               both set, or both NULL only while requiresQuote (not yet counted/inspected)
 //   ADJUSTMENT: serviceId, pricingType, unitPrice, quantity, estimatedQuantity all NULL; lineTotal set
-// A second CHECK (OrderLine_per_kg_requires_quote): a per-kg line always has requiresQuote = true.
+// A second CHECK (OrderLine_whole_quantities): quantity and estimatedQuantity are whole numbers when set.
 // App rule: every line needs quantity and lineTotal before a priced quote is issued.
 model OrderLine {
   id                String        @id @default(cuid())
@@ -446,9 +445,9 @@ model OrderLine {
   pricingType       PricingType? // SERVICE only (snapshot)
   requiresQuote     Boolean       @default(false) // SERVICE only (snapshot)
   unitPrice         Int? // SERVICE only; price snapshot, never negative
-  estimatedQuantity Decimal?      @db.Decimal(10, 3) // SERVICE only; customer's estimate, never billed
-  quantity          Decimal?      @db.Decimal(10, 3) // SERVICE only; BILLED items, packages, or measured kg
-  lineTotal         Int? // SERVICE: unitPrice × quantity, rounded to the nearest kobo (NULL until priced); ADJUSTMENT: the signed amount
+  estimatedQuantity Decimal?      @db.Decimal(10, 3) // SERVICE only; customer's estimated count, never billed (whole number)
+  quantity          Decimal?      @db.Decimal(10, 3) // SERVICE only; BILLED items or packages (whole number, 1–999 in the app)
+  lineTotal         Int? // SERVICE: unitPrice × quantity (NULL until priced); ADJUSTMENT: the signed amount
 
   order   Order    @relation(fields: [storeId, orderId], references: [storeId, id], onDelete: Cascade)
   service Service? @relation(fields: [storeId, serviceId], references: [storeId, id])

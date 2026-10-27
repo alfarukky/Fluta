@@ -21,15 +21,16 @@ const EXISTING_SHIRT: ExistingOrderLine = {
   unitPrice: 70_000,
   estimate: null,
 };
-const EXISTING_WASH: ExistingOrderLine = {
-  id: "line-wash",
+// Quote-required from ₦1,500; the customer booked an estimated 5.
+const EXISTING_CURTAIN: ExistingOrderLine = {
+  id: "line-curtain",
   lineType: "SERVICE",
-  serviceId: "wash",
-  description: "Wash & fold",
-  pricingType: "PER_KG",
+  serviceId: "curtain",
+  description: "Curtain",
+  pricingType: "PER_ITEM",
   requiresQuote: true,
   unitPrice: 150_000,
-  estimate: 500,
+  estimate: 5,
 };
 const OTHERS_LINE: ExistingOrderLine = {
   id: "line-other",
@@ -51,7 +52,7 @@ const EXISTING_GOWN: ExistingOrderLine = {
   pricingType: "PER_ITEM",
   requiresQuote: true,
   unitPrice: 0,
-  estimate: 100,
+  estimate: 1,
 };
 
 const CATALOGUE = new Map<string, CatalogueServicePrice>([
@@ -62,60 +63,60 @@ const CATALOGUE = new Map<string, CatalogueServicePrice>([
 
 describe("priceRevisionLines", () => {
   it("keeps an existing line's original price and prices new lines from today's catalogue", () => {
-    const result = priceRevisionLines([EXISTING_SHIRT, EXISTING_WASH], CATALOGUE, {
+    const result = priceRevisionLines([EXISTING_SHIRT, EXISTING_CURTAIN], CATALOGUE, {
       lines: [
-        { kind: "existing", lineId: "line-shirt", quantity: 300 },
-        { kind: "existing", lineId: "line-wash", quantity: 425 },
-        { kind: "new", serviceId: "shirt", quantity: 100 },
+        { kind: "existing", lineId: "line-shirt", quantity: 3 },
+        { kind: "existing", lineId: "line-curtain", quantity: 4 },
+        { kind: "new", serviceId: "shirt", quantity: 1 },
       ],
       adjustments: [{ description: "Stain removal", amount: 50_000 }],
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.lines.map((line) => [line.description, line.unitPrice, line.quantity, line.lineTotal])).toEqual([
-      ["Shirt", 70_000, 300, 210_000],
-      // 4.25 kg × ₦1,500, rounded once to the nearest kobo.
-      ["Wash & fold", 150_000, 425, 637_500],
-      ["Shirt", 80_000, 100, 80_000],
+      ["Shirt", 70_000, 3, 210_000],
+      // Counted 4 (the customer estimated 5) at the "from" price.
+      ["Curtain", 150_000, 4, 600_000],
+      ["Shirt", 80_000, 1, 80_000],
       ["Stain removal", null, null, 50_000],
     ]);
-    // The customer's estimate stays on the weighed line.
-    expect(result.lines[1].estimate).toBe(500);
+    // The customer's estimate stays on the line, never billed.
+    expect(result.lines[1].estimate).toBe(5);
   });
 
   it("merges new lines for the same service", () => {
     const result = priceRevisionLines([], CATALOGUE, {
       lines: [
-        { kind: "new", serviceId: "duvet", quantity: 100 },
-        { kind: "new", serviceId: "duvet", quantity: 200 },
+        { kind: "new", serviceId: "duvet", quantity: 1 },
+        { kind: "new", serviceId: "duvet", quantity: 2 },
       ],
       adjustments: [],
     });
-    expect(result).toMatchObject({ ok: true, lines: [{ description: "Duvet", quantity: 300, lineTotal: 750_000 }] });
+    expect(result).toMatchObject({ ok: true, lines: [{ description: "Duvet", quantity: 3, lineTotal: 750_000 }] });
   });
 
   it("requires every quantity, so the revision is fully priced", () => {
-    const result = priceRevisionLines([EXISTING_WASH], CATALOGUE, {
-      lines: [{ kind: "existing", lineId: "line-wash", quantity: null }],
+    const result = priceRevisionLines([EXISTING_CURTAIN], CATALOGUE, {
+      lines: [{ kind: "existing", lineId: "line-curtain", quantity: null }],
       adjustments: [],
     });
-    expect(result).toEqual({ ok: false, problem: "INVALID_QUANTITY", fieldErrors: { "lines.0.quantity": "Enter the weight" } });
+    expect(result).toEqual({ ok: false, problem: "INVALID_QUANTITY", fieldErrors: { "lines.0.quantity": "Enter how many" } });
   });
 
   it("refuses lines that aren't the order's, or are sent twice, and services that aren't available", () => {
     expect(
       priceRevisionLines([EXISTING_SHIRT, OTHERS_LINE], CATALOGUE, {
         lines: [
-          { kind: "existing", lineId: "line-other", quantity: 100 },
-          { kind: "existing", lineId: "line-shirt", quantity: 100 },
-          { kind: "existing", lineId: "line-shirt", quantity: 100 },
-          { kind: "existing", lineId: "someone-elses", quantity: 100 },
+          { kind: "existing", lineId: "line-other", quantity: 1 },
+          { kind: "existing", lineId: "line-shirt", quantity: 1 },
+          { kind: "existing", lineId: "line-shirt", quantity: 1 },
+          { kind: "existing", lineId: "someone-elses", quantity: 1 },
         ],
         adjustments: [],
       }),
     ).toMatchObject({ ok: false, problem: "LINE_UNAVAILABLE", fieldErrors: { "lines.0": expect.any(String), "lines.2": expect.any(String), "lines.3": expect.any(String) } });
     expect(
-      priceRevisionLines([], CATALOGUE, { lines: [{ kind: "new", serviceId: "disabled", quantity: 100 }], adjustments: [] }),
+      priceRevisionLines([], CATALOGUE, { lines: [{ kind: "new", serviceId: "disabled", quantity: 1 }], adjustments: [] }),
     ).toMatchObject({ ok: false, problem: "SERVICE_UNAVAILABLE", fieldErrors: { "lines.0.serviceId": expect.any(String) } });
   });
 
@@ -129,57 +130,65 @@ describe("priceRevisionLines", () => {
 
 describe("priceRevisionLines with unit prices", () => {
   const price = (lines: Parameters<typeof priceRevisionLines>[2]["lines"]) =>
-    priceRevisionLines([EXISTING_SHIRT, EXISTING_WASH, EXISTING_GOWN], CATALOGUE, { lines, adjustments: [] });
+    priceRevisionLines([EXISTING_SHIRT, EXISTING_CURTAIN, EXISTING_GOWN], CATALOGUE, { lines, adjustments: [] });
   const summary = (result: ReturnType<typeof priceRevisionLines>) =>
     result.ok ? result.lines.map((line) => [line.description, line.unitPrice, line.quantity, line.lineTotal]) : result;
 
-  it("prices quote-required lines, from ₦0 and per kg", () => {
+  it("prices quote-required lines, from ₦0 and from a starting price", () => {
     const result = price([
-      { kind: "existing", lineId: "line-shirt", quantity: 300 },
-      // 4.25 kg at ₦2,000 (up from ₦1,500 "from").
-      { kind: "existing", lineId: "line-wash", quantity: 425, unitPrice: 200_000 },
+      { kind: "existing", lineId: "line-shirt", quantity: 3 },
+      // 4 at ₦2,000 each (up from ₦1,500 "from").
+      { kind: "existing", lineId: "line-curtain", quantity: 4, unitPrice: 200_000 },
       // "Price on inspection" priced at ₦45,000.
-      { kind: "existing", lineId: "line-gown", quantity: 100, unitPrice: 4_500_000 },
+      { kind: "existing", lineId: "line-gown", quantity: 1, unitPrice: 4_500_000 },
     ]);
     expect(summary(result)).toEqual([
-      ["Shirt", 70_000, 300, 210_000],
-      ["Wash & fold", 200_000, 425, 850_000],
-      ["Wedding gown", 4_500_000, 100, 4_500_000],
+      ["Shirt", 70_000, 3, 210_000],
+      ["Curtain", 200_000, 4, 800_000],
+      ["Wedding gown", 4_500_000, 1, 4_500_000],
     ]);
   });
 
-  it("rounds a per-kg price once to the nearest kobo", () => {
-    // 2.35 kg × ₦1,234.57 = ₦2,901.2395 → ₦2,901.24.
-    const result = price([{ kind: "existing", lineId: "line-wash", quantity: 235, unitPrice: 123_457 }]);
-    expect(summary(result)).toEqual([["Wash & fold", 123_457, 235, 290_124]]);
+  it("multiplies a unit price with kobo exactly", () => {
+    // 3 × ₦1,234.57 = ₦3,703.71.
+    const result = price([{ kind: "existing", lineId: "line-curtain", quantity: 3, unitPrice: 123_457 }]);
+    expect(summary(result)).toEqual([["Curtain", 123_457, 3, 370_371]]);
+  });
+
+  it("refuses a fractional quantity sent directly", () => {
+    expect(price([{ kind: "existing", lineId: "line-curtain", quantity: 1.5 }])).toEqual({
+      ok: false,
+      problem: "INVALID_QUANTITY",
+      fieldErrors: { "lines.0.quantity": "Enter a whole number" },
+    });
   });
 
   it("keeps a quote-required line's current price when none is sent", () => {
     for (const unitPrice of [undefined, null]) {
       const result = price([
-        { kind: "existing", lineId: "line-wash", quantity: 200, unitPrice },
-        { kind: "existing", lineId: "line-gown", quantity: 100, unitPrice },
+        { kind: "existing", lineId: "line-curtain", quantity: 2, unitPrice },
+        { kind: "existing", lineId: "line-gown", quantity: 1, unitPrice },
       ]);
       expect(summary(result)).toEqual([
-        ["Wash & fold", 150_000, 200, 300_000],
-        ["Wedding gown", 0, 100, 0],
+        ["Curtain", 150_000, 2, 300_000],
+        ["Wedding gown", 0, 1, 0],
       ]);
     }
   });
 
   it("allows ₦0 and ₦10,000,000 exactly", () => {
-    expect(summary(price([{ kind: "existing", lineId: "line-gown", quantity: 100, unitPrice: 0 }]))).toEqual([
-      ["Wedding gown", 0, 100, 0],
+    expect(summary(price([{ kind: "existing", lineId: "line-gown", quantity: 1, unitPrice: 0 }]))).toEqual([
+      ["Wedding gown", 0, 1, 0],
     ]);
-    expect(summary(price([{ kind: "existing", lineId: "line-gown", quantity: 100, unitPrice: 1_000_000_000 }]))).toEqual([
-      ["Wedding gown", 1_000_000_000, 100, 1_000_000_000],
+    expect(summary(price([{ kind: "existing", lineId: "line-gown", quantity: 1, unitPrice: 1_000_000_000 }]))).toEqual([
+      ["Wedding gown", 1_000_000_000, 1, 1_000_000_000],
     ]);
   });
 
   it("refuses the whole revision when a price is sent for a fixed-price line", () => {
     const result = price([
-      { kind: "existing", lineId: "line-shirt", quantity: 300, unitPrice: 1 },
-      { kind: "existing", lineId: "line-gown", quantity: 100, unitPrice: 4_500_000 },
+      { kind: "existing", lineId: "line-shirt", quantity: 3, unitPrice: 1 },
+      { kind: "existing", lineId: "line-gown", quantity: 1, unitPrice: 4_500_000 },
     ]);
     expect(result).toEqual({
       ok: false,
@@ -187,11 +196,11 @@ describe("priceRevisionLines with unit prices", () => {
       fieldErrors: { "lines.0.unitPrice": "This service has a fixed price. Reload the page and try again." },
     });
     // The same for a newly added fixed-price service, and even when the price sent matches.
-    expect(price([{ kind: "new", serviceId: "shirt", quantity: 100, unitPrice: 80_000 }])).toMatchObject({
+    expect(price([{ kind: "new", serviceId: "shirt", quantity: 1, unitPrice: 80_000 }])).toMatchObject({
       ok: false,
       problem: "PRICE_NOT_ALLOWED",
     });
-    expect(price([{ kind: "existing", lineId: "line-shirt", quantity: 100, unitPrice: 70_000 }])).toMatchObject({
+    expect(price([{ kind: "existing", lineId: "line-shirt", quantity: 1, unitPrice: 70_000 }])).toMatchObject({
       ok: false,
       problem: "PRICE_NOT_ALLOWED",
     });
@@ -199,7 +208,7 @@ describe("priceRevisionLines with unit prices", () => {
 
   it("refuses a negative price, one above ₦10,000,000, and part of a kobo", () => {
     for (const unitPrice of [-1, 1_000_000_001, 150_000.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(price([{ kind: "existing", lineId: "line-wash", quantity: 200, unitPrice }])).toEqual({
+      expect(price([{ kind: "existing", lineId: "line-curtain", quantity: 2, unitPrice }])).toEqual({
         ok: false,
         problem: "INVALID_PRICE",
         fieldErrors: { "lines.0.unitPrice": "Enter a price from ₦0 to ₦10,000,000" },
@@ -208,24 +217,24 @@ describe("priceRevisionLines with unit prices", () => {
   });
 
   it("starts a newly added quote-required service at today's price, and prices it when sent", () => {
-    expect(summary(price([{ kind: "new", serviceId: "jacket", quantity: 100 }]))).toEqual([
-      ["Leather jacket", 500_000, 100, 500_000],
+    expect(summary(price([{ kind: "new", serviceId: "jacket", quantity: 1 }]))).toEqual([
+      ["Leather jacket", 500_000, 1, 500_000],
     ]);
     // Added twice: one line, at the first price sent.
     expect(
       summary(
         price([
-          { kind: "new", serviceId: "jacket", quantity: 100, unitPrice: 750_000 },
-          { kind: "new", serviceId: "jacket", quantity: 200, unitPrice: 900_000 },
+          { kind: "new", serviceId: "jacket", quantity: 1, unitPrice: 750_000 },
+          { kind: "new", serviceId: "jacket", quantity: 2, unitPrice: 900_000 },
         ]),
       ),
-    ).toEqual([["Leather jacket", 750_000, 300, 2_250_000]]);
+    ).toEqual([["Leather jacket", 750_000, 3, 2_250_000]]);
   });
 });
 
 describe("buildRevision", () => {
   const shirts = priceRevisionLines([EXISTING_SHIRT], CATALOGUE, {
-    lines: [{ kind: "existing", lineId: "line-shirt", quantity: 200 }],
+    lines: [{ kind: "existing", lineId: "line-shirt", quantity: 2 }],
     adjustments: [],
   });
   if (!shirts.ok) throw new Error("fixture");

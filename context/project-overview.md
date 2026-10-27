@@ -27,7 +27,7 @@ Independent laundry stores run their business across disconnected tools, and the
 
 - 📱 **Orders arrive everywhere:** walk-ins at the counter, phone calls, WhatsApp chats, and word of mouth, with no single list of open orders.
 - 📒 **Records live on paper or in chat history:** notebooks, receipt books, and WhatsApp threads make it hard to know what is pending, ready, or unpaid.
-- ⚖️ **Pricing is messy:** per-kg washing needs weighing before a price exists, and quotes or later changes are agreed verbally, which causes disputes.
+- ⚖️ **Pricing is messy:** some items can only be priced after the store inspects them, and quotes or later changes are agreed verbally, which causes disputes.
 - 🚚 **Pickup and delivery are ad hoc:** time windows, service areas, and delivery charges are negotiated case by case.
 - 💸 **Payments are hard to reconcile:** cash, transfers, POS, and online payments are recorded inconsistently, and refunds owed are easily forgotten.
 - 🙋 **Customers are left guessing:** they have to call or message the store to ask "is my laundry ready?"
@@ -94,20 +94,21 @@ Fluta does **not** do laundry, own riders, or send customers between stores.
 ### 3. Service catalogue
 
 - Each service has a **name**, **price**, **pricing type**, **quote required** flag, and optional **category label**.
-- Pricing types (the unit the price is charged by): **per item**, **per kg**, **per package**.
-- **Quote required** (separate from the pricing type) means the final price is only known after staff weigh or inspect the items:
-  - **Per-kg services always require a quote**; the flag is forced on and cannot be switched off.
-  - Per-item and per-package services can have it switched on by the owner (for example, leather cleaning or a wedding dress).
-  - Customers see a quote-required service's price as a starting price (for example "from ₦5,000").
+- Pricing types (the unit the price is charged by): **per item** and **per package**. Nigerian laundries price by the piece or the bundle.
+- **Quote required** (separate from the pricing type) means the final price is only known after staff inspect the items:
+  - The owner can switch it on for any per-item or per-package service (for example, leather cleaning or a wedding dress).
+  - Customers see a quote-required service's price as a starting price (for example "from ₦5,000"), or **"Price on inspection"** when it is ₦0.
+  - When staff price a quote-required line, the unit price they enter is stored on that revision's line; the catalogue price never changes. The line total is always that unit price × the quantity, worked out by the server.
+- **Quantities:** every service line's quantity is a **whole number from 1 to 999**, for both pricing types, checked by the server (and kept whole by a database CHECK).
 - **Estimated vs billed quantity:**
-  - At online booking, customers may enter an **estimated** weight for per-kg services. It is saved as `estimatedQuantity`, used only to show an indicative total, and **never billed**.
-  - `quantity` is always the **billed** quantity: the item count, or the weight staff measure after receiving the clothes.
-  - The quote snapshot records the exact quantity the customer approved. Example: customer estimates 5 kg → store weighs 7.4 kg → quote issued for 7.4 kg → customer approves 7.4 kg.
+  - At online booking, the count a customer enters for a quote-required service is an **estimate**. It is saved as `estimatedQuantity`, used only to show an indicative total, and **never billed**.
+  - `quantity` is always the **billed** quantity, which staff set when pricing. It may be higher or lower than the estimate.
+  - The quote snapshot records the exact quantity the customer approved. Example: customer estimates 3 duvets → store counts 2 → quote issued for 2 × ₦5,000 → customer approves 2.
 - The price at order time is **snapshotted onto the order line**; later catalogue changes never rewrite historical orders.
 - Customers can book catalogue services only. Staff can add an **Others** line with a required description and a **signed** amount (positive = extra charge, negative = discount).
 - Customers can also leave an optional note when booking ("Anything else? Other items or instructions", up to 300 characters). It is stored on the order as `customerNote`, shown only to staff, and never priced automatically. Staff price anything extra through a normal revision the customer approves.
 - Every order line is one of two types:
-  - **Service line:** a catalogue service with quantity, unit price (never negative), and line total = unit price × quantity, rounded to the nearest kobo. On quote-required lines, the billed quantity and line total stay empty until staff weigh or inspect; every line must have both before a priced quote is issued.
+  - **Service line:** a catalogue service with quantity, unit price (never negative), and line total = unit price × quantity. On a quote-required line booked online, the billed quantity and line total stay empty until staff inspect and count the items; every line must have both before a priced quote is issued.
   - **Adjustment line** ("Others"): a description and a signed amount only; no service, quantity, or unit price.
   - Order total = sum of service line totals + sum of adjustment amounts + any pickup/delivery charge.
 
@@ -151,7 +152,7 @@ Repeat bookings should take a few taps, without logins or server-side customer p
 **On the customer's phone (online bookings)**
 
 - **Browser autofill:** booking form fields use proper `autocomplete` attributes (`name`, `tel`, `email`, `street-address`) so the phone's own autofill can fill them.
-- **"Book the same as last time?"** When a customer confirms a booking, and again when they open their tracking page, the page saves that order's **service IDs, quantities, and date** in the phone's browser storage, per store. Viewing the tracking page after weighing updates the saved weight to the measured value. On their next visit to that store's booking page they see the saved services with **Use these** and **Start fresh**.
+- **"Book the same as last time?"** When a customer confirms a booking, and again when they open their tracking page, the page saves that order's **service IDs, quantities, and date** in the phone's browser storage, per store. Viewing the tracking page after the store prices the order updates the saved quantities to the billed ones. On their next visit to that store's booking page they see the saved services with **Use these** and **Start fresh**.
   - Services no longer offered are skipped; prices always come from today's catalogue; if nothing valid remains, no prompt is shown.
 - **"Remember my details on this phone"** (checkbox on the details step, ticked by default) saves name, phone, email, service area, address, and last fulfilment choice in browser storage, per store. Next time they are pre-filled, with a **"Not you? Clear details"** link.
   - A saved service area the store no longer serves is not pre-selected.
@@ -163,12 +164,11 @@ Repeat bookings should take a few taps, without logins or server-side customer p
 
 - **Repeat order** on the order detail and on the customer's page opens the normal new-order form pre-filled from that order. Staff adjust it, set the channel (counter, phone, WhatsApp), and create it.
 
-| Copied                                           | Not copied                                              |
-| ------------------------------------------------ | ------------------------------------------------------- |
-| Customer                                         | Old prices (today's catalogue is used)                  |
-| Per-item and per-package services and quantities | Per-kg weight (left blank; staff weigh the new clothes) |
-| Fulfilment choice, service area, address         | Adjustment ("Others") lines                             |
-|                                                  | Pickup date and window; payments, notes, history        |
+| Copied                                   | Not copied                                       |
+| ---------------------------------------- | ------------------------------------------------ |
+| Customer                                 | Old prices (today's catalogue is used)           |
+| Services and quantities                  | Adjustment ("Others") lines                      |
+| Fulfilment choice, service area, address | Pickup date and window; payments, notes, history |
 
 - Disabled services are skipped with a note. The result is a new, independent order with its own number, version 1 revision, and tracking link.
 
@@ -194,12 +194,12 @@ Repeat bookings should take a few taps, without logins or server-side customer p
 
 - An order **needs a quote** if any line uses a quote-required service, or the pickup area's charge is **quote required**. Otherwise it is a **fixed-price order** and can be paid at booking.
 - A **quote-required fulfilment charge** may need approval before pickup can be scheduled.
-- A quote for **quote-required services** (weighing or inspection) follows receipt of the clothes.
+- A quote for **quote-required services** (inspection) follows receipt of the clothes.
 - Staff can also revise any order after inspecting it (for example, extra items or stains); that is a normal revision needing customer approval.
 - **Every order has a version 1 revision from the moment it is created.** For online fixed-price orders the customer approves it by confirming the booking; for counter, phone, and WhatsApp orders staff record it as agreed with the customer in person or by phone. For a quote-required order, version 1 records the booking estimate and is never approved; staff's priced quote becomes version 2, which the customer approves. Revisions are never edited; each change is a new version.
 - Any change to an order's lines or total creates a new quote revision that the customer must **explicitly approve**. Approval records the approved version and time; a changed quote needs new approval.
 - The customer can **approve** or **decline / request clarification** (with an optional message). A declined quote goes back to staff, who either issue a new revision or cancel the order.
-- Revisions may go **up or down** (for example, lower actual weight, an item removed, a discount). Every change needs customer approval; a lower total on a paid order results in **Refund owed**.
+- Revisions may go **up or down** (for example, fewer items than estimated, an item removed, a discount). Every change needs customer approval; a lower total on a paid order results in **Refund owed**.
 - The quote screen always shows the previous amount, the new amount, the difference, and the staff-entered reason for the change.
 
 ### 9. Order stages
@@ -349,7 +349,7 @@ Balance                         ₦0   PAID
 ```
 
 - The phone number is **masked**, because a printed receipt leaves the store.
-- Adjustment lines appear with their description; per-kg lines show the measured weight (for example `Laundry by weight  3.5 kg × ₦1,500`).
+- Adjustment lines appear with their description; service lines show the quantity and unit price (for example `Duvet  2 × ₦5,000`).
 - If there is a balance, the receipt shows **Balance due**; if a refund is owed, **Refund owed**; voided payments never appear.
 - If a revision is awaiting approval, the receipt shows the last approved total with a note that a revised total is pending.
 - The receipt number is the order number. Times are shown in the store's time zone.
@@ -399,7 +399,7 @@ Balance                         ₦0   PAID
   - Never use `onDelete: SetNull` on these relations.
 - Fluta's own billing tables (`Subscription`, `SubscriptionInvoice`) are not store data and do not follow this pattern.
 - **Money** is stored as integers in minor units (kobo). Never use floats. **(Assumption)**
-- **Weight** uses `Decimal`, not float.
+- **Quantities** are whole numbers (1 to 999), stored in `Decimal` columns that a CHECK keeps whole. Never floats.
 - **One source of truth for the total:** the approved `QuoteRevision` is the only financial record of what the customer agreed to. `Order.approvedQuoteId` points to it; the order stores no total of its own. "Approved total" anywhere in this document means that revision's `total`.
 - **Users are never deleted, only deactivated.** Fields like `actorUserId`, `recordedByUserId`, and `voidedByUserId` are plain IDs taken from the signed-in session (not foreign keys), and this rule keeps every "who did this" reference valid forever.
 - **Snapshots:** `OrderLine` copies price, pricing type, quote-required flag, and name at order time. `QuoteRevision.linesSnapshot` freezes what the customer approved. `Order` copies the service area's name (`serviceAreaName`) and charge (`fulfilmentCharge`) when created; later area edits, disabling, or re-enabling never change existing orders.
@@ -445,7 +445,6 @@ enum StoreStatus {
 
 enum PricingType {
   PER_ITEM
-  PER_KG
   PER_PACKAGE
 }
 
@@ -744,8 +743,8 @@ model Service {
   nameKey     String // lowercase, trimmed, spaces collapsed; set by the server; enforces unique names per store
   category    String?
   pricingType   PricingType
-  price         Int // minor units per item / kg / package; a "from" price when requiresQuote
-  requiresQuote Boolean     @default(false) // always true when pricingType = PER_KG (enforced by a CHECK constraint)
+  price         Int // minor units per item / package; a "from" price when requiresQuote
+  requiresQuote Boolean     @default(false)
   isActive      Boolean     @default(true)
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
@@ -844,9 +843,9 @@ model Order {
 
 // Migration adds a CHECK constraint (Prisma cannot express it):
 //   SERVICE:    serviceId, pricingType, unitPrice >= 0 all set; quantity > 0 and lineTotal >= 0
-//               both set, or both NULL only while requiresQuote (not yet weighed/inspected)
+//               both set, or both NULL only while requiresQuote (not yet counted/inspected)
 //   ADJUSTMENT: serviceId, pricingType, unitPrice, quantity, estimatedQuantity all NULL; lineTotal set
-// and a second CHECK: per-kg lines always require a quote.
+// and a second CHECK (OrderLine_whole_quantities): quantity and estimatedQuantity are whole numbers when set.
 // App rule: every line needs quantity and lineTotal before a priced quote is issued.
 model OrderLine {
   id                String        @id @default(cuid())
@@ -858,9 +857,9 @@ model OrderLine {
   pricingType       PricingType? // SERVICE only (snapshot)
   requiresQuote     Boolean       @default(false) // SERVICE only (snapshot)
   unitPrice         Int? // SERVICE only; price snapshot, never negative
-  estimatedQuantity Decimal?      @db.Decimal(10, 3) // SERVICE only; customer's estimate, never billed
-  quantity          Decimal?      @db.Decimal(10, 3) // SERVICE only; BILLED items, packages, or measured kg
-  lineTotal         Int? // SERVICE: unitPrice × quantity, rounded to the nearest kobo (NULL until priced); ADJUSTMENT: the signed amount
+  estimatedQuantity Decimal?      @db.Decimal(10, 3) // SERVICE only; customer's estimated count, never billed (whole number)
+  quantity          Decimal?      @db.Decimal(10, 3) // SERVICE only; BILLED items or packages (whole number, 1–999 in the app)
+  lineTotal         Int? // SERVICE: unitPrice × quantity (NULL until priced); ADJUSTMENT: the signed amount
 
   order   Order    @relation(fields: [storeId, orderId], references: [storeId, id], onDelete: Cascade)
   service Service? @relation(fields: [storeId, serviceId], references: [storeId, id])
@@ -1176,7 +1175,7 @@ Stores, Subscriptions, Revenue, Support, store detail, and read-only order/custo
 **Order detail (one of the most important screens)**
 
 - Header: order number, customer, stage badge, payment badge, and **one primary action** (the next stage or the pending task). "Print receipt" and "Repeat order" sit among the quiet secondary actions.
-- Sections: order summary (services, quantity/weight, unit price, line totals, extra charges, discounts, approved total), customer (name, full phone with call and WhatsApp buttons, email, address), fulfilment (type, area, pickup date, requested window, confirmed window, delivery info), timeline (stage, timestamp, actor), payment history (amount, method, status, date, reference).
+- Sections: order summary (services, quantity, unit price, line totals, extra charges, discounts, approved total), customer (name, full phone with call and WhatsApp buttons, email, address), fulfilment (type, area, pickup date, requested window, confirmed window, delivery info), timeline (stage, timestamp, actor), payment history (amount, method, status, date, reference).
 - Pending customer actions are shown clearly: quote awaiting approval, revised total awaiting approval, payment required, pickup confirmation required.
 
 **Services:** list with name, category, pricing type, price, a "Quote required" badge where it applies, and active status; search and category filter; add/edit in a simple drawer; disable instead of delete.
@@ -1191,16 +1190,16 @@ Stores, Subscriptions, Revenue, Support, store detail, and read-only order/custo
 
 **Customer booking flow (6 steps)**
 
-1. **Services:** if this phone has a saved last order, show "Book the same as last time?" first. Otherwise choose services and set quantity; for per-kg services, optionally enter an estimated weight (clearly labelled as an estimate that the store will weigh).
+1. **Services:** if this phone has a saved last order, show "Book the same as last time?" first. Otherwise choose services and set how many; for quote-required services the count is clearly labelled as an estimate the store confirms after checking the items.
 2. **Fulfilment:** drop-off or pickup & delivery (only options the store enables).
 3. **Pickup details:** service area, address, preferred date, preferred time window, with clear wording that the time is a **request, not a guaranteed slot**.
 4. **Your details:** name, phone, optional email (noted as needed later if paying online), pre-filled when remembered, with a "Remember my details on this phone" checkbox and "Not you? Clear details".
-5. **Review:** services, fulfilment, pickup details, contact details, the final total, or for quote-required orders an indicative total labelled "final price after the store weighs/inspects", and whether payment is needed now.
+5. **Review:** services, fulfilment, pickup details, contact details, the final total, or for quote-required orders an indicative total labelled "final price after the store inspects your items", and whether payment is needed now.
 6. **Confirmation:** order number, tracking link, and what happens next, written to reassure.
 
 **Guest order tracking:** includes a quiet "View receipt" link. Order number and current stage at the top (for example **Order #FF-1024 · In progress**), a simple progress timeline (✓ done, ● current, ○ upcoming, showing only the stages this order uses), then payment status, total, services, pickup/delivery info, messages, and any required action as a calm but prominent card (**Quote ready for your approval → Review quote**, **Payment required → Pay now**).
 
-**Quote approval:** original amount, new amount, the difference made very obvious, reason for change, services and quantities/weights, pickup/delivery charge, new total. Actions: **Approve quote** (primary) and **Decline / request clarification** (secondary).
+**Quote approval:** original amount, new amount, the difference made very obvious, reason for change, services and quantities, pickup/delivery charge, new total. Actions: **Approve quote** (primary) and **Decline / request clarification** (secondary).
 
 **Payment summary:** order number, amount due, customer info, order summary, an email field (required, pre-filled if known), and one button **Pay ₦X** that hands off to Paystack. Fluta never builds its own card-checkout screen.
 
@@ -1236,7 +1235,7 @@ Semantic HTML, full keyboard navigation, visible focus states, labelled fields, 
 ### Sample data (demos and seed data)
 
 - Example store: **FreshFold Laundry**, used consistently everywhere.
-- Services: Shirt ₦800/item · Trousers ₦1,000/item · Dress ₦1,500/item · Bedding ₦2,500/package · Laundry by weight ₦1,500/kg.
+- Services: Shirt ₦800/item · Trousers ₦1,000/item · Dress ₦1,500/item · Bedding ₦2,500/package · Duvet from ₦1,500/item (quote required) · Wedding gown (Price on inspection).
 - Nigerian Naira (₦), Nigerian phone formats (for example +234 803 \*\*\* 4521), realistic but fictional Nigerian addresses. Never real people's data.
 
 ---
@@ -1355,7 +1354,7 @@ git switch -c fix/refund-owed-calculation
 - Assisted store onboarding by Fluta admins
 - Branded booking pages with link and QR code
 - Owner and staff accounts with fixed roles
-- Service catalogue (per item, per kg, per package)
+- Service catalogue (per item, per package)
 - Staff and guest order entry
 - Pickup/delivery requests with service areas and a shared schedule
 - Quotes and revisions with explicit customer approval

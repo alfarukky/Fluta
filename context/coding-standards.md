@@ -163,7 +163,7 @@ Example v4 configuration:
 
 ## Money, Time, and Phone Numbers
 
-- All money maths uses integer kobo. Per-kg line totals round to the nearest kobo once, in one helper
+- All money maths uses integer kobo. A line total is unit price × whole quantity (`getLineTotal` in `money.ts`), never rounded
 - Format money only in `money.ts` (`formatNaira(kobo)` → "₦6,200")
 - Store all timestamps in UTC; display in the **store's** time zone using helpers in `time.ts`
 - Show times of day in **12-hour format** with AM/PM ("8:00 AM"); store times of day as 24-hour `HH:MM`. Convert only through `time.ts`

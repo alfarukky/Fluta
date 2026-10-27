@@ -1,21 +1,17 @@
 import { formatCalendarDate } from "@/lib/time";
 import { formatNaira } from "@/lib/money";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
-import { formatQuantity, isWeighed } from "@/lib/quantity";
 import type { BookingService } from "@/types/booking";
 
 import { parseWindowKey, type BookingDraft, type BookingReview, type ReviewLine } from "./booking-draft";
 
 // Shared wording for the review step and the confirmation.
 
-// "× 3 · ₦2,400", "About 2.5 kg, your estimate", "× 2, the store confirms the price".
+// "× 3 · ₦2,400", "× 2, the store will confirm the price".
 export function describeReviewLine(line: ReviewLine, service: BookingService | undefined): string {
-  if (!service) return "";
-  const weighed = isWeighed(service.pricingType);
-  if (line.amount === null) return "The store will weigh it";
-  const amount = formatQuantity(line.amount, service.pricingType);
-  if (!line.isEstimate) return `× ${amount} · ${formatNaira(line.lineTotal ?? 0)}`;
-  return weighed ? `About ${amount}, your estimate` : `× ${amount}, the store will confirm the price`;
+  if (!service || line.amount === null) return "";
+  if (!line.isEstimate) return `× ${line.amount} · ${formatNaira(line.lineTotal ?? 0)}`;
+  return `× ${line.amount}, the store will confirm the price`;
 }
 
 export function describePickupCharge(review: BookingReview): string {
@@ -47,7 +43,7 @@ export function PriceSummary({ review }: { review: BookingReview }) {
           <span className="type-label text-foreground">Estimated total</span>
           <span className="type-h3 text-foreground">{formatNaira(summary.total)}</span>
         </div>
-        <p className="type-body-sm text-muted-foreground">Final price after the store weighs or inspects your items.</p>
+        <p className="type-body-sm text-muted-foreground">Final price after the store inspects your items.</p>
       </div>
     );
   }

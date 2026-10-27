@@ -171,7 +171,7 @@ function Price({ view }: { view: TrackingView }) {
       {price.kind === "estimate" && (
         <div className="flex flex-col gap-1 border-t border-border pt-component">
           <Row label="Estimated total" value={price.total} strong />
-          <p className="type-caption text-muted-foreground">The store will confirm the price after weighing or checking your items.</p>
+          <p className="type-caption text-muted-foreground">The store will confirm the price after checking your items.</p>
         </div>
       )}
       {/* The payment line may already say it (nothing approved yet). */}

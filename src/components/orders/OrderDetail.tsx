@@ -30,7 +30,7 @@ import {
 import { describeBalance, describePaymentRecorded, describePaymentVoided, PAYMENT_SOURCE_LABELS } from "@/lib/payments";
 import { formatPhone } from "@/lib/phone";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
-import { formatQuantity, fromDecimalString } from "@/lib/quantity";
+import { fromStoredQuantity } from "@/lib/quantity";
 import { describeRevisionMoment } from "@/lib/quotes";
 import { ADJUSTMENT_KIND_LABELS } from "@/schemas/orders";
 import { formatCalendarDate, formatDateTime, fromDateKey, toDateKey } from "@/lib/time";
@@ -180,27 +180,23 @@ function OrderSummarySection({ order, proposed }: { order: Order; proposed: Revi
     <Section title="Order summary" badge={proposed && <Badge variant="warning">Proposed changes</Badge>}>
       <ul className="flex flex-col divide-y divide-border">
         {services.map((line) => {
-          const pricingType = line.pricingType ?? "PER_ITEM";
-          const quantity = line.quantity === null ? null : fromDecimalString(line.quantity.toString());
+          const quantity = line.quantity === null ? null : fromStoredQuantity(line.quantity.toString());
           const estimated =
-            line.estimatedQuantity === null ? null : fromDecimalString(line.estimatedQuantity.toString());
-          const unweighed = quantity === null;
+            line.estimatedQuantity === null ? null : fromStoredQuantity(line.estimatedQuantity.toString());
           return (
             <LineRow
               key={line.id}
               label={line.description}
               detail={
-                unweighed
+                quantity === null
                   ? estimated !== null
-                    ? describeCustomerEstimate(estimated, pricingType)
-                    : pricingType === "PER_KG"
-                      ? "Not weighed yet"
-                      : "To be inspected"
-                  : `${formatQuantity(quantity, pricingType)} × ${formatNaira(line.unitPrice ?? 0)}`
+                    ? describeCustomerEstimate(estimated)
+                    : "To be inspected"
+                  : `${quantity} × ${formatNaira(line.unitPrice ?? 0)}`
               }
               amount={
                 line.lineTotal === null ? (
-                  <span className="text-muted-foreground">{pricingType === "PER_KG" ? "To be weighed" : "Quote required"}</span>
+                  <span className="text-muted-foreground">Quote required</span>
                 ) : (
                   formatNaira(line.lineTotal)
                 )
@@ -273,8 +269,8 @@ function OrderSummarySection({ order, proposed }: { order: Order; proposed: Revi
             </div>
             {estimate && (
               <p className="type-caption text-muted-foreground">
-                Indicative total {formatNaira(estimate.total)}. Not final: the price is set after the store weighs or
-                inspects the items.
+                Indicative total {formatNaira(estimate.total)}. Not final: the price is set after the store inspects
+                the items.
               </p>
             )}
           </>

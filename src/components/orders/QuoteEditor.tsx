@@ -17,7 +17,6 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSepa
 import { Textarea } from "@/components/ui/textarea";
 import { formatAreaCharge, formatNaira, formatServicePrice } from "@/lib/money";
 import { describeCustomerEstimate } from "@/lib/orders";
-import { isWeighed } from "@/lib/quantity";
 import { formatDifference, REVISION_REASON_MAX } from "@/lib/quotes";
 import { AREA_NAME_MAX } from "@/schemas/fulfilment";
 import { MAX_ADJUSTMENT_LINES, MAX_SERVICE_LINES } from "@/schemas/orders";
@@ -126,7 +125,7 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
 
       <OrderSection
         title="Lines"
-        description="Fixed prices stay as they are. Set the price of items the store inspects or weighs. Added services start at today's price."
+        description="Fixed prices stay as they are. Set the price of items the store inspects. Added services start at today's price."
       >
         {draft.lines.length === 0 ? (
           <p id={`${id}-lines-error`} className={errors.lines ? "type-body-sm text-error" : "type-body-sm text-muted-foreground"}>
@@ -290,7 +289,7 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
             onChange={(event) => change({ reason: event.target.value })}
             maxLength={REVISION_REASON_MAX}
             rows={2}
-            placeholder={editor.reasonRequired ? "For example: Actual weight 4.2 kg" : undefined}
+            placeholder={editor.reasonRequired ? "For example: 2 gowns, not 3" : undefined}
             required={editor.reasonRequired}
             aria-invalid={errors.reason ? true : undefined}
             aria-describedby={describedBy(`${id}-reason`, reasonHint, errors.reason)}
@@ -306,7 +305,7 @@ export function QuoteEditor({ editor, services, areas }: QuoteEditorProps) {
         </dl>
         {!review.fullyPriced && (
           <p className="type-caption text-muted-foreground">
-            Enter every weight, quantity, and price{editor.pickup ? ", and the pickup & delivery charge," : ""} before sending.
+            Enter every quantity and price{editor.pickup ? ", and the pickup & delivery charge," : ""} before sending.
           </p>
         )}
         <p className="type-caption text-muted-foreground">
@@ -348,15 +347,13 @@ interface QuoteLineRowProps {
 }
 
 function QuoteLineRow({ idPrefix, line, lineTotal, error, priceError, onChange, onRemove }: QuoteLineRowProps) {
-  const weighed = isWeighed(line.pricingType);
   const added = line.source.kind === "new";
   // A quote-required line shows the price it came with ("from ₦5,000 / item",
   // "Price on inspection"); any other line its fixed price.
   const price = formatServicePrice({ pricingType: line.pricingType, price: line.unitPrice, requiresQuote: line.requiresQuote });
-  const priceLabel = weighed ? "Price per kg" : "Price per item";
-  // Online bookings record the customer's count on items the store inspects,
-  // as well as estimated weights.
-  const hint = line.estimate !== null ? describeCustomerEstimate(line.estimate, line.pricingType) : undefined;
+  const priceLabel = line.pricingType === "PER_PACKAGE" ? "Price per package" : "Price per item";
+  // Online bookings record the customer's count on items the store inspects.
+  const hint = line.estimate !== null ? describeCustomerEstimate(line.estimate) : undefined;
 
   return (
     <li className="flex flex-col gap-component rounded-lg border border-border p-card">
@@ -376,12 +373,12 @@ function QuoteLineRow({ idPrefix, line, lineTotal, error, priceError, onChange, 
         </Button>
       </div>
       <div className="grid grid-cols-1 gap-form xs:grid-cols-2">
-        <FormField id={`${idPrefix}-quantity`} label={weighed ? "Weight (kg)" : "Quantity"} hint={hint} error={error}>
+        <FormField id={`${idPrefix}-quantity`} label="Quantity" hint={hint} error={error}>
           <Input
             id={`${idPrefix}-quantity`}
             value={line.quantity}
             onChange={(event) => onChange({ quantity: event.target.value })}
-            inputMode={weighed ? "decimal" : "numeric"}
+            inputMode="numeric"
             autoComplete="off"
             maxLength={7}
             aria-invalid={error ? true : undefined}
@@ -405,8 +402,7 @@ function QuoteLineRow({ idPrefix, line, lineTotal, error, priceError, onChange, 
           </FormField>
         )}
       </div>
-      <div className="flex items-center justify-between gap-component">
-        {weighed && line.quantity.trim() === "" ? <Badge variant="warning">Not weighed yet</Badge> : <span />}
+      <div className="flex items-center justify-end gap-component">
         <span className="type-label text-foreground" aria-label={`${line.name} line total`}>
           {lineTotal === null ? "—" : formatNaira(lineTotal)}
         </span>

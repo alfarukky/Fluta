@@ -1,8 +1,8 @@
 import {
   InvoiceStatus,
-  PricingType,
   StoreRole,
   type AreaChargeType,
+  type PricingType,
   type Prisma,
   type PrismaClient,
 } from "@/generated/prisma/client";
@@ -66,8 +66,7 @@ export async function seedStore(
         data: {
           ...service,
           nameKey: toMatchKey(service.name),
-          // Per-kg services always require a quote.
-          requiresQuote: service.pricingType === PricingType.PER_KG || (service.requiresQuote ?? false),
+          requiresQuote: service.requiresQuote ?? false,
           storeId,
         },
       }),

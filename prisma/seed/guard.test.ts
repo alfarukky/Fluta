@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertSeedAllowed, seedUserPassword } from "./guard";
+import { assertSeedAllowed, getSeedMode, seedUserPassword } from "./guard";
 
 describe("assertSeedAllowed", () => {
   it("refuses the production branch", () => {
@@ -22,6 +22,25 @@ describe("assertSeedAllowed", () => {
 
   it("allows staging only with ALLOW_STAGING_SEED=true", () => {
     expect(() => assertSeedAllowed({ DATABASE_BRANCH: "staging", ALLOW_STAGING_SEED: "true" })).not.toThrow();
+  });
+});
+
+describe("getSeedMode", () => {
+  it("loads the minimal seed by default, on any branch the seed allows", () => {
+    expect(getSeedMode([], { DATABASE_BRANCH: "development" })).toBe("minimal");
+    expect(getSeedMode([], { DATABASE_BRANCH: "staging" })).toBe("minimal");
+    expect(getSeedMode([], { DATABASE_BRANCH: "test" })).toBe("minimal");
+  });
+
+  it("loads the full sample data only on the test branch", () => {
+    expect(getSeedMode(["--full"], { DATABASE_BRANCH: "test" })).toBe("full");
+    for (const DATABASE_BRANCH of ["development", "staging", "production"] as const) {
+      expect(() => getSeedMode(["--full"], { DATABASE_BRANCH })).toThrow(/integration tests on the test branch only/);
+    }
+  });
+
+  it("refuses an unknown option rather than guessing", () => {
+    expect(() => getSeedMode(["--ful"], { DATABASE_BRANCH: "test" })).toThrow(/Unknown seed option/);
   });
 });
 

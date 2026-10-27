@@ -5,7 +5,6 @@ import { createTestPrisma, insertThenRollBack } from "@/test/integration/db";
 
 let prisma: PrismaClient;
 let storeId: string;
-let perKg: Service;
 let perItem: Service;
 
 beforeAll(async () => {
@@ -15,7 +14,6 @@ beforeAll(async () => {
     include: { services: true },
   });
   storeId = store.id;
-  perKg = store.services.find((service) => service.pricingType === "PER_KG")!;
   perItem = store.services.find((service) => service.name === "Shirt")!;
 });
 
@@ -23,7 +21,7 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-const newService = (pricingType: "PER_KG" | "PER_ITEM", requiresQuote: boolean) => ({
+const newService = (pricingType: "PER_ITEM" | "PER_PACKAGE", requiresQuote: boolean) => ({
   storeId,
   name: "Constraint check",
   nameKey: "constraint check",
@@ -32,29 +30,19 @@ const newService = (pricingType: "PER_KG" | "PER_ITEM", requiresQuote: boolean) 
   requiresQuote,
 });
 
-describe("Service per-kg CHECK constraint", () => {
-  it("rejects inserting a per-kg service without quote required", async () => {
-    await expect(prisma.service.create({ data: newService("PER_KG", false) })).rejects.toThrow(
-      /Service_per_kg_requires_quote/,
-    );
+describe("Service pricing types", () => {
+  it("accepts no type but per item and per package", async () => {
+    await expect(
+      prisma.$executeRaw`UPDATE "Service" SET "pricingType" = 'PER_HOUR' WHERE "id" = ${perItem.id}`,
+    ).rejects.toThrow(/invalid input value for enum/);
   });
 
-  it("rejects turning quote required off on a per-kg service", async () => {
-    await expect(prisma.service.update({ where: { id: perKg.id }, data: { requiresQuote: false } })).rejects.toThrow(
-      /Service_per_kg_requires_quote/,
-    );
-  });
-
-  it("rejects switching a service without quote required to per kg", async () => {
-    expect(perItem.requiresQuote).toBe(false);
-    await expect(prisma.service.update({ where: { id: perItem.id }, data: { pricingType: "PER_KG" } })).rejects.toThrow(
-      /Service_per_kg_requires_quote/,
-    );
-  });
-
-  it("accepts per-kg with quote required, and other types either way", async () => {
-    await insertThenRollBack(prisma, (tx) => tx.service.create({ data: newService("PER_KG", true) }));
-    await insertThenRollBack(prisma, (tx) => tx.service.create({ data: newService("PER_ITEM", false) }));
+  it("accepts per item and per package, with or without quote required", async () => {
+    for (const pricingType of ["PER_ITEM", "PER_PACKAGE"] as const) {
+      for (const requiresQuote of [true, false]) {
+        await insertThenRollBack(prisma, (tx) => tx.service.create({ data: newService(pricingType, requiresQuote) }));
+      }
+    }
   });
 });
 
