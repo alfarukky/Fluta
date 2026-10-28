@@ -47,6 +47,13 @@ export function getCustomerPaymentText(balance: { state: PaymentState; balanceKo
   }
 }
 
+// Under the payment line once the store has recorded a refund: the total of
+// refunds that aren't voided, never individual entries (no notes, references,
+// or void reasons). Null when none.
+export function getCustomerRefundText(paidRefundsKobo: number): string | null {
+  return paidRefundsKobo > 0 ? `Refunded: ${formatNaira(paidRefundsKobo)}` : null;
+}
+
 // ───────────── The progress timeline ─────────────
 
 export type CustomerTimelineState = "done" | "current" | "upcoming";

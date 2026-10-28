@@ -6,6 +6,7 @@ import { PaymentMethod, PaymentSource } from "@/generated/prisma/enums";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PAYMENT_METHOD_LABELS } from "@/lib/orders";
 import { PAYMENT_SOURCE_LABELS } from "@/lib/payments";
+import { cn } from "@/lib/utils";
 import {
   PAYMENT_DATE_RANGE_LABELS,
   PAYMENT_DATE_RANGES,
@@ -17,7 +18,8 @@ import {
 const ANY = "any";
 
 // Filters live in the page address, so back, refresh, and shared links keep
-// them. Each change is a new history entry.
+// them. Each change is a new history entry. The Refunds view has the date
+// filter only.
 export function PaymentFilters({ filters }: { filters: PaymentListFilters }) {
   const router = useRouter();
 
@@ -25,8 +27,12 @@ export function PaymentFilters({ filters }: { filters: PaymentListFilters }) {
     router.push(`/payments${toPaymentListSearch(next)}`, { scroll: false });
   }
 
+  const refunds = filters.view === "refunds";
   return (
-    <section aria-label="Filter payments" className="grid grid-cols-1 gap-2 xs:grid-cols-3">
+    <section
+      aria-label={refunds ? "Filter refunds" : "Filter payments"}
+      className={cn("grid grid-cols-1 gap-2", !refunds && "xs:grid-cols-3")}
+    >
       <Select
         value={filters.date}
         onValueChange={(value) => {
@@ -34,7 +40,7 @@ export function PaymentFilters({ filters }: { filters: PaymentListFilters }) {
           if (date) apply({ ...filters, date });
         }}
       >
-        <SelectTrigger aria-label="Date received" className="w-full">
+        <SelectTrigger aria-label={refunds ? "Date paid back" : "Date received"} className={cn("w-full", refunds && "xs:max-w-60")}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent position="popper">
@@ -45,20 +51,24 @@ export function PaymentFilters({ filters }: { filters: PaymentListFilters }) {
           ))}
         </SelectContent>
       </Select>
-      <FilterSelect
-        label="Method"
-        value={filters.method}
-        options={Object.values(PaymentMethod).map((method) => ({ value: method, label: PAYMENT_METHOD_LABELS[method] }))}
-        anyLabel="All methods"
-        onChange={(method) => apply({ ...filters, method })}
-      />
-      <FilterSelect
-        label="Source"
-        value={filters.source}
-        options={Object.values(PaymentSource).map((source) => ({ value: source, label: PAYMENT_SOURCE_LABELS[source] }))}
-        anyLabel="All sources"
-        onChange={(source) => apply({ ...filters, source })}
-      />
+      {!refunds && (
+        <>
+          <FilterSelect
+            label="Method"
+            value={filters.method}
+            options={Object.values(PaymentMethod).map((method) => ({ value: method, label: PAYMENT_METHOD_LABELS[method] }))}
+            anyLabel="All methods"
+            onChange={(method) => apply({ ...filters, method })}
+          />
+          <FilterSelect
+            label="Source"
+            value={filters.source}
+            options={Object.values(PaymentSource).map((source) => ({ value: source, label: PAYMENT_SOURCE_LABELS[source] }))}
+            anyLabel="All sources"
+            onChange={(source) => apply({ ...filters, source })}
+          />
+        </>
+      )}
     </section>
   );
 }

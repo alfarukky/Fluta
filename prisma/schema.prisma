@@ -548,23 +548,33 @@ model Payment {
 
 // A refund the store has actually paid. "Refund owed" is derived from the balance.
 model Refund {
-  id               String    @id @default(cuid())
+  id               String        @id @default(cuid())
   storeId          String
   orderId          String
   amount           Int
+  // How the store paid it back, outside Fluta. Never PAYSTACK (Refund_method_check).
+  method           PaymentMethod
+  reference        String? // a transfer or POS reference staff entered
   note             String
   recordedByUserId String
+  // The form's request ID (a UUID): the same request twice records one refund.
+  clientRequestId  String
   paidAt           DateTime
   voidedAt         DateTime?
   voidedByUserId   String?
   voidReason       String?
-  replacesRefundId String? // the voided refund this one corrects
-  createdAt        DateTime  @default(now())
+  // The voided refund this one corrects. Unique: a voided refund has at most one replacement.
+  replacesRefundId String?       @unique
+  createdAt        DateTime      @default(now())
 
   store Store @relation(fields: [storeId], references: [id])
   order Order @relation(fields: [storeId, orderId], references: [storeId, id])
 
+  // CHECK constraints (Prisma can't express them): Refund_amount_check,
+  // Refund_method_check, and Refund_voided_check in migration refunds.
+  @@unique([storeId, clientRequestId])
   @@index([storeId, orderId])
+  @@index([storeId, paidAt])
 }
 
 // ───────────── History & messaging ─────────────

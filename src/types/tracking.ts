@@ -79,6 +79,8 @@ export interface TrackingView {
   closed: boolean;
   timeline: TrackingTimelineStep[];
   payment: string;
+  // "Refunded: ₦X", the total of refunds recorded, or null when none.
+  refunded: string | null;
   price: TrackingPrice;
   pickup: TrackingPickup | null;
   maskedPhone: string;

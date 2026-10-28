@@ -48,6 +48,7 @@ export function TrackingOrder({ view, basePath, token, confirmingReference = nul
 
       <Card title="Payment">
         <p className="type-h3 text-card-foreground">{view.payment}</p>
+        {view.refunded && <p className="type-body-sm text-muted-foreground">{view.refunded}</p>}
         <Price view={view} />
       </Card>
 

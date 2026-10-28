@@ -5,6 +5,7 @@ import { fromStoredCoordinates, type Coordinates } from "@/lib/location";
 import { formatNaira } from "@/lib/money";
 import { formatOrderNumber, summarizeServices } from "@/lib/orders";
 import { canRecordPaymentAt, isRecordPaymentPrimary } from "@/lib/payments";
+import { getRefundableKobo } from "@/lib/refunds";
 import { canReviseQuote, findDeclinedRevision, findPendingRevision } from "@/lib/quotes";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
 import { fromStoredQuantity } from "@/lib/quantity";
@@ -113,6 +114,17 @@ export interface OrderDetail {
   // The store's WhatsApp button setting.
   whatsappEnabled: boolean;
   payments: OrderPaymentActions;
+  refunds: OrderRefundActions;
+}
+
+// Refunds: offered only while the order shows Refund owed, whatever its stage
+// (the page also needs the store to be able to work on existing orders).
+export interface OrderRefundActions {
+  // What is owed to the customer now (0 when nothing is): Record refund is
+  // offered, as the main action, only above 0.
+  owedKobo: number;
+  // Owners only, on refunds that aren't voided.
+  canVoid: boolean;
 }
 
 // What this member may do in the payments section (the page also needs the
@@ -184,10 +196,11 @@ export async function getOrderDetail(
     pickupTimes.suggestions,
     pickupTimes.resets,
     order.payments.map((payment) => ({ ...payment, receivedAfter: onlineNotes.get(payment.id) ?? null })),
+    order.refunds,
   );
   const actorIds = timeline.flatMap((entry) => {
     const id =
-      entry.kind === "payment"
+      entry.kind === "payment" || entry.kind === "refund"
         ? entry.staffUserId
         : entry.kind === "stage"
         ? entry.event.actorUserId
@@ -224,6 +237,10 @@ export async function getOrderDetail(
       recordPrimary: isRecordPaymentPrimary(order.stage, balance.state),
       canVoid: role === "OWNER",
       hasPendingOnlinePayment: order.payments.some((payment) => payment.source === "ONLINE" && payment.status === "PENDING"),
+    },
+    refunds: {
+      owedKobo: getRefundableKobo(balance.balanceKobo),
+      canVoid: role === "OWNER",
     },
   };
 }

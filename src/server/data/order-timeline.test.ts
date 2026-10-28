@@ -4,6 +4,7 @@ import {
   buildOrderTimeline,
   type TimelineEntry,
   type TimelinePayment,
+  type TimelineRefund,
   type TimelineRevision,
   type TimelineStageEvent,
 } from "./order-timeline";
@@ -51,7 +52,9 @@ describe("buildOrderTimeline", () => {
           ? `reset ${entry.reset.date} ${entry.reset.windowStart}`
           : entry.kind === "payment"
             ? `payment ${entry.payment.id} ${entry.moment}`
-            : `v${entry.version} ${entry.moment}`;
+            : entry.kind === "refund"
+              ? `refund ${entry.refund.id} ${entry.moment}`
+              : `v${entry.version} ${entry.moment}`;
 
   it("merges stage events and revision moments, newest first", () => {
     const timeline = buildOrderTimeline(events, revisions, audits);
@@ -159,6 +162,33 @@ describe("buildOrderTimeline", () => {
       "stage RECEIVED_BY_STORE",
     ]);
     expect(timeline[1]).toMatchObject({ staffUserId: "kemi", payment: { voidReason: "Entered twice" } });
+    expect(timeline[2]).toMatchObject({ staffUserId: "ada" });
+  });
+
+  it("adds each refund as its own entry, never a stage change: recorded, and voided with its reason", () => {
+    const refund = (overrides: Partial<TimelineRefund> & Pick<TimelineRefund, "id">): TimelineRefund => ({
+      amount: 300_000,
+      method: "BANK_TRANSFER",
+      recordedByUserId: "ada",
+      paidAt: at(10),
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null,
+      ...overrides,
+    });
+    const timeline = buildOrderTimeline(events, [], [], [], [], [], [
+      refund({ id: "f1", voidedAt: at(20), voidedByUserId: "kemi", voidReason: "Wrong amount" }),
+      // The correct refund, recorded with the void.
+      refund({ id: "f2", amount: 200_000, paidAt: at(20), recordedByUserId: "kemi" }),
+    ]);
+    expect(timeline.map(label)).toEqual([
+      "refund f2 RECORDED",
+      "refund f1 VOIDED",
+      "refund f1 RECORDED",
+      "stage IN_PROGRESS",
+      "stage RECEIVED_BY_STORE",
+    ]);
+    expect(timeline[1]).toMatchObject({ staffUserId: "kemi", refund: { voidReason: "Wrong amount" } });
     expect(timeline[2]).toMatchObject({ staffUserId: "ada" });
   });
 });

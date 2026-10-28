@@ -1,40 +1,91 @@
-# Current Feature
+# Current Feature: Refunds (Feature 18)
 
 ## Status
 
-Not Started
+In Progress
 
 ## Spec
 
-<!-- The spec file for this feature -->
+`context/features/18-refunds-spec.md`
+
+Implements from `context/project-overview.md`: **Payments** (refunds recorded outside Fluta, voids), **Payment states** (Refund owed → Nothing due through `getBalance`), and **Staff accounts and roles** (owners and staff record, only owners void, riders refused).
 
 ## Goals
 
-<!-- The spec's requirements -->
+- Owners and staff record refunds from the order detail page (`requireStoreMember()`); riders are refused; both recording and voiding need the existing-orders capability from `getStoreAccess`; the store comes only from the membership; actions return `{ ok, message, fieldErrors? }`
+- A refund can be recorded only when `getBalance` shows Refund owed, on any stage (eligibility never depends on the stage)
+- The limit is `max(0, −balance)` from the current balance, refunds already paid counted in; anything more is refused with "The amount owed has changed. ₦X is now owed."; part refunds allowed
+- Fees never reduce what's owed: limits use what the customer paid; Fluta's retained fee never appears as a refund
+- Recording and void-and-replace lock the order row first inside the transaction, so simultaneous refunds on one order queue up and the second is refused if now too much; different orders never wait on each other
+- Record refund form: amount (`parseNairaToKobo`, > ₦0, pre-filled with the amount owed), method (Cash, Bank transfer, POS, Other), optional reference (≤ 100), required note (≤ 200); `paidAt` now, no backdating; UUID request ID makes retries return the same refund; Save disabled while saving
+- Refunds never change payments; `getBalance` combines payments and refunds
+- Online payments are refunded outside Fluta like any other; Fluta's fee isn't returned, and the order detail page says "Fluta's fee on this payment isn't refunded" beside online payments that had a fee
+- Owners void refunds with a required reason (≤ 200): Void only, or Void and record correct refund in one transaction (linked by `replacesRefundId`); one conditional update so only one void wins; `AuditEvent` per void; retries safe (replacement's `clientRequestId`, retried Void only by the same owner returns success); replacement checked against the amount owed after the void; refunds never edited or deleted; void reasons and audit details staff-only
+- Order detail: Refunds list in the payments section (amount, method, reference, note, date, recorded by, voided struck through), Record refund and owner-only Void refund, and each recorded/voided refund as its own staff timeline entry (not a stage change)
+- Customer tracking page: "Refunded: ₦X" (total of active refunds) under payments; payment state follows `getBalance`; link stays valid while a refund is owed, then the usual 30-day expiry; no notes, references or void reasons shown
+- Payments page: a Refunds view with the same store-time-zone date filter and "Load more", active and voided (struck through) sorted by `paidAt`; owners only see the period total of active refunds (e.g. "Refunds paid today")
 
 ## Not in this feature
 
-<!-- Out of scope -->
+- Refunding through Paystack's refund API
+- Customers requesting refunds themselves
+- Refund messages to customers by SMS or email
+- Cancellation fees (still an open product question)
+- Backdating refunds
 
 ## Done when
 
-<!-- The spec's Done when items -->
+- Unit tests: amount limits, the "more than owed" check against the current balance, and the customer wording "Refunded: ₦X"
+- Integration tests:
+  - recording a refund on a cancelled paid order moves it from Refund owed to Nothing due, and a part refund leaves the rest owed
+  - a refund can't be recorded when nothing is owed, and a refund larger than what's owed is refused, including from a stale form
+  - two submissions with the same request ID create one refund
+  - **two different refunds for the same order at the same moment**, each for the full amount owed: exactly one succeeds, and the other is refused
+  - a refund, then voiding it, then a smaller new refund leaves the right amount owed. Void and replace with a smaller amount counts only the replacement
+  - a payment's status never changes when a refund is recorded, and an online payment's fees never reduce the amount owed
+  - only owners can void, a reason is required, and a voided refund stops counting, so the order shows Refund owed again
+  - void and replace happens in one transaction, a failed replacement leaves the original refund in place, and retries return the same result
+  - the database refuses a second replacement, a Paystack method, a zero amount, and a voided refund missing its void details
+  - riders are refused, and recording and voiding are refused when the store can't work on existing orders
+  - a FreshFold user can't record or void a refund on a CleanWave order, even by sending its ID
+  - the tracking page shows "Refunded: ₦X" and never shows notes, references, or void reasons
+  - staff see the Refunds view without totals, and owners see a total that excludes voided refunds
+- `npm run lint`, `npm run typecheck`, `npm run test:unit`, `npm run test:integration`, and `npm run build` all pass
 
 ## Verify with
 
-<!-- How to verify the feature -->
+- **Playwright MCP**, at ~360px and desktop, light and dark:
+  - cancel a paid order, see Refund owed, record a part refund then the rest, and see Nothing due
+  - as owner, void a refund and see Refund owed return, then void and replace another
+  - check the customer's tracking page and the Payments page's Refunds view, as staff and as owner
+- **Next.js DevTools:** no runtime or build errors on `/orders/[id]`, `/payments`, and `/o/[token]`
+- **Neon MCP** (`development`, read-only): refunds, voids, replacements, and audit events match each step
 
 ## References
 
-<!-- Related context files -->
+- @context/project-overview.md (Payments, Payment states, Staff accounts and roles)
+- @context/features/16-store-collected-payments-spec.md (the patterns this feature follows)
+- @context/features/10-orders-list-and-detail-spec.md (`getBalance`)
+- @context/features/14-guest-tracking-and-approvals-spec.md (link validity while a refund is owed)
+- @context/docs/paystack-integration-plan.md (decision 12)
 
 ## Schema changes
 
-<!-- Migrations, or None -->
+One migration (Ask First — **approved by the owner on 2026-10-28**). Suggested name: `refund_method_reference_request_id`.
+
+- `Refund.method` — `PaymentMethod` (existing enum; a CHECK keeps it from ever being `PAYSTACK`)
+- `Refund.reference` — `String?`
+- `Refund.clientRequestId` — `String`, **required**, with `@@unique([storeId, clientRequestId])` (development and staging have no refund rows after the 17b reset)
+- `Refund.replacesRefundId` — becomes `@unique` (at most one replacement per voided refund)
+- CHECK constraints (hand-edited with `--create-only`): `amount > 0`; `method <> 'PAYSTACK'`; void fields all set together (`voidedAt`, `voidedByUserId`, `voidReason` all non-null when voided, all null otherwise)
 
 ## Notes
 
-<!-- Anything to remember while working -->
+- Follows Feature 16 (store-collected payments) closely: request IDs, server-decided amounts, void and replace in one transaction, audit entries. Reuse its patterns and helpers rather than writing new ones.
+- Current `Refund` model already has `amount`, `note`, `recordedByUserId`, `paidAt`, `voidedAt`, `voidedByUserId`, `voidReason`, `replacesRefundId`; only the fields above are new.
+- Ask First applies: schema change, money code (balance, refunds, voids), and access checks (`getStoreAccess`, membership).
+- `getBalance` (`src/server/domain/balance.ts`) already counts non-voided refunds (`balance = approved total − confirmed payments + refunds paid`), so it likely needs no change; any change to it is money code — ask first.
+- The staff notifications bell (17b) has no refund event in this spec; don't add one.
 
 ## History
 
@@ -202,3 +253,7 @@ Not Started
 - 2026-10-27: Part B built: migration `add_staff_notifications` (applied to test and development; adds a CHECK that only "needs review" is owners-only, and `createdAt` defaults to `clock_timestamp()`), `addStaffNotification` in the six events' transactions, `GET /api/v1/notifications` and `POST /api/v1/notifications/seen`, `NotificationBell` in the top bar, 30-day clean-up in the cron job, shared `getOrderPath`. Test clean-ups and the seed's clear step delete notifications before orders
 - 2026-10-27: Part B checked: unit (934), lint, typecheck, build; integration 494 passed, the 5 failures (Neon timeouts and dropped connections in online-payments, staff and fulfilment) passed on rerun (47/47). Migration applied to development. Browser at 360px and desktop, light and dark: two online bookings, a price approval and a pickup acceptance raised the owner's count without a reload; a newly invited staff member saw 5 while the owner saw 4; opening the owner's bell cleared it for the owner only. Next DevTools: no errors. Neon (development): 5 notifications, one per event
 - 2026-10-27: Completed Feature 17b — Remove Per-kg Pricing, and Staff Notifications. Part A (`e458fee`): per-kg pricing removed and quantities are whole numbers. Part B (`5477305`): staff notifications bell. Migration `add_staff_notifications` adds a `Notification` table (unique per store, type and source; a CHECK that only "payment needs review" is owners-only) and `Membership.notificationsSeenAt`. Six events add a notification inside their own transaction: online booking, price approved, price declined, pickup accepted, payment received, payment needs review. `GET /api/v1/notifications` returns the unread count and `POST /api/v1/notifications/seen` marks seen and returns the newest 20; riders are refused. The cron job deletes notifications after 30 days. Final gate: lint, typecheck, test:unit (934) and build pass; the full integration rerun was skipped at the user's request (the earlier run had 494 passed, and the 5 Neon timeouts passed on rerun). Development has FF-1002 to FF-1004, the Lekki Phase 1 area and staff member Kemi from verification. Staging still needs its reset and FreshFold's Paystack test-mode reconnection
+- 2026-10-28: Started Feature 18 — Refunds on `feat/refunds`. Migration `20261028120000_refund_method_reference_request_id` (approved): `Refund.method`, `reference`, required `clientRequestId` with `@@unique([storeId, clientRequestId])`, unique `replacesRefundId`, a `[storeId, paidAt]` index, and CHECKs `Refund_amount_check`, `Refund_method_check`, `Refund_voided_check`.
+- 2026-10-28: Implemented refunds: `src/lib/refunds.ts` (limit `max(0, −balance)`, wording), `src/server/domain/refunds.ts` (`decideRefund`, `decideRefundVoid`), `src/server/data/refunds.ts` (order row lock, request IDs, void and replace in one transaction with `REFUND_VOIDED`/`REFUND_CORRECTED` audit events, Refunds view queries), `src/server/services/refunds.ts`, `src/actions/refunds.ts`. Order detail: Refunds list, Record refund (primary whenever Refund owed), owner-only Void refund, refund timeline entries, and "Fluta's fee on this payment isn't refunded" beside online payments with a fee. Tracking page: "Refunded: ₦X". Payments page: Payments/Refunds switch (`?view=refunds`, date filter only) with the owner-only "Refunds paid …" total. `getBalance` unchanged. Lint, typecheck, unit tests and build pass; refund integration tests (24) and constraint tests pass.
+- 2026-10-28: Verified. Full `test:integration` passes (36 files, 533 tests, about 71 minutes with `--maxWorkers=2`). Checked in the browser on development as the FreshFold owner, on test order FF-1002 (made-up customer): paid ₦700 in cash, cancelled → Refund owed ₦700 with Record refund as the main button; the form's own checks (method, note, more than owed); ₦300 by transfer then ₦400 in cash (pre-filled) → Nothing due; voided the ₦400 (reason required) → Refund owed ₦400; voided the ₦300 and recorded a ₦500 correction → Refund owed ₦200, three timeline entries with reasons. Payments → Refunds: owner total ₦500 (voided refunds left out), status badges right. Tracking page: "Refunded: ₦500", no notes, references or void reasons. Checked at 360px (light) and desktop (dark): no horizontal scroll, no console or server errors. Staff seeing no total is covered by the integration test (development has no staff account). Neon read-only on development: amounts in kobo, one audit event per void, the correction linked to the refund it replaces, all three CHECKs present. The browser tool printed the test order's tracking link once, so a new link was made straight after (the old one no longer works).
+- 2026-10-28: Staff view checked. Invited "Bola Test" (bola@freshfold.example, Staff) through Settings → Team and accepted the invite in a separate browser session (password random, kept out of chat). As staff: Payments → Refunds lists the same three refunds with no "Refunds paid today" total; on FF-1002, Record refund shows and no Void buttons do. Checked at desktop (light) and 360px (dark): no horizontal scroll. Development already had a staff member (Kemi Adeyemi), so the earlier note that it had none was wrong.

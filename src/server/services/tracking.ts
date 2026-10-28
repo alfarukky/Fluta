@@ -12,7 +12,7 @@ import { fromStoredQuantity } from "@/lib/quantity";
 import { findPendingRevision, formatDifference, getTotalDifference } from "@/lib/quotes";
 import { formatCalendarDate, formatDateTime, toDateKey } from "@/lib/time";
 import { getTrackingLinkStatus, hashToken, isWellFormedToken } from "@/lib/tokens";
-import { getCustomerPaymentText, getCustomerStageLabel, getCustomerTimeline } from "@/lib/tracking";
+import { getCustomerPaymentText, getCustomerRefundText, getCustomerStageLabel, getCustomerTimeline } from "@/lib/tracking";
 import { ADJUSTMENT_KIND_LABELS } from "@/schemas/orders";
 import { acceptPickupSuggestion, findLatestPickupSuggestion, type PickupOrderRecord } from "@/server/data/pickup-times";
 import { findTrackedOrder, type TrackedOrderRecord } from "@/server/data/tracking";
@@ -115,6 +115,7 @@ function buildView(
     closed,
     timeline: buildTimeline(order, timeZone),
     payment: getCustomerPaymentText(balance),
+    refunded: getCustomerRefundText(balance.paidRefundsKobo),
     price: buildPrice(order),
     pickup: buildPickup(order),
     maskedPhone: maskPhone(order.customer.phone),

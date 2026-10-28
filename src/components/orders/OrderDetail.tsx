@@ -1,5 +1,6 @@
 import {
   ArrowLeftIcon,
+  BanknoteArrowUpIcon,
   BanknoteIcon,
   CalendarClockIcon,
   CircleCheckIcon,
@@ -30,6 +31,13 @@ import {
 import { getOrderQuotePath } from "@/lib/order-links";
 import { describeBalance, describePaymentRecorded, describePaymentVoided, PAYMENT_SOURCE_LABELS } from "@/lib/payments";
 import { formatPhone } from "@/lib/phone";
+import {
+  describeRefundRecorded,
+  describeRefundVoided,
+  FLUTA_FEE_NOT_REFUNDED,
+  getRefundableKobo,
+  REFUND_METHODS,
+} from "@/lib/refunds";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
 import { fromStoredQuantity } from "@/lib/quantity";
 import { describeRevisionMoment } from "@/lib/quotes";
@@ -44,9 +52,11 @@ import { OrderStageActions } from "./OrderStageActions";
 import { PickupTimeCard, type PickupTimeOptions } from "./PickupTimeCard";
 import { QuoteBanner } from "./QuoteBanner";
 import { RecordPaymentButton } from "./RecordPaymentButton";
+import { RecordRefundButton } from "./RecordRefundButton";
 import { SendAgainButton } from "./SendAgainButton";
 import { TrackingLinkButton } from "./TrackingLinkButton";
 import { VoidPaymentButton } from "./VoidPaymentButton";
+import { VoidRefundButton } from "./VoidRefundButton";
 
 type Order = OrderDetailData["order"];
 
@@ -67,6 +77,8 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
   const editQuoteHref = getOrderQuotePath(order.id);
   // Ready or Completed with a balance due: Record payment is the main action.
   const recordPrimary = canChangeStage && detail.payments.canRecord && detail.payments.recordPrimary;
+  // Refund owed, at any stage: Record refund is the main action.
+  const refundPrimary = canChangeStage && detail.refunds.owedKobo > 0;
 
   return (
     <main className="page-container flex flex-1 flex-col gap-section py-section">
@@ -90,6 +102,7 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
         </div>
         {canChangeStage && (
           <div className="flex flex-wrap items-start gap-2">
+            {refundPrimary && <RecordRefundButton orderId={order.id} owedKobo={detail.refunds.owedKobo} primary />}
             {recordPrimary && (
               <RecordPaymentButton orderId={order.id} balance={balance} primary pendingOnline={detail.payments.hasPendingOnlinePayment} />
             )}
@@ -104,7 +117,7 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
                 priceOrder: quote.needsPricing,
                 address: quote.canEdit && order.fulfilmentType === "PICKUP_DELIVERY" ? (order.addressText ?? "") : null,
               }}
-              quietPrimary={recordPrimary}
+              quietPrimary={recordPrimary || refundPrimary}
             />
           </div>
         )}
@@ -463,6 +476,21 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
                 )}
               </div>
             </li>
+          ) : entry.kind === "refund" ? (
+            <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-info/10 px-3 py-2.5">
+              <BanknoteArrowUpIcon className="mt-0.5 size-4 shrink-0 text-info" aria-hidden />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="type-label break-words text-foreground">
+                  {entry.moment === "RECORDED"
+                    ? describeRefundRecorded(entry.refund, staffName(entry.staffUserId))
+                    : describeRefundVoided(entry.refund, staffName(entry.staffUserId))}
+                </span>
+                <span className="type-caption text-muted-foreground">{formatDateTime(entry.at, timeZone)}</span>
+                {entry.moment === "VOIDED" && entry.refund.voidReason && (
+                  <span className="type-body-sm break-words text-foreground">Reason: {entry.refund.voidReason}</span>
+                )}
+              </div>
+            </li>
           ) : entry.kind === "stage" ? (
             <li key={entry.key} className="flex flex-col gap-0.5 border-b border-border py-2.5 last:border-b-0">
               <span className="type-label text-foreground">{getTimelineLabel(entry.event, detail.order.fulfilmentType)}</span>
@@ -578,23 +606,31 @@ function PaymentsSection({
   const empty = payments.length === 0 && order.refunds.length === 0;
   const canRecord = canChangeStage && detail.payments.canRecord;
   const canVoid = canChangeStage && detail.payments.canVoid;
+  const owedKobo = detail.refunds.owedKobo;
+  const canRecordRefund = canChangeStage && owedKobo > 0;
+  const canVoidRefund = canChangeStage && detail.refunds.canVoid;
   const last = describeBalance(balance);
 
   return (
     <Section
       title="Payments"
       badge={
-        canRecord && (
-          <RecordPaymentButton
-            orderId={order.id}
-            balance={balance}
-            primary={false}
-            pendingOnline={detail.payments.hasPendingOnlinePayment}
-          />
+        (canRecord || canRecordRefund) && (
+          <div className="flex flex-wrap gap-2">
+            {canRecordRefund && <RecordRefundButton orderId={order.id} owedKobo={owedKobo} primary={false} />}
+            {canRecord && (
+              <RecordPaymentButton
+                orderId={order.id}
+                balance={balance}
+                primary={false}
+                pendingOnline={detail.payments.hasPendingOnlinePayment}
+              />
+            )}
+          </div>
         )
       }
     >
-      {empty ? (
+      {payments.length === 0 ? (
         <p className="type-body-sm text-muted-foreground">No payments recorded yet.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
@@ -609,21 +645,25 @@ function PaymentsSection({
               balanceKobo={balance.balanceKobo}
             />
           ))}
-          {order.refunds.map((refund) => {
-            const voided = refund.voidedAt !== null;
-            return (
-              <LineRow
-                key={refund.id}
-                voided={voided}
-                label="Refund paid"
-                detail={[voided ? "Voided" : null, formatDateTime(refund.paidAt, timeZone), refund.note]
-                  .filter(Boolean)
-                  .join(" · ")}
-                amount={formatNaira(-refund.amount)}
-              />
-            );
-          })}
         </ul>
+      )}
+
+      {order.refunds.length > 0 && (
+        <div className="flex flex-col gap-2 border-t border-border pt-component">
+          <h3 className="type-label text-foreground">Refunds</h3>
+          <ul className="flex flex-col divide-y divide-border">
+            {order.refunds.map((refund) => (
+              <RefundRow
+                key={refund.id}
+                refund={refund}
+                staffName={staffName}
+                timeZone={timeZone}
+                voidable={canVoidRefund && refund.voidedAt === null}
+                balanceKobo={balance.balanceKobo}
+              />
+            ))}
+          </ul>
+        </div>
       )}
 
       <dl className="flex flex-col gap-1 border-t border-border pt-component">
@@ -693,6 +733,9 @@ function PaymentRow({ payment, staffName, timeZone, voidable, balanceKobo }: Pay
         </div>
       )}
       {payment.note && <p className="type-caption break-words text-muted-foreground">Note: {payment.note}</p>}
+      {payment.source === "ONLINE" && payment.status === "CONFIRMED" && (payment.flutaFeeAmount ?? 0) > 0 && (
+        <p className="type-caption text-muted-foreground">{FLUTA_FEE_NOT_REFUNDED}.</p>
+      )}
       {voided && (
         <p className="type-caption break-words text-muted-foreground">
           Voided by {getActorLabel("STAFF", staffName(payment.voidedByUserId))}
@@ -705,6 +748,61 @@ function PaymentRow({ payment, staffName, timeZone, voidable, balanceKobo }: Pay
           <VoidPaymentButton
             payment={{ id: payment.id, amount: payment.amount, method, reference: payment.reference, note: payment.note }}
             balanceAfterVoidKobo={balanceKobo === null ? null : balanceKobo + payment.amount}
+          />
+        </div>
+      )}
+    </li>
+  );
+}
+
+type OrderRefund = Order["refunds"][number];
+
+interface RefundRowProps {
+  refund: OrderRefund;
+  staffName: (id: string | null) => string | null;
+  timeZone: string;
+  voidable: boolean;
+  // The order's balance now; voiding this refund adds its amount back to what is owed.
+  balanceKobo: number | null;
+}
+
+// One refund the store paid back: struck through once voided, with who voided
+// it and why (staff only).
+function RefundRow({ refund, staffName, timeZone, voidable, balanceKobo }: RefundRowProps) {
+  const voided = refund.voidedAt !== null;
+  const method = REFUND_METHODS.find((value) => value === refund.method);
+  const detail = [
+    voided ? "Voided" : null,
+    formatDateTime(refund.paidAt, timeZone),
+    `by ${getActorLabel("STAFF", staffName(refund.recordedByUserId))}`,
+    refund.reference && `Ref: ${refund.reference}`,
+  ];
+
+  return (
+    <li className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0">
+      <div className={cn("flex items-start justify-between gap-component", voided && "line-through")}>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="type-body-sm break-words text-foreground">
+            Refund · {PAYMENT_METHOD_LABELS[refund.method]}
+            {refund.replacesRefundId && " · Correction"}
+          </span>
+          <span className="type-caption break-words text-muted-foreground">{detail.filter(Boolean).join(" · ")}</span>
+        </div>
+        <span className="type-body-sm shrink-0 text-right text-foreground">{formatNaira(-refund.amount)}</span>
+      </div>
+      <p className="type-caption break-words text-muted-foreground">Note: {refund.note}</p>
+      {voided && (
+        <p className="type-caption break-words text-muted-foreground">
+          Voided by {getActorLabel("STAFF", staffName(refund.voidedByUserId))}
+          {refund.voidedAt && `, ${formatDateTime(refund.voidedAt, timeZone)}`}
+          {refund.voidReason && `. Reason: ${refund.voidReason}`}
+        </p>
+      )}
+      {voidable && method && (
+        <div>
+          <VoidRefundButton
+            refund={{ id: refund.id, amount: refund.amount, method, reference: refund.reference, note: refund.note }}
+            owedAfterVoidKobo={getRefundableKobo(balanceKobo === null ? null : balanceKobo - refund.amount)}
           />
         </div>
       )}

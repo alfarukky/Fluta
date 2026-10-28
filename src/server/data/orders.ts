@@ -528,12 +528,26 @@ export async function findOrderDetail(storeId: string, orderId: string) {
           voidedByUserId: true,
           voidReason: true,
           replacesPaymentId: true,
+          // Online: Fluta keeps its fee when the store refunds the customer.
+          flutaFeeAmount: true,
           createdAt: true,
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       },
       refunds: {
-        select: { id: true, amount: true, note: true, paidAt: true, voidedAt: true },
+        select: {
+          id: true,
+          amount: true,
+          method: true,
+          reference: true,
+          note: true,
+          recordedByUserId: true,
+          paidAt: true,
+          voidedAt: true,
+          voidedByUserId: true,
+          voidReason: true,
+          replacesRefundId: true,
+        },
         orderBy: [{ paidAt: "desc" }, { id: "desc" }],
       },
       statusEvents: {

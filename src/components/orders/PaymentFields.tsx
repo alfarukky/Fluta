@@ -11,9 +11,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { PAYMENT_METHOD_LABELS } from "@/lib/orders";
 import { STORE_PAYMENT_METHODS, type StorePaymentMethod } from "@/lib/payments";
 import { PAYMENT_NOTE_MAX, PAYMENT_REFERENCE_MAX, paymentDetailsSchema } from "@/schemas/payments";
+import { refundDetailsSchema } from "@/schemas/refunds";
 
-// The amount, method, reference, and note of a store-collected payment: the
-// Record payment form, and the correct payment when voiding one.
+// The amount, method, reference, and note of a store-collected payment or a
+// refund: the Record payment and Record refund forms, and the correct one
+// recorded when voiding a mistaken one.
 
 export interface PaymentDraft {
   amount: string;
@@ -25,12 +27,15 @@ export interface PaymentDraft {
 export type PaymentField = keyof PaymentDraft;
 export type PaymentFieldErrors = Partial<Record<PaymentField | "reason", string>>;
 
+type DetailsSchema = typeof paymentDetailsSchema | typeof refundDetailsSchema;
+
 // The browser's check before sending, with the server's own rules. The
 // server checks everything again.
 export function checkPaymentDraft(
   draft: PaymentDraft,
+  schema: DetailsSchema = paymentDetailsSchema,
 ): { ok: true; amountKobo: number } | { ok: false; errors: PaymentFieldErrors } {
-  const parsed = paymentDetailsSchema.safeParse(draft);
+  const parsed = schema.safeParse(draft);
   if (parsed.success) return { ok: true, amountKobo: parsed.data.amount };
   const errors: PaymentFieldErrors = {};
   for (const issue of parsed.error.issues) {
@@ -47,14 +52,27 @@ interface PaymentFieldsProps {
   draft: PaymentDraft;
   errors: PaymentFieldErrors;
   amountHint?: string;
+  // Refunds: "How it was paid back", and a required note.
+  methodLabel?: string;
+  noteHint?: string;
+  notePlaceholder?: string;
   disabled: boolean;
   onChange: (field: PaymentField, value: string) => void;
 }
 
-export function PaymentFields({ idPrefix, draft, errors, amountHint, disabled, onChange }: PaymentFieldsProps) {
+export function PaymentFields({
+  idPrefix,
+  draft,
+  errors,
+  amountHint,
+  methodLabel = "Method",
+  noteHint = "Optional. Staff only.",
+  notePlaceholder,
+  disabled,
+  onChange,
+}: PaymentFieldsProps) {
   const id = (name: string) => `${idPrefix}-${name}`;
   const referenceHint = "Optional. For example a transfer or POS reference.";
-  const noteHint = "Optional. Staff only.";
 
   return (
     <>
@@ -75,7 +93,7 @@ export function PaymentFields({ idPrefix, draft, errors, amountHint, disabled, o
       </FormField>
 
       <fieldset className="flex flex-col gap-2" data-form-field>
-        <legend className="type-label mb-2 text-foreground">Method</legend>
+        <legend className="type-label mb-2 text-foreground">{methodLabel}</legend>
         <RadioGroup
           value={draft.method}
           onValueChange={(value) => onChange("method", value)}
@@ -122,6 +140,7 @@ export function PaymentFields({ idPrefix, draft, errors, amountHint, disabled, o
           onChange={(event) => onChange("note", event.target.value)}
           maxLength={PAYMENT_NOTE_MAX}
           rows={2}
+          placeholder={notePlaceholder}
           disabled={disabled}
           aria-invalid={errors.note ? true : undefined}
           aria-describedby={describedBy(id("note"), noteHint, errors.note)}
