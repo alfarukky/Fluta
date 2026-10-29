@@ -68,26 +68,29 @@ describe("isValidPaystackSignature", () => {
 
 describe("createPaystackClient().listBanks", () => {
   const config = { secretKey: SECRET, mode: "test" as const };
-  const bank = (name: string, code: string, extra: object = {}) => ({ name, code, active: true, is_deleted: false, type: "nuban", ...extra });
+  const bank = (id: number, name: string, code: string, extra: object = {}) => ({ id, name, code, active: true, is_deleted: false, type: "nuban", ...extra });
   const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
 
-  it("follows the cursor and keeps only active, undeleted NUBAN banks", async () => {
+  it("follows the cursor and keeps only active, undeleted NUBAN banks, with their ids", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
-        json({ status: true, data: [bank("Access Bank", "044"), bank("Old Bank", "999", { active: false })], meta: { next: "cursor2" } }),
+        json({ status: true, data: [bank(1, "Access Bank", "044"), bank(2, "Old Bank", "999", { active: false })], meta: { next: "cursor2" } }),
       )
       .mockResolvedValueOnce(
         json({
           status: true,
-          data: [bank("Guaranty Trust Bank", "058"), bank("Gone Bank", "998", { is_deleted: true }), bank("Mobile Money", "MM", { type: "mobile_money" })],
+          data: [bank(9, "Guaranty Trust Bank", "058"), bank(3, "Gone Bank", "998", { is_deleted: true }), bank(4, "Mobile Money", "MM", { type: "mobile_money" }), bank(635, "Goodnews Microfinance Bank", "50739"), bank(792, "Prospa Capital Microfinance Bank", "50739")],
           meta: { next: null },
         }),
       );
 
     await expect(createPaystackClient(config, fetchImpl).listBanks()).resolves.toEqual([
-      { name: "Access Bank", code: "044" },
-      { name: "Guaranty Trust Bank", code: "058" },
+      { id: "1", name: "Access Bank", code: "044" },
+      { id: "9", name: "Guaranty Trust Bank", code: "058" },
+      // Two banks sharing a code are both kept: each is chosen by its id.
+      { id: "635", name: "Goodnews Microfinance Bank", code: "50739" },
+      { id: "792", name: "Prospa Capital Microfinance Bank", code: "50739" },
     ]);
 
     const [firstUrl, firstInit] = fetchImpl.mock.calls[0];
@@ -130,5 +133,308 @@ describe("createPaystackClient().listBanks", () => {
     const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => json({ status: true, data: [], meta: { next: "again" } }));
     await expect(createPaystackClient(config, fetchImpl).listBanks()).rejects.toThrow(/^too many pages$/);
     expect(fetchImpl).toHaveBeenCalledTimes(20);
+  });
+});
+
+describe("createPaystackClient(): accounts and subaccounts", () => {
+  const config = { secretKey: SECRET, mode: "test" as const };
+  const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
+  // A recorded test-mode subaccount, values replaced. Paystack returns the
+  // full account number.
+  const SUBACCOUNT = {
+    integration: 100973,
+    domain: "test",
+    subaccount_code: "ACCT_4hl4xenwpjy5wb",
+    business_name: "FreshFold Laundry",
+    description: null,
+    primary_contact_email: "ada@freshfold.example",
+    settlement_bank: "Guaranty Trust Bank",
+    account_number: "0123454521",
+    account_name: "AMINA BELLO",
+    percentage_charge: 0,
+    is_verified: false,
+    settlement_schedule: "AUTO",
+    active: true,
+    id: 55,
+  };
+  const subaccountFetch = () => vi.fn<typeof fetch>().mockImplementation(async () => json({ status: true, message: "ok", data: SUBACCOUNT }));
+  const parsedSubaccount = {
+    subaccountCode: "ACCT_4hl4xenwpjy5wb",
+    businessName: "FreshFold Laundry",
+    settlementBank: "Guaranty Trust Bank",
+    accountName: "AMINA BELLO",
+    accountNumberLast4: "4521",
+    percentageCharge: 0,
+    active: true,
+    isVerified: false,
+  };
+  const ACCOUNT = { bankCode: "058", accountNumber: "0123454521" };
+
+  it("resolves an account name with the number and bank code", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(json({ status: true, data: { account_number: "0123454521", account_name: "AMINA BELLO", bank_id: 9 } }));
+    await expect(createPaystackClient(config, fetchImpl).resolveAccount(ACCOUNT)).resolves.toEqual({ accountName: "AMINA BELLO" });
+    const url = new URL(String(fetchImpl.mock.calls[0][0]));
+    expect(url.pathname).toBe("/bank/resolve");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ account_number: "0123454521", bank_code: "058" });
+  });
+
+  it("refuses a resolve response without a name", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(json({ status: true, data: { account_name: " " } }));
+    await expect(createPaystackClient(config, fetchImpl).resolveAccount(ACCOUNT)).rejects.toThrow(/^unexpected response$/);
+  });
+
+  it("creates a subaccount with bank_code and a 0% share for Fluta, keeping only the last 4 digits", async () => {
+    const fetchImpl = subaccountFetch();
+    const created = await createPaystackClient(config, fetchImpl).createSubaccount({
+      ...ACCOUNT,
+      businessName: "FreshFold Laundry",
+      primaryContactEmail: "ada@freshfold.example",
+    });
+    expect(created).toEqual(parsedSubaccount);
+    expect(JSON.stringify(created)).not.toContain("0123454521");
+
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(String(url)).toBe("https://api.paystack.co/subaccount");
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toMatchObject({ Authorization: `Bearer ${SECRET}`, "Content-Type": "application/json" });
+    expect(JSON.parse(String(init?.body))).toEqual({
+      business_name: "FreshFold Laundry",
+      bank_code: "058",
+      account_number: "0123454521",
+      percentage_charge: 0,
+      primary_contact_email: "ada@freshfold.example",
+    });
+  });
+
+  it("updates the bank account of the same subaccount, or switches it off", async () => {
+    const fetchImpl = subaccountFetch();
+    const client = createPaystackClient(config, fetchImpl);
+    await client.updateSubaccount("ACCT_4hl4xenwpjy5wb", { bankCode: "044", accountNumber: "0987651234" });
+    await client.updateSubaccount("ACCT_4hl4xenwpjy5wb", { active: false });
+
+    const [[firstUrl, first], [, second]] = fetchImpl.mock.calls;
+    expect(String(firstUrl)).toBe("https://api.paystack.co/subaccount/ACCT_4hl4xenwpjy5wb");
+    expect(first?.method).toBe("PUT");
+    expect(JSON.parse(String(first?.body))).toEqual({ bank_code: "044", account_number: "0987651234" });
+    expect(JSON.parse(String(second?.body))).toEqual({ active: false });
+  });
+
+  it("fetches a subaccount", async () => {
+    const fetchImpl = subaccountFetch();
+    await expect(createPaystackClient(config, fetchImpl).fetchSubaccount("ACCT_4hl4xenwpjy5wb")).resolves.toEqual(parsedSubaccount);
+    expect(fetchImpl.mock.calls[0][1]?.method).toBe("GET");
+  });
+
+  it("refuses a subaccount code that isn't ACCT_ followed by letters and digits, without calling Paystack", async () => {
+    const fetchImpl = subaccountFetch();
+    const client = createPaystackClient(config, fetchImpl);
+    await expect(client.fetchSubaccount("../bank")).rejects.toThrow(/^invalid subaccount code$/);
+    await expect(client.updateSubaccount("ACCT_x/../y", { active: false })).rejects.toThrow(/^invalid subaccount code$/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses a subaccount response it doesn't recognise", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(json({ status: true, data: { ...SUBACCOUNT, subaccount_code: 12 } }));
+    await expect(createPaystackClient(config, fetchImpl).fetchSubaccount("ACCT_4hl4xenwpjy5wb")).rejects.toThrow(/^unexpected response$/);
+  });
+});
+
+describe("createPaystackClient(): transactions", () => {
+  const config = { secretKey: SECRET, mode: "test" as const };
+  const json = (body: unknown, init: ResponseInit = {}) => new Response(JSON.stringify(body), { status: 200, ...init });
+  const input = {
+    amountKobo: 620_000,
+    email: "amina@example.com",
+    currency: "NGN",
+    reference: "FL-0123456789abcdef0123",
+    callbackUrl: "https://fluta.test/o/token?paystack=return",
+    subaccountCode: "ACCT_abc123",
+    transactionChargeKobo: 0,
+    metadata: { payment_id: "p1", order_id: "o1", store_id: "s1" },
+  };
+
+  it("initializes with the subaccount bearing fees, Fluta's charge (even 0), and no channels", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      json({
+        status: true,
+        data: { authorization_url: "https://checkout.paystack.com/abc", access_code: "abc", reference: input.reference },
+      }),
+    );
+    await expect(createPaystackClient(config, fetchImpl).initializeTransaction(input)).resolves.toEqual({
+      authorizationUrl: "https://checkout.paystack.com/abc",
+      accessCode: "abc",
+      reference: input.reference,
+    });
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(String(url)).toBe("https://api.paystack.co/transaction/initialize");
+    expect(init?.method).toBe("POST");
+    const body = JSON.parse(String(init?.body));
+    expect(body).toEqual({
+      amount: "620000",
+      email: "amina@example.com",
+      currency: "NGN",
+      reference: input.reference,
+      callback_url: input.callbackUrl,
+      subaccount: "ACCT_abc123",
+      bearer: "subaccount",
+      transaction_charge: 0,
+      metadata: JSON.stringify(input.metadata),
+    });
+    expect(body).not.toHaveProperty("channels");
+  });
+
+  it("refuses a checkout URL that isn't Paystack's", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      json({ status: true, data: { authorization_url: "https://evil.example/pay", access_code: "abc", reference: input.reference } }),
+    );
+    await expect(createPaystackClient(config, fetchImpl).initializeTransaction(input)).rejects.toThrow(/^unexpected response$/);
+  });
+
+  it("never sends a malformed reference or subaccount code", async () => {
+    const fetchImpl = vi.fn<typeof fetch>();
+    const client = createPaystackClient(config, fetchImpl);
+    await expect(client.initializeTransaction({ ...input, reference: "FL/../x" })).rejects.toThrow(/^invalid reference$/);
+    await expect(client.initializeTransaction({ ...input, subaccountCode: "ACCT_x/y" })).rejects.toThrow(/^invalid subaccount code$/);
+    await expect(client.verifyTransaction("a/b")).rejects.toThrow(/^invalid reference$/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("verifies, keeping only the fields Fluta checks", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      json({
+        status: true,
+        data: {
+          status: "success",
+          reference: input.reference,
+          amount: 620_000,
+          currency: "NGN",
+          domain: "test",
+          paid_at: "2026-10-23T12:00:00.000Z",
+          fees: 9_300,
+          subaccount: { subaccount_code: "ACCT_abc123", account_number: "0123454521" },
+          authorization: { authorization_code: "AUTH_x", last4: "4081" },
+          customer: { email: "amina@example.com" },
+        },
+      }),
+    );
+    await expect(createPaystackClient(config, fetchImpl).verifyTransaction(input.reference)).resolves.toEqual({
+      status: "success",
+      reference: input.reference,
+      amountKobo: 620_000,
+      currency: "NGN",
+      domain: "test",
+      paidAt: new Date("2026-10-23T12:00:00.000Z"),
+      feesKobo: 9_300,
+      subaccountCode: "ACCT_abc123",
+    });
+    expect(String(fetchImpl.mock.calls[0][0])).toBe(`https://api.paystack.co/transaction/verify/${input.reference}`);
+  });
+
+  it("reads an empty subaccount object as no split details", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      json({
+        status: true,
+        data: { status: "abandoned", reference: input.reference, amount: 620_000, currency: "NGN", domain: "test", paid_at: null, subaccount: {} },
+      }),
+    );
+    await expect(createPaystackClient(config, fetchImpl).verifyTransaction(input.reference)).resolves.toMatchObject({
+      status: "abandoned",
+      paidAt: null,
+      feesKobo: null,
+      subaccountCode: null,
+    });
+  });
+});
+
+describe("recorded Paystack responses (test mode, Phase 3)", () => {
+  const config = { secretKey: SECRET, mode: "test" as const };
+
+  it("reads a real split verify response: subaccount code, Paystack's fee, and a 0 charge", async () => {
+    const recorded = (await import("@/test/fixtures/paystack/verify-success.json")).default;
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(recorded), { status: 200 }));
+    await expect(createPaystackClient(config, fetchImpl).verifyTransaction(recorded.data.reference)).resolves.toEqual({
+      status: "success",
+      reference: recorded.data.reference,
+      amountKobo: 80_000,
+      currency: "NGN",
+      domain: "test",
+      paidAt: new Date("2026-10-23T12:30:04.000Z"),
+      feesKobo: 1_200,
+      subaccountCode: "ACCT_fixture",
+    });
+    // Fluta's charge of 0 was accepted, with Paystack's fee on the store's share.
+    expect(recorded.data.fees_split).toMatchObject({ integration: 0, params: { bearer: "subaccount", transaction_charge: "0" } });
+  });
+});
+
+describe("recorded Paystack responses with Fluta's fee (test mode, Phase 5)", () => {
+  const config = { secretKey: SECRET, mode: "test" as const };
+
+  // Two ₦1,600 payments at FreshFold, one at 150 bps and one at 0.
+  it.each([
+    { name: "150 bps", file: "verify-success-fee-150", charge: 2_400 },
+    { name: "0%", file: "verify-success-fee-0", charge: 0 },
+  ])("at $name: the charge goes to Fluta, and the store's share bears Paystack's fee", async ({ file, charge }) => {
+    const recorded = (await import(`@/test/fixtures/paystack/${file}.json`)).default;
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(recorded), { status: 200 }));
+    await expect(createPaystackClient(config, fetchImpl).verifyTransaction(recorded.data.reference)).resolves.toMatchObject({
+      status: "success",
+      amountKobo: 160_000,
+      feesKobo: 2_400,
+      subaccountCode: "ACCT_fixture",
+    });
+
+    const split = recorded.data.fees_split;
+    // Paystack sends `integration` as a string when non-zero and as 0 otherwise.
+    expect(Number(split.integration)).toBe(charge);
+    expect(split.params).toMatchObject({ bearer: "subaccount", transaction_charge: String(charge), percentage_charge: "0" });
+    expect(split.paystack).toBe(2_400);
+    expect(split.subaccount).toBe(160_000 - 2_400 - charge);
+  });
+});
+
+describe("recorded initialize response (test mode, Phase 3)", () => {
+  it("reads Paystack's real initialize response", async () => {
+    const recorded = (await import("@/test/fixtures/paystack/initialize-success.json")).default;
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify(recorded), { status: 200 }));
+    const client = createPaystackClient({ secretKey: SECRET, mode: "test" }, fetchImpl);
+    await expect(
+      client.initializeTransaction({
+        amountKobo: 10_000,
+        email: "payer@example.com",
+        currency: "NGN",
+        reference: recorded.data.reference,
+        callbackUrl: "http://localhost:3000/?paystack=return",
+        subaccountCode: "ACCT_fixture",
+        transactionChargeKobo: 0,
+        metadata: {},
+      }),
+    ).resolves.toEqual({
+      authorizationUrl: "https://checkout.paystack.com/fixtureaccesscode",
+      accessCode: "fixtureaccesscode",
+      reference: recorded.data.reference,
+    });
+  });
+});
+
+describe("recorded charge.success webhook (test mode, Phase 3)", () => {
+  it("is accepted when signed, and carries the split details Phase 4 checks", async () => {
+    const recorded = (await import("@/test/fixtures/paystack/webhook-charge-success.json")).default;
+    const bytes = encode(JSON.stringify(recorded));
+    expect(isValidPaystackSignature(bytes, sign(bytes), SECRET)).toBe(true);
+    expect(recorded).toMatchObject({
+      event: "charge.success",
+      data: {
+        status: "success",
+        domain: "test",
+        amount: 80_000,
+        currency: "NGN",
+        fees: 1_200,
+        fees_split: { integration: 0, params: { bearer: "subaccount", transaction_charge: "0" } },
+        subaccount: { subaccount_code: "ACCT_fixture" },
+      },
+    });
   });
 });

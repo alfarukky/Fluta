@@ -78,24 +78,23 @@ describe("isBookablePickup", () => {
 const SHIRT: BookingLineService = { price: 80_000, pricingType: "PER_ITEM", requiresQuote: false };
 const DUVET: BookingLineService = { price: 300_000, pricingType: "PER_ITEM", requiresQuote: true };
 const WEDDING_GOWN: BookingLineService = { price: 0, pricingType: "PER_ITEM", requiresQuote: true };
-const WASH_KG: BookingLineService = { price: 150_000, pricingType: "PER_KG", requiresQuote: true };
+const BEDDING_BUNDLE: BookingLineService = { price: 150_000, pricingType: "PER_PACKAGE", requiresQuote: true };
 
 const line = (service: BookingLineService, amount: number | null) => ({ ...service, ...toBookingLineAmount(service, amount) });
 
 describe("toBookingLineAmount", () => {
   it("bills fixed-price items and keeps quote-required amounts as estimates", () => {
-    expect(toBookingLineAmount(SHIRT, 300)).toEqual({ quantity: 300, estimate: null });
-    expect(toBookingLineAmount(DUVET, 200)).toEqual({ quantity: null, estimate: 200 });
-    expect(toBookingLineAmount(WASH_KG, null)).toEqual({ quantity: null, estimate: null });
+    expect(toBookingLineAmount(SHIRT, 3)).toEqual({ quantity: 3, estimate: null });
+    expect(toBookingLineAmount(DUVET, 2)).toEqual({ quantity: null, estimate: 2 });
   });
 });
 
 describe("getBookingPriceSummary", () => {
   it("gives the total of a fully priced order, with a fixed pickup charge", () => {
     expect(
-      getBookingPriceSummary({ fulfilmentType: "PICKUP_DELIVERY", lines: [line(SHIRT, 300)], fulfilmentCharge: 150_000 }),
+      getBookingPriceSummary({ fulfilmentType: "PICKUP_DELIVERY", lines: [line(SHIRT, 3)], fulfilmentCharge: 150_000 }),
     ).toEqual({ kind: "total", total: 390_000 });
-    expect(getBookingPriceSummary({ fulfilmentType: "DROP_OFF", lines: [line(SHIRT, 300)], fulfilmentCharge: null })).toEqual({
+    expect(getBookingPriceSummary({ fulfilmentType: "DROP_OFF", lines: [line(SHIRT, 3)], fulfilmentCharge: null })).toEqual({
       kind: "total",
       total: 240_000,
     });
@@ -105,16 +104,10 @@ describe("getBookingPriceSummary", () => {
     expect(
       getBookingPriceSummary({
         fulfilmentType: "PICKUP_DELIVERY",
-        lines: [line(SHIRT, 200), line(WASH_KG, 250), line(DUVET, 100)],
+        lines: [line(SHIRT, 2), line(BEDDING_BUNDLE, 2), line(DUVET, 1)],
         fulfilmentCharge: 0,
       }),
-    ).toEqual({ kind: "estimate", total: 160_000 + 375_000 + 300_000 });
-  });
-
-  it("shows no number when a weight has no estimate", () => {
-    expect(
-      getBookingPriceSummary({ fulfilmentType: "DROP_OFF", lines: [line(SHIRT, 200), line(WASH_KG, null)], fulfilmentCharge: null }),
-    ).toEqual({ kind: "unknown" });
+    ).toEqual({ kind: "estimate", total: 160_000 + 300_000 + 300_000 });
   });
 
   it("shows no number when an item is priced on inspection (FF-1013: a jacket and a gown)", () => {
@@ -122,7 +115,7 @@ describe("getBookingPriceSummary", () => {
     expect(
       getBookingPriceSummary({
         fulfilmentType: "DROP_OFF",
-        lines: [line(leatherJacket, 200), line(WEDDING_GOWN, 100)],
+        lines: [line(leatherJacket, 2), line(WEDDING_GOWN, 1)],
         fulfilmentCharge: null,
       }),
     ).toEqual({ kind: "unknown" });
@@ -130,7 +123,7 @@ describe("getBookingPriceSummary", () => {
 
   it("shows no number when the store will confirm the pickup charge, even if everything else is priced", () => {
     expect(
-      getBookingPriceSummary({ fulfilmentType: "PICKUP_DELIVERY", lines: [line(SHIRT, 200)], fulfilmentCharge: null }),
+      getBookingPriceSummary({ fulfilmentType: "PICKUP_DELIVERY", lines: [line(SHIRT, 2)], fulfilmentCharge: null }),
     ).toEqual({ kind: "unknown" });
   });
 });

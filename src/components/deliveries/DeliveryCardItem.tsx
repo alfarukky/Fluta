@@ -10,6 +10,7 @@ import { OutOfAreaBadge } from "@/components/orders/OrderBadges";
 import { OpenInMapsButton } from "@/components/shared/OpenInMapsButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getOrderPath } from "@/lib/order-links";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
 import { formatCalendarDate } from "@/lib/time";
 import type { DeliveryCard, PickupCard } from "@/types/deliveries";
@@ -57,7 +58,7 @@ export function DeliveryCardItem({ card, linkToOrder }: DeliveryCardItemProps) {
         <div className="flex flex-wrap items-center gap-2">
           {linkToOrder ? (
             <Link
-              href={`/orders/${card.orderId}`}
+              href={getOrderPath(card.orderId)}
               className="type-label text-primary underline-offset-4 hover:underline"
             >
               {card.orderNumber}

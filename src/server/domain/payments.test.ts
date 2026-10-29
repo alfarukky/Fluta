@@ -5,6 +5,8 @@ import { decideStorePayment, decideVoid, getPeriodStart, ORDER_CANCELLED_MESSAGE
 
 const order = (overrides: Partial<BalanceOrder> = {}): BalanceOrder => ({
   stage: "READY",
+  channel: "COUNTER",
+  payLater: false,
   approvedQuote: { total: 500_000 },
   payments: [],
   refunds: [],

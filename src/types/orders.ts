@@ -102,8 +102,8 @@ export interface QuoteEditorLine {
   pricingType: PricingType;
   requiresQuote: boolean;
   unitPrice: number;
-  quantity: number | null; // hundredths; null while unweighed
-  estimate: number | null; // hundredths, the customer's estimate
+  quantity: number | null; // null until priced (a quote-required line booked online)
+  estimate: number | null; // the customer's count, never billed
 }
 
 // Everything the edit-quote screen needs, from the order's own copies.

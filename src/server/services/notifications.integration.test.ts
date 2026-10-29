@@ -59,7 +59,7 @@ interface TestStore {
   id: string;
   slug: string;
   shirt: string;
-  wash: string;
+  duvet: string;
 }
 
 beforeAll(async () => {
@@ -92,6 +92,7 @@ afterAll(async () => {
         prisma.statusEvent.deleteMany({ where }),
         prisma.quoteRevision.deleteMany({ where }),
         prisma.orderLine.deleteMany({ where }),
+        prisma.notification.deleteMany({ where }),
         prisma.order.deleteMany({ where }),
         prisma.customer.deleteMany({ where }),
         prisma.service.deleteMany({ where }),
@@ -128,13 +129,13 @@ async function createStore(name: string, orderPrefix: string): Promise<TestStore
     },
     select: { id: true },
   });
-  const service = (serviceName: string, pricingType: "PER_ITEM" | "PER_KG", price: number, requiresQuote: boolean) =>
+  const service = (serviceName: string, price: number, requiresQuote: boolean) =>
     prisma.service.create({
-      data: { storeId: id, name: serviceName, nameKey: toMatchKey(serviceName), pricingType, price, requiresQuote },
+      data: { storeId: id, name: serviceName, nameKey: toMatchKey(serviceName), pricingType: "PER_ITEM", price, requiresQuote },
       select: { id: true },
     });
-  const [shirt, wash] = await Promise.all([service("Shirt", "PER_ITEM", 80_000, false), service("Wash & fold", "PER_KG", 150_000, true)]);
-  return { id, slug, shirt: shirt.id, wash: wash.id };
+  const [shirt, duvet] = await Promise.all([service("Shirt", 80_000, false), service("Duvet", 150_000, true)]);
+  return { id, slug, shirt: shirt.id, duvet: duvet.id };
 }
 
 async function addUser(label: string, role: "OWNER" | "STAFF", store: TestStore) {
@@ -173,9 +174,9 @@ interface Customer {
   email?: string;
 }
 
-// A staff counter order: shirts (fully priced), or an unweighed wash that
-// needs a price.
-async function staffOrder(options: { customer?: Customer; unpriced?: boolean; store?: TestStore } = {}) {
+// A staff counter order: shirts, or one duvet at its "from" price that the
+// store prices again after inspecting it.
+async function staffOrder(options: { customer?: Customer; quoteRequired?: boolean; store?: TestStore } = {}) {
   const store = options.store ?? main;
   const order: CreateOrderRequest = {
     clientRequestId: randomUUID(),
@@ -183,9 +184,9 @@ async function staffOrder(options: { customer?: Customer; unpriced?: boolean; st
     channel: "COUNTER",
     fulfilmentType: "DROP_OFF",
     pickup: null,
-    serviceLines: options.unpriced
-      ? [{ serviceId: store.wash, quantity: "", estimate: "" }]
-      : [{ serviceId: store.shirt, quantity: "3", estimate: "" }],
+    serviceLines: options.quoteRequired
+      ? [{ serviceId: store.duvet, quantity: "1" }]
+      : [{ serviceId: store.shirt, quantity: "3" }],
     adjustments: [],
     internalNote: "",
   };
@@ -212,7 +213,7 @@ async function staffPickupOrder(customer: Customer = {}) {
       windowEnd: "10:00",
       charge: "0",
     },
-    serviceLines: [{ serviceId: main.shirt, quantity: "2", estimate: "" }],
+    serviceLines: [{ serviceId: main.shirt, quantity: "2" }],
     adjustments: [],
     internalNote: "Agreed by phone, outside the schedule",
   } satisfies CreateOrderRequest);
@@ -245,7 +246,7 @@ async function moveStage(orderId: string, from: string, to: string) {
   if (!result.ok) throw new Error(`Move refused: ${result.message}`);
 }
 
-// Prices the unweighed wash: a price update the customer must approve.
+// Prices the duvets after inspection: a price update the customer must approve.
 async function issuePriceUpdate(orderId: string) {
   const order = await prisma.order.findUniqueOrThrow({
     where: { id: orderId },
@@ -257,6 +258,7 @@ async function issuePriceUpdate(orderId: string) {
     basedOnVersion: order.quoteRevisions[0].version,
     lines: [{ kind: "existing", lineId: order.lines[0].id, quantity: "2" }],
     adjustments: [],
+    reason: "Two duvets, not one",
   });
   if (!result.ok) throw new Error(`Revision refused: ${result.message}`);
 }
@@ -317,7 +319,7 @@ describe("each trigger", () => {
 
   it("queues a price update with a fresh link, so the previous link stops working", async () => {
     const phone = nigerianPhone();
-    const orderId = await staffOrder({ customer: { phone }, unpriced: true });
+    const orderId = await staffOrder({ customer: { phone }, quoteRequired: true });
     const firstToken = tokenIn(fakeSms.sentTo(phone)[0].text);
 
     await issuePriceUpdate(orderId);
@@ -384,7 +386,7 @@ describe("channels", () => {
   it("sends each of the four messages by email too, for a customer with an email", async () => {
     const email = newEmail();
     const phone = nigerianPhone();
-    const orderId = await staffOrder({ customer: { phone, email }, unpriced: true });
+    const orderId = await staffOrder({ customer: { phone, email }, quoteRequired: true });
     await issuePriceUpdate(orderId);
     await prisma.order.update({ where: { id: orderId }, data: { stage: "IN_PROGRESS" } });
     await prisma.quoteRevision.updateMany({ where: { orderId, status: "PENDING" }, data: { status: "SUPERSEDED" } });

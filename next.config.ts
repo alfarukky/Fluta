@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-import { readR2PublicUrl } from "./src/lib/env";
+import { isStaging, readR2PublicUrl } from "./src/lib/env";
 
 // Store logos live in R2 and are served from its public address. Builds work
 // without the variable (no secrets in CI); the pattern is then just omitted.
@@ -23,15 +23,23 @@ export const PRIVATE_LINK_SOURCES = [
   "/o/:token/:path*",
 ];
 
+// The staging site is never listed by search engines: every response says so,
+// including store booking pages, which production lets them list. Decided by
+// DATABASE_BRANCH=staging, which Railway sets for both the staging build and
+// the running app (headers are fixed at build time).
+export const STAGING_HEADERS = [{ key: "X-Robots-Tag", value: "noindex, nofollow" }];
+
+export function buildHeaders(staging: boolean) {
+  const privateLinks = PRIVATE_LINK_SOURCES.map((source) => ({ source, headers: PRIVATE_LINK_HEADERS }));
+  return staging ? [{ source: "/:path*", headers: STAGING_HEADERS }, ...privateLinks] : privateLinks;
+}
+
 const nextConfig: NextConfig = {
   images: {
     remotePatterns: r2PublicUrl ? [new URL(`${r2PublicUrl.origin}/**`)] : [],
   },
   async headers() {
-    return PRIVATE_LINK_SOURCES.map((source) => ({
-      source,
-      headers: PRIVATE_LINK_HEADERS,
-    }));
+    return buildHeaders(isStaging());
   },
   // Development request logs would print token URLs; leave those requests out
   // (the tracking link's /o/{token} too).

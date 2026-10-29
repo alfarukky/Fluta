@@ -17,6 +17,9 @@ const PUBLIC_STORE_SELECT = {
   phone: true,
   logoKey: true,
   brandAccentColor: true,
+  // Book and pay: a connected store with pay later off (never shown).
+  paystackSubaccountCode: true,
+  payLaterEnabled: true,
 } satisfies Prisma.StoreSelect;
 
 export type PublicStoreRecord = Prisma.StoreGetPayload<{ select: typeof PUBLIC_STORE_SELECT }>;

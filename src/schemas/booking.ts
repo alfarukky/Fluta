@@ -24,8 +24,8 @@ export const BOOKING_EXPIRED_MESSAGE = "This page has expired. Reload it and try
 
 const serviceLineSchema = z.object({
   serviceId: recordId,
-  // How many items or packages, or the estimated weight in kg (optional).
-  // Whether it is billed or an estimate depends on the service.
+  // How many items or packages. Billed on a fixed-price service; on a
+  // quote-required one it is the customer's estimate, never billed.
   amount: quantityText,
 });
 

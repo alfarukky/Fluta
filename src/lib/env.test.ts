@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { isNodeServerStartup, parseServerEnv } from "./env";
+import { isNodeServerStartup, isStaging, parseServerEnv } from "./env";
 
 const VALID = {
   DATABASE_URL: "postgresql://user:secret@ep-x-pooler.example.neon.tech/neondb?sslmode=verify-full",
@@ -53,7 +53,7 @@ describe("parseServerEnv", () => {
   it("refuses part of Termii's settings, or none in production", () => {
     expect(() => parseServerEnv({ ...VALID, TERMII_API_KEY: "key" })).toThrow(/set all three, or none/);
     expect(() =>
-      parseServerEnv({ ...VALID, NODE_ENV: "production", BETTER_AUTH_URL: "https://fluta.example" }),
+      parseServerEnv({ ...VALID, NODE_ENV: "production", DATABASE_BRANCH: "production", BETTER_AUTH_URL: "https://fluta.example" }),
     ).toThrow(/required in production/);
   });
 
@@ -76,7 +76,7 @@ describe("parseServerEnv", () => {
   });
 
   it("rejects an unknown branch", () => {
-    expect(() => parseServerEnv({ ...VALID, DATABASE_BRANCH: "staging" })).toThrow(/DATABASE_BRANCH/);
+    expect(() => parseServerEnv({ ...VALID, DATABASE_BRANCH: "preview" })).toThrow(/DATABASE_BRANCH/);
   });
 
   it("rejects a short auth secret and a non-http auth URL", () => {
@@ -92,7 +92,7 @@ describe("parseServerEnv", () => {
   });
 
   it("never echoes the connection string in the error", () => {
-    expect(() => parseServerEnv({ ...VALID, DATABASE_BRANCH: "staging" })).not.toThrow(/secret/);
+    expect(() => parseServerEnv({ ...VALID, DATABASE_BRANCH: "preview" })).not.toThrow(/secret/);
   });
 });
 
@@ -145,6 +145,66 @@ describe("parseServerEnv: Paystack", () => {
     expect(parseServerEnv({ ...VALID, ...PRODUCTION, ...LIVE_KEY })).toMatchObject(LIVE_KEY);
     expect(() => parseServerEnv({ ...VALID, ...PRODUCTION })).toThrow(/production requires PAYSTACK_MODE=live and an sk_live_ key/);
     expect(() => parseServerEnv({ ...VALID, ...PRODUCTION, ...TEST_KEY })).toThrow(/production requires PAYSTACK_MODE=live/);
+  });
+});
+
+describe("parseServerEnv: environments (DATABASE_BRANCH)", () => {
+  const LIVE = { PAYSTACK_SECRET_KEY: "sk_live_0123456789abcdef", PAYSTACK_MODE: "live" };
+  const TEST_KEY = { PAYSTACK_SECRET_KEY: "sk_test_0123456789abcdef", PAYSTACK_MODE: "test" };
+  const STAGING = { NODE_ENV: "production", DATABASE_BRANCH: "staging", BETTER_AUTH_URL: "https://fluta-staging.up.railway.app" };
+  const PRODUCTION = { NODE_ENV: "production", DATABASE_BRANCH: "production", BETTER_AUTH_URL: "https://app.fluta.ng" };
+
+  it("accepts the staging branch", () => {
+    expect(parseServerEnv({ ...VALID, ...STAGING }).DATABASE_BRANCH).toBe("staging");
+  });
+
+  it.each(["http://fluta-staging.up.railway.app", "https://localhost:3000", "http://127.0.0.1:3000"])(
+    "requires a public https auth URL on staging, even outside a production server (%s)",
+    (url) => {
+      for (const nodeEnv of ["production", "development"]) {
+        expect(() => parseServerEnv({ ...VALID, NODE_ENV: nodeEnv, DATABASE_BRANCH: "staging", BETTER_AUTH_URL: url })).toThrow(
+          /BETTER_AUTH_URL: must be the public https:\/\/ address/,
+        );
+      }
+    },
+  );
+
+  it("doesn't require https in development", () => {
+    expect(parseServerEnv({ ...VALID, BETTER_AUTH_URL: "http://localhost:3000" }).BETTER_AUTH_URL).toBe("http://localhost:3000");
+  });
+
+  it("takes a Paystack test key on staging and refuses a live one", () => {
+    expect(parseServerEnv({ ...VALID, ...STAGING, ...TEST_KEY })).toMatchObject(TEST_KEY);
+    expect(() => parseServerEnv({ ...VALID, ...STAGING, ...LIVE })).toThrow(/only allowed on the production database/);
+  });
+
+  it("lets staging and development leave Paystack and Termii unset", () => {
+    expect(parseServerEnv({ ...VALID, ...STAGING }).PAYSTACK_SECRET_KEY).toBeUndefined();
+    expect(parseServerEnv({ ...VALID, ...STAGING }).TERMII_API_KEY).toBeUndefined();
+    expect(parseServerEnv(VALID).TERMII_API_KEY).toBeUndefined();
+  });
+
+  it("still refuses part of Termii's settings on staging", () => {
+    expect(() => parseServerEnv({ ...VALID, ...STAGING, TERMII_API_KEY: "key" })).toThrow(/set all three, or none/);
+  });
+
+  it("requires Termii and a live Paystack key in production", () => {
+    expect(() => parseServerEnv({ ...VALID, ...PRODUCTION, ...LIVE })).toThrow(/TERMII_API_KEY[\s\S]*required in production/);
+    expect(() => parseServerEnv({ ...VALID, ...PRODUCTION, ...TERMII })).toThrow(/production requires PAYSTACK_MODE=live/);
+    expect(parseServerEnv({ ...VALID, ...PRODUCTION, ...TERMII, ...LIVE }).DATABASE_BRANCH).toBe("production");
+  });
+});
+
+describe("isStaging", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("is true only when DATABASE_BRANCH is staging", () => {
+    vi.stubEnv("DATABASE_BRANCH", "staging");
+    expect(isStaging()).toBe(true);
+    for (const branch of ["development", "test", "production", ""]) {
+      vi.stubEnv("DATABASE_BRANCH", branch);
+      expect(isStaging()).toBe(false);
+    }
   });
 });
 

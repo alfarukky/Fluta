@@ -7,15 +7,22 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { TrackingItem, TrackingTimelineStep, TrackingView } from "@/types/tracking";
 
+import { ConfirmingPayment } from "./ConfirmingPayment";
+import { PayNowCard } from "./PayNowCard";
+
 interface TrackingOrderProps {
   view: TrackingView;
   // "/o/{token}", for the review screens.
   basePath: string;
+  // The link's token, for Pay now. Never logged.
+  token: string;
+  // Back from Paystack: the reference of this order's attempt, still PENDING.
+  confirmingReference?: string | null;
 }
 
 // The customer's order, in plain words: where it is, what it costs, and
 // anything waiting for them as one calm card at the top.
-export function TrackingOrder({ view, basePath }: TrackingOrderProps) {
+export function TrackingOrder({ view, basePath, token, confirmingReference = null }: TrackingOrderProps) {
   const { store } = view;
   return (
     <>
@@ -29,12 +36,19 @@ export function TrackingOrder({ view, basePath }: TrackingOrderProps) {
 
       {!view.closed && <ActionCard view={view} basePath={basePath} />}
 
+      {confirmingReference ? (
+        <ConfirmingPayment token={token} reference={confirmingReference} orderPath={basePath} />
+      ) : (
+        view.payNow && <PayNowCard token={token} offer={view.payNow} />
+      )}
+
       <Card title="Progress">
         <Timeline steps={view.timeline} />
       </Card>
 
       <Card title="Payment">
         <p className="type-h3 text-card-foreground">{view.payment}</p>
+        {view.refunded && <p className="type-body-sm text-muted-foreground">{view.refunded}</p>}
         <Price view={view} />
       </Card>
 
@@ -80,7 +94,7 @@ export function TrackingOrder({ view, basePath }: TrackingOrderProps) {
   );
 }
 
-function ActionCard({ view, basePath }: TrackingOrderProps) {
+function ActionCard({ view, basePath }: Pick<TrackingOrderProps, "view" | "basePath">) {
   const card = view.priceUpdate
     ? { icon: ReceiptTextIcon, title: "Price update ready for your approval", href: `${basePath}/price-update` }
     : view.pickupSuggestion
@@ -158,7 +172,7 @@ function Price({ view }: { view: TrackingView }) {
       {price.kind === "estimate" && (
         <div className="flex flex-col gap-1 border-t border-border pt-component">
           <Row label="Estimated total" value={price.total} strong />
-          <p className="type-caption text-muted-foreground">The store will confirm the price after weighing or checking your items.</p>
+          <p className="type-caption text-muted-foreground">The store will confirm the price after checking your items.</p>
         </div>
       )}
       {/* The payment line may already say it (nothing approved yet). */}

@@ -3,13 +3,40 @@ import { z } from "zod";
 import type { ServerEnv } from "@/lib/env";
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from "@/schemas/users";
 
-export function assertSeedAllowed(env: Pick<ServerEnv, "DATABASE_BRANCH">): void {
+// The seed deletes and recreates the sample stores: never on production, and
+// on staging only when ALLOW_STAGING_SEED is "true" (set for one deliberate
+// run, then removed).
+export function assertSeedAllowed(env: Pick<ServerEnv, "DATABASE_BRANCH"> & { ALLOW_STAGING_SEED?: string }): void {
   if (env.DATABASE_BRANCH === "production") {
     throw new Error(
       "Refusing to seed: DATABASE_BRANCH is \"production\". The seed deletes and " +
-        "recreates sample stores and must only run on development or test.",
+        "recreates sample stores and must never run on production.",
     );
   }
+  if (env.DATABASE_BRANCH === "staging" && env.ALLOW_STAGING_SEED !== "true") {
+    throw new Error(
+      "Refusing to seed: DATABASE_BRANCH is \"staging\". Set ALLOW_STAGING_SEED=\"true\" for this one run " +
+        "to replace the staging demo stores.",
+    );
+  }
+}
+
+export type SeedMode = "minimal" | "full";
+
+// `prisma db seed` loads the minimal seed (stores, owners, subscriptions).
+// The full sample data is for the integration tests only: `-- --full`, and
+// only on the test branch.
+export function getSeedMode(args: readonly string[], env: Pick<ServerEnv, "DATABASE_BRANCH">): SeedMode {
+  const unknown = args.filter((arg) => arg !== "--full");
+  if (unknown.length > 0) throw new Error(`Unknown seed option: ${unknown.join(" ")}. The only option is --full.`);
+  if (!args.includes("--full")) return "minimal";
+  if (env.DATABASE_BRANCH !== "test") {
+    throw new Error(
+      `Refusing the full seed: DATABASE_BRANCH is "${env.DATABASE_BRANCH}". The full sample data is for the ` +
+        "integration tests on the test branch only.",
+    );
+  }
+  return "full";
 }
 
 const seedPasswordSchema = z

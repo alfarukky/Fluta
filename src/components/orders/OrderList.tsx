@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { loadMoreOrders } from "@/actions/orders";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { getOrderPath } from "@/lib/order-links";
 import { FULFILMENT_TYPE_LABELS } from "@/lib/orders";
 import type { OrderListFilters } from "@/schemas/orders";
 import type { OrderListRow } from "@/types/orders";
@@ -96,7 +97,7 @@ function OrderTable({ rows }: { rows: OrderListRow[] }) {
               <div className="flex min-w-0 flex-col">
                 {/* The link covers the whole row, so any part of it opens the order. */}
                 <Link
-                  href={`/orders/${row.id}`}
+                  href={getOrderPath(row.id)}
                   className="type-label text-foreground outline-none after:absolute after:inset-0 focus-visible:underline"
                 >
                   {row.displayNumber}
@@ -139,7 +140,7 @@ function OrderCard({ row }: { row: OrderListRow }) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col">
           <Link
-            href={`/orders/${row.id}`}
+            href={getOrderPath(row.id)}
             className="type-h3 text-foreground outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:after:ring-[3px] focus-visible:after:ring-ring/50"
           >
             {row.displayNumber}

@@ -32,7 +32,6 @@ enum StoreStatus {
 
 enum PricingType {
   PER_ITEM
-  PER_KG
   PER_PACKAGE
 }
 
@@ -126,6 +125,21 @@ enum MessageStatus {
   REPLACED // a newer link was issued before it was sent; final, never sent
 }
 
+// Feature 17b: the staff bell. One per event, saved in the event's transaction.
+enum NotificationType {
+  ONLINE_BOOKING // source: the order
+  PRICE_APPROVED // source: the quote revision
+  PRICE_DECLINED // source: the quote revision
+  PICKUP_ACCEPTED // source: the status event for the move to Pickup scheduled
+  PAYMENT_RECEIVED // source: the payment
+  PAYMENT_NEEDS_REVIEW // source: the payment
+}
+
+enum NotificationAudience {
+  STAFF_AND_OWNERS
+  OWNERS_ONLY
+}
+
 enum InvoiceStatus {
   OPEN
   PAID
@@ -157,13 +171,16 @@ model User {
 }
 
 model Membership {
-  id            String    @id @default(cuid())
-  userId        String
-  storeId       String
-  role          StoreRole
-  isActive      Boolean   @default(true)
-  deactivatedAt DateTime?
-  createdAt     DateTime  @default(now())
+  id                  String    @id @default(cuid())
+  userId              String
+  storeId             String
+  role                StoreRole
+  isActive            Boolean   @default(true)
+  deactivatedAt       DateTime?
+  createdAt           DateTime  @default(now())
+  // When this person last opened the bell (database time). Notifications
+  // after it, and within the last 30 days, are unread for them.
+  notificationsSeenAt DateTime?
 
   user  User  @relation(fields: [userId], references: [id])
   store Store @relation(fields: [storeId], references: [id])
@@ -293,6 +310,7 @@ model Store {
   statusEvents  StatusEvent[]
   messageEvents MessageEvent[]
   auditEvents   AuditEvent[]
+  notifications Notification[]
   subscription  Subscription?
 }
 
@@ -332,8 +350,8 @@ model Service {
   nameKey       String // name lowercased, trimmed, repeated spaces collapsed; unique per store
   category      String?
   pricingType   PricingType
-  price         Int // minor units per item / kg / package; a "from" price when requiresQuote
-  requiresQuote Boolean     @default(false) // always true when pricingType = PER_KG (CHECK Service_per_kg_requires_quote)
+  price         Int // minor units per item / package; a "from" price when requiresQuote
+  requiresQuote Boolean     @default(false)
   isActive      Boolean     @default(true)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -376,9 +394,9 @@ model Order {
   serviceAreaId     String?
   serviceAreaName   String? // copy of the area's name at order time (or the typed name of an out-of-area order); shown instead of the live area name
   clientRequestId   String? // one-time ID from the order form; prevents duplicate orders on double submit
-  isOutsideSchedule Boolean @default(false) // staff booked a pickup outside the normal schedule (note required)
+  isOutsideSchedule Boolean  @default(false) // staff booked a pickup outside the normal schedule (note required)
   addressText       String? // used for BOTH pickup and delivery in the MVP
-  isOutOfArea       Boolean @default(false)
+  isOutOfArea       Boolean  @default(false)
   fulfilmentCharge  Int? // null = quote pending or not applicable
   // The customer's shared location, only for "Open in Maps" (never used for the
   // area, price, or address). Both set or both NULL (CHECK). Cleared by the
@@ -420,6 +438,7 @@ model Order {
   refunds        Refund[]
   statusEvents   StatusEvent[]
   messageEvents  MessageEvent[]
+  notifications  Notification[]
 
   @@unique([storeId, orderNumber])
   @@unique([storeId, clientRequestId])
@@ -432,9 +451,9 @@ model Order {
 
 // Migration adds a CHECK constraint (Prisma cannot express it):
 //   SERVICE:    serviceId, pricingType, unitPrice >= 0 all set; quantity > 0 and lineTotal >= 0
-//               both set, or both NULL only while requiresQuote (not yet weighed/inspected)
+//               both set, or both NULL only while requiresQuote (not yet counted/inspected)
 //   ADJUSTMENT: serviceId, pricingType, unitPrice, quantity, estimatedQuantity all NULL; lineTotal set
-// A second CHECK (OrderLine_per_kg_requires_quote): a per-kg line always has requiresQuote = true.
+// A second CHECK (OrderLine_whole_quantities): quantity and estimatedQuantity are whole numbers when set.
 // App rule: every line needs quantity and lineTotal before a priced quote is issued.
 model OrderLine {
   id                String        @id @default(cuid())
@@ -446,9 +465,9 @@ model OrderLine {
   pricingType       PricingType? // SERVICE only (snapshot)
   requiresQuote     Boolean       @default(false) // SERVICE only (snapshot)
   unitPrice         Int? // SERVICE only; price snapshot, never negative
-  estimatedQuantity Decimal?      @db.Decimal(10, 3) // SERVICE only; customer's estimate, never billed
-  quantity          Decimal?      @db.Decimal(10, 3) // SERVICE only; BILLED items, packages, or measured kg
-  lineTotal         Int? // SERVICE: unitPrice × quantity, rounded to the nearest kobo (NULL until priced); ADJUSTMENT: the signed amount
+  estimatedQuantity Decimal?      @db.Decimal(10, 3) // SERVICE only; customer's estimated count, never billed (whole number)
+  quantity          Decimal?      @db.Decimal(10, 3) // SERVICE only; BILLED items or packages (whole number, 1–999 in the app)
+  lineTotal         Int? // SERVICE: unitPrice × quantity (NULL until priced); ADJUSTMENT: the signed amount
 
   order   Order    @relation(fields: [storeId, orderId], references: [storeId, id], onDelete: Cascade)
   service Service? @relation(fields: [storeId, serviceId], references: [storeId, id])
@@ -529,23 +548,33 @@ model Payment {
 
 // A refund the store has actually paid. "Refund owed" is derived from the balance.
 model Refund {
-  id               String    @id @default(cuid())
+  id               String        @id @default(cuid())
   storeId          String
   orderId          String
   amount           Int
+  // How the store paid it back, outside Fluta. Never PAYSTACK (Refund_method_check).
+  method           PaymentMethod
+  reference        String? // a transfer or POS reference staff entered
   note             String
   recordedByUserId String
+  // The form's request ID (a UUID): the same request twice records one refund.
+  clientRequestId  String
   paidAt           DateTime
   voidedAt         DateTime?
   voidedByUserId   String?
   voidReason       String?
-  replacesRefundId String? // the voided refund this one corrects
-  createdAt        DateTime  @default(now())
+  // The voided refund this one corrects. Unique: a voided refund has at most one replacement.
+  replacesRefundId String?       @unique
+  createdAt        DateTime      @default(now())
 
   store Store @relation(fields: [storeId], references: [id])
   order Order @relation(fields: [storeId, orderId], references: [storeId, id])
 
+  // CHECK constraints (Prisma can't express them): Refund_amount_check,
+  // Refund_method_check, and Refund_voided_check in migration refunds.
+  @@unique([storeId, clientRequestId])
   @@index([storeId, orderId])
+  @@index([storeId, paidAt])
 }
 
 // ───────────── History & messaging ─────────────
@@ -649,4 +678,26 @@ model SubscriptionInvoice {
 
   @@unique([subscriptionId, periodStart]) // never two invoices for the same period
   @@index([subscriptionId, status])
+}
+
+// A staff notification (the bell), for owners and staff, never riders. The
+// line shown is built when it is read, so nothing personal is stored here.
+// Deleted after 30 days by the scheduled job.
+model Notification {
+  id        String               @id @default(cuid())
+  storeId   String
+  orderId   String
+  type      NotificationType
+  sourceId  String // the record the event created or changed (see NotificationType)
+  audience  NotificationAudience
+  // Database time when the row is written (clock_timestamp(), not the
+  // transaction's start), so it compares with Membership.notificationsSeenAt.
+  createdAt DateTime             @default(dbgenerated("clock_timestamp()"))
+
+  store Store @relation(fields: [storeId], references: [id])
+  // Through [storeId, orderId]: the database refuses an order from another store.
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id])
+
+  @@unique([storeId, type, sourceId])
+  @@index([storeId, createdAt])
 }

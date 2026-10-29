@@ -58,7 +58,6 @@ const PRICING_TYPES = Object.values(PricingType);
 
 const PRICING_HINTS: Record<PricingType, string> = {
   PER_ITEM: "Each piece, like a shirt or a dress.",
-  PER_KG: "Weighed at the store. Always requires a quote.",
   PER_PACKAGE: "A fixed bundle, like a bedding set.",
 };
 
@@ -84,8 +83,7 @@ function ServiceForm({ service, categories, onSaved, onToggleActive, toggling, o
   const [pending, startTransition] = useTransition();
   const { ref: formRef, scrollToFirstError } = useScrollToFirstError();
 
-  const perKg = values.pricingType === PricingType.PER_KG;
-  const requiresQuote = perKg || values.requiresQuote;
+  const requiresQuote = values.requiresQuote;
   const kobo = parseNairaToKobo(values.price);
   const preview = kobo === null ? null : formatServicePrice({ price: kobo, pricingType: values.pricingType, requiresQuote });
 
@@ -93,16 +91,9 @@ function ServiceForm({ service, categories, onSaved, onToggleActive, toggling, o
     setValues((current) => ({ ...current, [field]: value }));
   }
 
-  // Per kg turns quote required on (and locks it); switching away leaves it on
-  // but editable.
   function changePricingType(value: string) {
     const pricingType = PRICING_TYPES.find((type) => type === value);
-    if (!pricingType) return;
-    setValues((current) => ({
-      ...current,
-      pricingType,
-      requiresQuote: pricingType === PricingType.PER_KG || current.requiresQuote,
-    }));
+    if (pricingType) change("pricingType", pricingType);
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -134,9 +125,7 @@ function ServiceForm({ service, categories, onSaved, onToggleActive, toggling, o
     price: requiresQuote
       ? "The starting price, confirmed after inspection. Enter 0 to show “Price on inspection”."
       : `The price ${PRICING_TYPE_LABELS[values.pricingType].toLowerCase()}.`,
-    requiresQuote: perKg
-      ? "Per-kg services are weighed at the store, so they always require a quote."
-      : "Staff confirm the final price after inspecting the clothes.",
+    requiresQuote: "Staff confirm the final price after inspecting the clothes.",
   };
 
   return (
@@ -229,7 +218,6 @@ function ServiceForm({ service, categories, onSaved, onToggleActive, toggling, o
             id={fieldId("quote")}
             checked={requiresQuote}
             onCheckedChange={(checked) => change("requiresQuote", checked)}
-            disabled={perKg}
             aria-describedby={fieldId("quote-hint")}
             className="mt-1"
           />

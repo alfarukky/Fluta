@@ -34,6 +34,8 @@ const TRACKED_ORDER_SELECT = {
   stage: true,
   stageBeforeQuote: true,
   approvedQuoteId: true,
+  channel: true,
+  payLater: true,
   serviceAreaName: true,
   fulfilmentCharge: true,
   requestedPickupDate: true,
@@ -57,9 +59,12 @@ const TRACKED_ORDER_SELECT = {
       logoKey: true,
       brandPrimaryColor: true,
       brandAccentColor: true,
+      // Online payment: whether the store is connected (never shown).
+      paystackSubaccountCode: true,
     },
   },
-  customer: { select: { phone: true } },
+  // The email only pre-fills Pay now (it is never shown otherwise).
+  customer: { select: { phone: true, email: true } },
   lines: {
     select: {
       id: true,
@@ -88,7 +93,9 @@ const TRACKED_ORDER_SELECT = {
     },
     orderBy: { version: "desc" },
   },
-  payments: { select: { amount: true, status: true, voidedAt: true } },
+  // Online attempts too: a recent PENDING one hides Pay now, and the return
+  // from Paystack is matched by its reference (never shown).
+  payments: { select: { amount: true, status: true, voidedAt: true, source: true, createdAt: true, paystackReference: true } },
   refunds: { select: { amount: true, voidedAt: true } },
   statusEvents: { select: { id: true, fromStage: true, toStage: true, createdAt: true } },
 } as const satisfies Prisma.OrderSelect;
@@ -104,6 +111,8 @@ export async function findTrackedOrder(tokenHash: string): Promise<TrackedOrderR
 // What the rules need to decide whether a new link would work.
 const LINK_ORDER_SELECT = {
   stage: true,
+  channel: true,
+  payLater: true,
   completedAt: true,
   cancelledAt: true,
   approvedQuote: { select: { total: true } },
@@ -130,7 +139,7 @@ export async function reissueTrackingToken<T>(
     // One query at a time on the transaction's connection (see readQuoteOrder).
     const order = await tx.order.findUnique({
       where: { storeId_id: { storeId, id: orderId } },
-      select: { stage: true, completedAt: true, cancelledAt: true, approvedQuoteId: true },
+      select: { stage: true, channel: true, payLater: true, completedAt: true, cancelledAt: true, approvedQuoteId: true },
     });
     if (!order) return { status: "NOT_FOUND" };
     const { approvedQuoteId, ...fields } = order;

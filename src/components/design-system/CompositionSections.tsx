@@ -10,6 +10,9 @@ import {
   TruckIcon,
 } from "lucide-react";
 import { PoweredByFluta } from "@/components/brand/PoweredByFluta";
+import { ConfirmingPayment } from "@/components/tracking/ConfirmingPayment";
+import { PayNowCard } from "@/components/tracking/PayNowCard";
+import { getPaymentWarning } from "@/lib/online-payment";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -367,7 +370,7 @@ function MobileTrackingPreview() {
           <div className="flex flex-col gap-0.5">
             <span className="type-label">Your quote is ready</span>
             <span className="type-body-sm text-muted-foreground">
-              The store weighed 3.5 kg of laundry. New total ₦5,250.
+              The store counted 3 duvets. New total ₦4,500.
             </span>
           </div>
           <Button className="w-full">Review quote</Button>
@@ -391,6 +394,19 @@ function MobileTrackingPreview() {
         </Button>
       </div>
       <PoweredByFluta />
+    </div>
+  );
+}
+
+// Pay now, a recent attempt still pending, and the return from Paystack.
+// Preview only: the buttons never call the server.
+function OnlinePaymentPreview() {
+  const offer = { amount: "₦6,200", email: "amina@example.com", warning: getPaymentWarning("FreshFold Laundry"), recentAttempt: false };
+  return (
+    <div className="grid items-start gap-grid md:grid-cols-3">
+      <PayNowCard token="" offer={offer} headingLevel="h3" preview />
+      <PayNowCard token="" offer={{ ...offer, recentAttempt: true }} headingLevel="h3" preview />
+      <ConfirmingPayment token="" reference="" orderPath="" preview />
     </div>
   );
 }
@@ -422,6 +438,9 @@ export function CompositionsSection() {
             <MobileTrackingPreview />
           </ShowcaseGroup>
         </div>
+        <ShowcaseGroup title="Online payment (tracking page)">
+          <OnlinePaymentPreview />
+        </ShowcaseGroup>
       </div>
     </ShowcaseSection>
   );

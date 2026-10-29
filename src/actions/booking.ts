@@ -6,7 +6,7 @@ import { getClientIp, hashClientIp } from "@/lib/client-ip";
 import { logger } from "@/lib/logger";
 import { getTrackingUrl } from "@/lib/tracking-link";
 import { BOOKING_EXPIRED_MESSAGE, bookingRequestSchema, storeSlugSchema } from "@/schemas/booking";
-import { submitBooking, type SubmitBookingResult } from "@/server/services/booking";
+import { submitBooking, type BookingPayment, type SubmitBookingResult } from "@/server/services/booking";
 import type { BookingStep } from "@/types/booking";
 
 // A customer's booking from /store/{slug}. No sign-in: the store comes only
@@ -19,10 +19,19 @@ export type BookingErrorCode =
   | "INVALID_INPUT"
   | "CREATE_FAILED";
 
+// Book and pay (plan 3.2), once the order is saved: go to Paystack's checkout,
+// go to the order page (a repeated submit whose payment is still pending), or
+// stay on the confirmation with Pay now to try again (the token is the
+// link's own, already in trackingUrl).
+export type BookingActionPayment =
+  | { kind: "CHECKOUT"; checkoutUrl: string }
+  | { kind: "PENDING" }
+  | { kind: "FAILED"; message: string; token: string };
+
 export type BookingActionResult =
   // The tracking link, shown once on the confirmation (null only if a
   // repeated booking couldn't be given a new one).
-  | { ok: true; displayNumber: string; trackingUrl: string | null }
+  | { ok: true; displayNumber: string; trackingUrl: string | null; payment: BookingActionPayment | null }
   | {
       ok: false;
       code: BookingErrorCode;
@@ -45,6 +54,7 @@ const MESSAGES: Record<Exclude<BookingErrorCode, "INVALID_INPUT">, string> = {
   PICKUP_NOT_AVAILABLE: "That pickup time is no longer available. Please choose another.",
   NEGATIVE_TOTAL: "Please check your services.",
   BOOKING_LIMIT_REACHED: "Too many bookings from this number or connection. Please try again later or contact the store.",
+  EMAIL_REQUIRED: "Enter your email for your Paystack receipt.",
   REQUEST_ID_REQUIRED: BOOKING_EXPIRED_MESSAGE,
   CREATE_FAILED: "We couldn't send your booking. Please try again.",
 };
@@ -58,6 +68,7 @@ const ERROR_STEPS: Partial<Record<BookingErrorCode, BookingStep>> = {
   CHARGE_REQUIRED: "pickup",
   PICKUP_NOT_AVAILABLE: "pickup",
   CUSTOMER_NOT_FOUND: "details",
+  EMAIL_REQUIRED: "details",
 };
 
 // The first part of a field's path, as the step that shows it.
@@ -92,8 +103,9 @@ export async function createBooking(slug: unknown, request: unknown): Promise<Bo
     const ipHash = hashClientIp(getClientIp(await headers()));
     const result = await submitBooking(store.data, parsed.data, ipHash, new Date());
     if (result.ok) {
-      const trackingUrl = result.trackingToken ? getTrackingUrl(result.trackingToken) : null;
-      return { ok: true, displayNumber: result.displayNumber, trackingUrl };
+      const token = result.trackingToken;
+      const trackingUrl = token ? getTrackingUrl(token) : null;
+      return { ok: true, displayNumber: result.displayNumber, trackingUrl, payment: toActionPayment(result.payment, token) };
     }
     return {
       ok: false,
@@ -108,6 +120,11 @@ export async function createBooking(slug: unknown, request: unknown): Promise<Bo
     logger.error(`[booking] a booking at store "${store.data}" failed:`, describeError(error));
     return { ok: false, code: "CREATE_FAILED", message: MESSAGES.CREATE_FAILED };
   }
+}
+
+function toActionPayment(payment: BookingPayment | null, token: string | null): BookingActionPayment | null {
+  if (!payment || !token) return null;
+  return payment.kind === "FAILED" ? { ...payment, token } : payment;
 }
 
 function firstStep(fields: readonly string[]): BookingStep | undefined {

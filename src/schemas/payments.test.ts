@@ -101,14 +101,15 @@ describe("payment list filters", () => {
     expect(paymentListFiltersSchema.parse({ date: "forever", method: "CHEQUE", source: ["ONLINE", "ONLINE"] })).toEqual(
       DEFAULT_PAYMENT_LIST_FILTERS,
     );
-    expect(DEFAULT_PAYMENT_LIST_FILTERS).toEqual({ date: "today", method: null, source: null });
+    expect(DEFAULT_PAYMENT_LIST_FILTERS).toEqual({ view: "payments", date: "today", method: null, source: null });
   });
 
   it("puts only non-default filters in the address", () => {
     expect(toPaymentListSearch(DEFAULT_PAYMENT_LIST_FILTERS)).toBe("");
-    expect(toPaymentListSearch({ date: "7d", method: "CASH", source: "STORE_COLLECTED" })).toBe(
+    expect(toPaymentListSearch({ view: "payments", date: "7d", method: "CASH", source: "STORE_COLLECTED" })).toBe(
       "?date=7d&method=CASH&source=STORE_COLLECTED",
     );
+    expect(toPaymentListSearch({ view: "refunds", date: "30d", method: null, source: null })).toBe("?view=refunds&date=30d");
   });
 
   it("labels the owner totals with their period and that they cover every method and source", () => {

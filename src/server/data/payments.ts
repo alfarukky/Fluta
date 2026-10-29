@@ -24,6 +24,9 @@ export const PAYMENT_AUDIT_ACTIONS = {
 // What getBalance needs, as the order is now.
 const BALANCE_SELECT = {
   stage: true,
+  // getBalance: Payment required applies only to online bookings paid at booking.
+  channel: true,
+  payLater: true,
   approvedQuote: { select: { total: true } },
   payments: { select: { id: true, amount: true, status: true, voidedAt: true } },
   refunds: { select: { amount: true, voidedAt: true } },
@@ -49,7 +52,7 @@ const RECORDED_SELECT = { id: true, orderId: true, replacesPaymentId: true } as 
 // Locks the order's row until the transaction ends, so payments, voids, and
 // stage changes on one order happen one at a time and each sees the balance
 // left by the one before. False when the store has no such order.
-async function lockOrder(tx: Prisma.TransactionClient, storeId: string, orderId: string): Promise<boolean> {
+export async function lockOrder(tx: Prisma.TransactionClient, storeId: string, orderId: string): Promise<boolean> {
   const rows = await tx.$queryRaw<{ id: string }[]>`
     SELECT "id" FROM "Order" WHERE "storeId" = ${storeId} AND "id" = ${orderId} FOR UPDATE`;
   return rows.length > 0;

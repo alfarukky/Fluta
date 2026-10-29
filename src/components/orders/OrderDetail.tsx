@@ -1,10 +1,12 @@
 import {
   ArrowLeftIcon,
+  BanknoteArrowUpIcon,
   BanknoteIcon,
   CalendarClockIcon,
   CircleCheckIcon,
   CircleXIcon,
   PhoneIcon,
+  PrinterIcon,
   ReceiptTextIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -17,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { describeMessageStatus, getMessageTemplateLabel, isFinallyFailed, MESSAGE_CHANNEL_LABELS } from "@/lib/messages";
 import type { Coordinates } from "@/lib/location";
 import { formatNaira } from "@/lib/money";
+import { isMismatchCode } from "@/lib/online-payment";
 import {
   describeCustomerEstimate,
   FULFILMENT_TYPE_LABELS,
@@ -26,10 +29,18 @@ import {
   ORDER_CHANNEL_LABELS,
   PAYMENT_METHOD_LABELS,
 } from "@/lib/orders";
+import { getOrderQuotePath, getOrderReceiptPath } from "@/lib/order-links";
 import { describeBalance, describePaymentRecorded, describePaymentVoided, PAYMENT_SOURCE_LABELS } from "@/lib/payments";
 import { formatPhone } from "@/lib/phone";
+import {
+  describeRefundRecorded,
+  describeRefundVoided,
+  FLUTA_FEE_NOT_REFUNDED,
+  getRefundableKobo,
+  REFUND_METHODS,
+} from "@/lib/refunds";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
-import { formatQuantity, fromDecimalString } from "@/lib/quantity";
+import { fromStoredQuantity } from "@/lib/quantity";
 import { describeRevisionMoment } from "@/lib/quotes";
 import { ADJUSTMENT_KIND_LABELS } from "@/schemas/orders";
 import { formatCalendarDate, formatDateTime, fromDateKey, toDateKey } from "@/lib/time";
@@ -42,9 +53,11 @@ import { OrderStageActions } from "./OrderStageActions";
 import { PickupTimeCard, type PickupTimeOptions } from "./PickupTimeCard";
 import { QuoteBanner } from "./QuoteBanner";
 import { RecordPaymentButton } from "./RecordPaymentButton";
+import { RecordRefundButton } from "./RecordRefundButton";
 import { SendAgainButton } from "./SendAgainButton";
 import { TrackingLinkButton } from "./TrackingLinkButton";
 import { VoidPaymentButton } from "./VoidPaymentButton";
+import { VoidRefundButton } from "./VoidRefundButton";
 
 type Order = OrderDetailData["order"];
 
@@ -62,9 +75,11 @@ interface OrderDetailProps {
 // member may take.
 export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }: OrderDetailProps) {
   const { order, displayNumber, balance, quote, pickupTime } = detail;
-  const editQuoteHref = `/orders/${order.id}/quote`;
+  const editQuoteHref = getOrderQuotePath(order.id);
   // Ready or Completed with a balance due: Record payment is the main action.
   const recordPrimary = canChangeStage && detail.payments.canRecord && detail.payments.recordPrimary;
+  // Refund owed, at any stage: Record refund is the main action.
+  const refundPrimary = canChangeStage && detail.refunds.owedKobo > 0;
 
   return (
     <main className="page-container flex flex-1 flex-col gap-section py-section">
@@ -86,22 +101,36 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
           <StageBadge stage={order.stage} />
           <PaymentBadge state={balance.state} />
         </div>
-        {canChangeStage && (
+        {(canChangeStage || detail.hasReceipt) && (
           <div className="flex flex-wrap items-start gap-2">
-            {recordPrimary && <RecordPaymentButton orderId={order.id} balance={balance} primary />}
-            <OrderStageActions
-              orderId={order.id}
-              stage={order.stage}
-              fulfilmentType={order.fulfilmentType}
-              // The quote banner explains a pending or declined quote itself.
-              moves={quote.pending || quote.declined ? { ...detail.stageMoves, blockedReason: null } : detail.stageMoves}
-              quote={{
-                editQuoteHref: quote.canEdit ? editQuoteHref : null,
-                priceOrder: quote.needsPricing,
-                address: quote.canEdit && order.fulfilmentType === "PICKUP_DELIVERY" ? (order.addressText ?? "") : null,
-              }}
-              quietPrimary={recordPrimary}
-            />
+            {refundPrimary && <RecordRefundButton orderId={order.id} owedKobo={detail.refunds.owedKobo} primary />}
+            {recordPrimary && (
+              <RecordPaymentButton orderId={order.id} balance={balance} primary pendingOnline={detail.payments.hasPendingOnlinePayment} />
+            )}
+            {canChangeStage && (
+              <OrderStageActions
+                orderId={order.id}
+                stage={order.stage}
+                fulfilmentType={order.fulfilmentType}
+                // The quote banner explains a pending or declined quote itself.
+                moves={quote.pending || quote.declined ? { ...detail.stageMoves, blockedReason: null } : detail.stageMoves}
+                quote={{
+                  editQuoteHref: quote.canEdit ? editQuoteHref : null,
+                  priceOrder: quote.needsPricing,
+                  address: quote.canEdit && order.fulfilmentType === "PICKUP_DELIVERY" ? (order.addressText ?? "") : null,
+                }}
+                quietPrimary={recordPrimary || refundPrimary}
+              />
+            )}
+            {/* Once the order has an active confirmed payment. */}
+            {detail.hasReceipt && (
+              <Button asChild variant="outline">
+                <Link href={getOrderReceiptPath(order.id)}>
+                  <PrinterIcon data-icon="inline-start" aria-hidden />
+                  Print receipt
+                </Link>
+              </Button>
+            )}
           </div>
         )}
       </header>
@@ -177,27 +206,23 @@ function OrderSummarySection({ order, proposed }: { order: Order; proposed: Revi
     <Section title="Order summary" badge={proposed && <Badge variant="warning">Proposed changes</Badge>}>
       <ul className="flex flex-col divide-y divide-border">
         {services.map((line) => {
-          const pricingType = line.pricingType ?? "PER_ITEM";
-          const quantity = line.quantity === null ? null : fromDecimalString(line.quantity.toString());
+          const quantity = line.quantity === null ? null : fromStoredQuantity(line.quantity.toString());
           const estimated =
-            line.estimatedQuantity === null ? null : fromDecimalString(line.estimatedQuantity.toString());
-          const unweighed = quantity === null;
+            line.estimatedQuantity === null ? null : fromStoredQuantity(line.estimatedQuantity.toString());
           return (
             <LineRow
               key={line.id}
               label={line.description}
               detail={
-                unweighed
+                quantity === null
                   ? estimated !== null
-                    ? describeCustomerEstimate(estimated, pricingType)
-                    : pricingType === "PER_KG"
-                      ? "Not weighed yet"
-                      : "To be inspected"
-                  : `${formatQuantity(quantity, pricingType)} × ${formatNaira(line.unitPrice ?? 0)}`
+                    ? describeCustomerEstimate(estimated)
+                    : "To be inspected"
+                  : `${quantity} × ${formatNaira(line.unitPrice ?? 0)}`
               }
               amount={
                 line.lineTotal === null ? (
-                  <span className="text-muted-foreground">{pricingType === "PER_KG" ? "To be weighed" : "Quote required"}</span>
+                  <span className="text-muted-foreground">Quote required</span>
                 ) : (
                   formatNaira(line.lineTotal)
                 )
@@ -270,8 +295,8 @@ function OrderSummarySection({ order, proposed }: { order: Order; proposed: Revi
             </div>
             {estimate && (
               <p className="type-caption text-muted-foreground">
-                Indicative total {formatNaira(estimate.total)}. Not final: the price is set after the store weighs or
-                inspects the items.
+                Indicative total {formatNaira(estimate.total)}. Not final: the price is set after the store inspects
+                the items.
               </p>
             )}
           </>
@@ -463,6 +488,21 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
                 )}
               </div>
             </li>
+          ) : entry.kind === "refund" ? (
+            <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-info/10 px-3 py-2.5">
+              <BanknoteArrowUpIcon className="mt-0.5 size-4 shrink-0 text-info" aria-hidden />
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="type-label break-words text-foreground">
+                  {entry.moment === "RECORDED"
+                    ? describeRefundRecorded(entry.refund, staffName(entry.staffUserId))
+                    : describeRefundVoided(entry.refund, staffName(entry.staffUserId))}
+                </span>
+                <span className="type-caption text-muted-foreground">{formatDateTime(entry.at, timeZone)}</span>
+                {entry.moment === "VOIDED" && entry.refund.voidReason && (
+                  <span className="type-body-sm break-words text-foreground">Reason: {entry.refund.voidReason}</span>
+                )}
+              </div>
+            </li>
           ) : entry.kind === "stage" ? (
             <li key={entry.key} className="flex flex-col gap-0.5 border-b border-border py-2.5 last:border-b-0">
               <span className="type-label text-foreground">{getTimelineLabel(entry.event, detail.order.fulfilmentType)}</span>
@@ -572,19 +612,37 @@ function PaymentsSection({
 }) {
   const { order, balance } = detail;
   const staffName = (id: string | null) => (id ? (detail.staffNames.get(id) ?? null) : null);
-  // Failed attempts aren't payments; they never show here.
-  const payments = order.payments.filter((payment) => payment.status !== "FAILED");
+  // Failed attempts aren't payments and are hidden, except a Paystack payment
+  // that didn't match: it shows as "Payment needs review" (plan 6.8).
+  const payments = order.payments.filter((payment) => payment.status !== "FAILED" || isMismatchCode(payment.failureCode));
   const empty = payments.length === 0 && order.refunds.length === 0;
   const canRecord = canChangeStage && detail.payments.canRecord;
   const canVoid = canChangeStage && detail.payments.canVoid;
+  const owedKobo = detail.refunds.owedKobo;
+  const canRecordRefund = canChangeStage && owedKobo > 0;
+  const canVoidRefund = canChangeStage && detail.refunds.canVoid;
   const last = describeBalance(balance);
 
   return (
     <Section
       title="Payments"
-      badge={canRecord && <RecordPaymentButton orderId={order.id} balance={balance} primary={false} />}
+      badge={
+        (canRecord || canRecordRefund) && (
+          <div className="flex flex-wrap gap-2">
+            {canRecordRefund && <RecordRefundButton orderId={order.id} owedKobo={owedKobo} primary={false} />}
+            {canRecord && (
+              <RecordPaymentButton
+                orderId={order.id}
+                balance={balance}
+                primary={false}
+                pendingOnline={detail.payments.hasPendingOnlinePayment}
+              />
+            )}
+          </div>
+        )
+      }
     >
-      {empty ? (
+      {payments.length === 0 ? (
         <p className="type-body-sm text-muted-foreground">No payments recorded yet.</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
@@ -599,21 +657,25 @@ function PaymentsSection({
               balanceKobo={balance.balanceKobo}
             />
           ))}
-          {order.refunds.map((refund) => {
-            const voided = refund.voidedAt !== null;
-            return (
-              <LineRow
-                key={refund.id}
-                voided={voided}
-                label="Refund paid"
-                detail={[voided ? "Voided" : null, formatDateTime(refund.paidAt, timeZone), refund.note]
-                  .filter(Boolean)
-                  .join(" · ")}
-                amount={formatNaira(-refund.amount)}
-              />
-            );
-          })}
         </ul>
+      )}
+
+      {order.refunds.length > 0 && (
+        <div className="flex flex-col gap-2 border-t border-border pt-component">
+          <h3 className="type-label text-foreground">Refunds</h3>
+          <ul className="flex flex-col divide-y divide-border">
+            {order.refunds.map((refund) => (
+              <RefundRow
+                key={refund.id}
+                refund={refund}
+                staffName={staffName}
+                timeZone={timeZone}
+                voidable={canVoidRefund && refund.voidedAt === null}
+                balanceKobo={balance.balanceKobo}
+              />
+            ))}
+          </ul>
+        </div>
       )}
 
       <dl className="flex flex-col gap-1 border-t border-border pt-component">
@@ -644,7 +706,15 @@ interface PaymentRowProps {
 // One payment: struck through once voided, with who voided it and why (staff only).
 function PaymentRow({ payment, staffName, timeZone, voidable, balanceKobo }: PaymentRowProps) {
   const voided = payment.status === "VOIDED";
-  const status = voided ? "Voided" : payment.status === "CONFIRMED" ? "Confirmed" : "Pending";
+  const review = payment.status === "FAILED";
+  // A pending online payment has started on Paystack but isn't confirmed: not counted.
+  const status = voided
+    ? "Voided"
+    : payment.status === "CONFIRMED"
+      ? "Confirmed"
+      : review
+        ? null
+        : "Awaiting confirmation, not counted";
   const recordedBy =
     payment.source === "STORE_COLLECTED" ? `by ${getActorLabel("STAFF", staffName(payment.recordedByUserId))}` : null;
   const reference = payment.paystackReference ?? (payment.reference && `Ref: ${payment.reference}`);
@@ -666,7 +736,18 @@ function PaymentRow({ payment, staffName, timeZone, voidable, balanceKobo }: Pay
         </div>
         <span className="type-body-sm shrink-0 text-right text-foreground">{formatNaira(payment.amount)}</span>
       </div>
+      {review && (
+        <div className="flex flex-col items-start gap-1">
+          <Badge variant="warning">Payment needs review</Badge>
+          <p className="type-caption text-muted-foreground">
+            Paystack reported this payment, but it didn&apos;t match the order, so it isn&apos;t counted. Fluta will check it with you.
+          </p>
+        </div>
+      )}
       {payment.note && <p className="type-caption break-words text-muted-foreground">Note: {payment.note}</p>}
+      {payment.source === "ONLINE" && payment.status === "CONFIRMED" && (payment.flutaFeeAmount ?? 0) > 0 && (
+        <p className="type-caption text-muted-foreground">{FLUTA_FEE_NOT_REFUNDED}.</p>
+      )}
       {voided && (
         <p className="type-caption break-words text-muted-foreground">
           Voided by {getActorLabel("STAFF", staffName(payment.voidedByUserId))}
@@ -679,6 +760,61 @@ function PaymentRow({ payment, staffName, timeZone, voidable, balanceKobo }: Pay
           <VoidPaymentButton
             payment={{ id: payment.id, amount: payment.amount, method, reference: payment.reference, note: payment.note }}
             balanceAfterVoidKobo={balanceKobo === null ? null : balanceKobo + payment.amount}
+          />
+        </div>
+      )}
+    </li>
+  );
+}
+
+type OrderRefund = Order["refunds"][number];
+
+interface RefundRowProps {
+  refund: OrderRefund;
+  staffName: (id: string | null) => string | null;
+  timeZone: string;
+  voidable: boolean;
+  // The order's balance now; voiding this refund adds its amount back to what is owed.
+  balanceKobo: number | null;
+}
+
+// One refund the store paid back: struck through once voided, with who voided
+// it and why (staff only).
+function RefundRow({ refund, staffName, timeZone, voidable, balanceKobo }: RefundRowProps) {
+  const voided = refund.voidedAt !== null;
+  const method = REFUND_METHODS.find((value) => value === refund.method);
+  const detail = [
+    voided ? "Voided" : null,
+    formatDateTime(refund.paidAt, timeZone),
+    `by ${getActorLabel("STAFF", staffName(refund.recordedByUserId))}`,
+    refund.reference && `Ref: ${refund.reference}`,
+  ];
+
+  return (
+    <li className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0">
+      <div className={cn("flex items-start justify-between gap-component", voided && "line-through")}>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="type-body-sm break-words text-foreground">
+            Refund · {PAYMENT_METHOD_LABELS[refund.method]}
+            {refund.replacesRefundId && " · Correction"}
+          </span>
+          <span className="type-caption break-words text-muted-foreground">{detail.filter(Boolean).join(" · ")}</span>
+        </div>
+        <span className="type-body-sm shrink-0 text-right text-foreground">{formatNaira(-refund.amount)}</span>
+      </div>
+      <p className="type-caption break-words text-muted-foreground">Note: {refund.note}</p>
+      {voided && (
+        <p className="type-caption break-words text-muted-foreground">
+          Voided by {getActorLabel("STAFF", staffName(refund.voidedByUserId))}
+          {refund.voidedAt && `, ${formatDateTime(refund.voidedAt, timeZone)}`}
+          {refund.voidReason && `. Reason: ${refund.voidReason}`}
+        </p>
+      )}
+      {voidable && method && (
+        <div>
+          <VoidRefundButton
+            refund={{ id: refund.id, amount: refund.amount, method, reference: refund.reference, note: refund.note }}
+            owedAfterVoidKobo={getRefundableKobo(balanceKobo === null ? null : balanceKobo - refund.amount)}
           />
         </div>
       )}

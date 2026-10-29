@@ -4,6 +4,7 @@ import {
   buildOrderTimeline,
   type TimelineEntry,
   type TimelinePayment,
+  type TimelineRefund,
   type TimelineRevision,
   type TimelineStageEvent,
 } from "./order-timeline";
@@ -36,7 +37,7 @@ describe("buildOrderTimeline", () => {
   const revisions = [
     // Priced at creation and agreed there and then: no entries of its own.
     revision({ id: "r1", version: 1, total: 1_000_000, approvedAt: at(0), approvedByActor: "STAFF" }),
-    revision({ id: "r2", version: 2, total: 1_250_000, reason: "Actual weight 4.2 kg", createdAt: at(10), approvedAt: at(20), approvedByActor: "STAFF" }),
+    revision({ id: "r2", version: 2, total: 1_250_000, reason: "Counted 3 duvets, not 2", createdAt: at(10), approvedAt: at(20), approvedByActor: "STAFF" }),
     revision({ id: "r3", version: 3, status: "DECLINED", total: 1_400_000, reason: "Extra duvet", createdAt: at(30), declinedAt: at(40), customerMessage: "Too expensive" }),
   ];
   const events = [stage("e1", 0, null, "RECEIVED_BY_STORE"), stage("e2", 5, "RECEIVED_BY_STORE", "IN_PROGRESS")];
@@ -51,7 +52,9 @@ describe("buildOrderTimeline", () => {
           ? `reset ${entry.reset.date} ${entry.reset.windowStart}`
           : entry.kind === "payment"
             ? `payment ${entry.payment.id} ${entry.moment}`
-            : `v${entry.version} ${entry.moment}`;
+            : entry.kind === "refund"
+              ? `refund ${entry.refund.id} ${entry.moment}`
+              : `v${entry.version} ${entry.moment}`;
 
   it("merges stage events and revision moments, newest first", () => {
     const timeline = buildOrderTimeline(events, revisions, audits);
@@ -111,7 +114,7 @@ describe("buildOrderTimeline", () => {
 
   it("gives each moment its difference, reason, and who decided", () => {
     const timeline = buildOrderTimeline(events, revisions, audits);
-    expect(timeline.find((entry) => entry.key === "issued-r2")).toMatchObject({ difference: 250_000, reason: "Actual weight 4.2 kg", staffUserId: "ada" });
+    expect(timeline.find((entry) => entry.key === "issued-r2")).toMatchObject({ difference: 250_000, reason: "Counted 3 duvets, not 2", staffUserId: "ada" });
     // Compared with v2, approved by then.
     expect(timeline.find((entry) => entry.key === "issued-r3")).toMatchObject({ difference: 150_000 });
     expect(timeline.find((entry) => entry.key === "approved-r2")).toMatchObject({ decidedBy: "STAFF", staffUserId: "kemi" });
@@ -159,6 +162,33 @@ describe("buildOrderTimeline", () => {
       "stage RECEIVED_BY_STORE",
     ]);
     expect(timeline[1]).toMatchObject({ staffUserId: "kemi", payment: { voidReason: "Entered twice" } });
+    expect(timeline[2]).toMatchObject({ staffUserId: "ada" });
+  });
+
+  it("adds each refund as its own entry, never a stage change: recorded, and voided with its reason", () => {
+    const refund = (overrides: Partial<TimelineRefund> & Pick<TimelineRefund, "id">): TimelineRefund => ({
+      amount: 300_000,
+      method: "BANK_TRANSFER",
+      recordedByUserId: "ada",
+      paidAt: at(10),
+      voidedAt: null,
+      voidedByUserId: null,
+      voidReason: null,
+      ...overrides,
+    });
+    const timeline = buildOrderTimeline(events, [], [], [], [], [], [
+      refund({ id: "f1", voidedAt: at(20), voidedByUserId: "kemi", voidReason: "Wrong amount" }),
+      // The correct refund, recorded with the void.
+      refund({ id: "f2", amount: 200_000, paidAt: at(20), recordedByUserId: "kemi" }),
+    ]);
+    expect(timeline.map(label)).toEqual([
+      "refund f2 RECORDED",
+      "refund f1 VOIDED",
+      "refund f1 RECORDED",
+      "stage IN_PROGRESS",
+      "stage RECEIVED_BY_STORE",
+    ]);
+    expect(timeline[1]).toMatchObject({ staffUserId: "kemi", refund: { voidReason: "Wrong amount" } });
     expect(timeline[2]).toMatchObject({ staffUserId: "ada" });
   });
 });

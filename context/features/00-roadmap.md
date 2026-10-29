@@ -32,7 +32,7 @@ Fluta is built one feature at a time. Each feature has its own spec in `@context
 14b. **Deliveries view and Rider role** — a simple phone-friendly list for the store's own riders: today's pickups and deliveries sorted by time window, with Call, address, area, and window, and one big button for the next step (Mark picked up, Out for delivery, Mark delivered), reusing Feature 11's `canTransition`. Adds a **Rider** role (schema change, Ask First): owners choose Staff or Rider when inviting (updates Feature 08). Riders can only open the Deliveries view and use those three moves, and see no prices, payments, notes, or order history. Enforced on the server for every page and action. Owners and staff can use the Deliveries view too ✅
 15. **Notifications** — SMS outbox, Termii, retry job, daily cap, email copies, manual WhatsApp, sweeping old booking IP hashes, anti-fraud wording ("Real links always start with {domain}") and one registered sender name ✅
 15b. **Location and default delivery fee** — "Use my current location" on booking with "Open in Maps" for staff and riders, optional default delivery fee with "My area isn't listed", `isPickupAvailable` accepts a default fee, "Outside our service areas" badge ✅
-15c. **Brand logo and sign-in page** — Fluta's real logo (SVG versions) everywhere Fluta's brand appears, polished sign-in page with a slight, calm animation
+15c. **Brand logo and sign-in page** — Fluta's real logo (SVG versions) everywhere Fluta's brand appears, polished sign-in page with a slight, calm animation ✅
 
 ## Phase E — Money
 

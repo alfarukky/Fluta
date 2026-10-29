@@ -34,6 +34,10 @@ export function getCustomerPaymentText(balance: { state: PaymentState; balanceKo
       return "Paid";
     case "OUTSTANDING":
       return `Balance due: ${formatNaira(balance.balanceKobo ?? 0)}`;
+    case "PAYMENT_REQUIRED":
+      return `Payment due: ${formatNaira(balance.balanceKobo ?? 0)}`;
+    case "PENDING":
+      return "Confirming your payment";
     case "REFUND_OWED":
       return `The store will refund ${formatNaira(-(balance.balanceKobo ?? 0))}`;
     case "NOTHING_DUE":
@@ -41,6 +45,13 @@ export function getCustomerPaymentText(balance: { state: PaymentState; balanceKo
     case "AWAITING_QUOTE":
       return "The store will confirm the price";
   }
+}
+
+// Under the payment line once the store has recorded a refund: the total of
+// refunds that aren't voided, never individual entries (no notes, references,
+// or void reasons). Null when none.
+export function getCustomerRefundText(paidRefundsKobo: number): string | null {
+  return paidRefundsKobo > 0 ? `Refunded: ${formatNaira(paidRefundsKobo)}` : null;
 }
 
 // ───────────── The progress timeline ─────────────

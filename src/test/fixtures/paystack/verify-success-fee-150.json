@@ -1,0 +1,124 @@
+{
+  "status": true,
+  "message": "Verification successful",
+  "data": {
+    "id": 1000002,
+    "domain": "test",
+    "status": "success",
+    "reference": "FL-9230731b8402f4f6dd35",
+    "receipt_number": null,
+    "amount": 160000,
+    "message": null,
+    "gateway_response": "Successful",
+    "gateway_response_code": "approved",
+    "response_code": "00",
+    "paid_at": "2026-10-26T13:48:16.000Z",
+    "created_at": "2026-10-26T13:47:48.000Z",
+    "channel": "card",
+    "currency": "NGN",
+    "ip_address": "203.0.113.10",
+    "metadata": {
+      "payment_id": "payment_fixture",
+      "order_id": "order_fixture",
+      "store_id": "store_fixture",
+      "cancel_action": "http://localhost:3000/o/TRACKING_TOKEN",
+      "custom_fields": [
+        {
+          "display_name": "Order",
+          "variable_name": "order_number",
+          "value": "FF-1019"
+        }
+      ],
+      "referrer": "http://localhost:3000/"
+    },
+    "log": {
+      "start_time": 1793022470,
+      "time_spent": 27,
+      "attempts": 1,
+      "errors": 0,
+      "success": true,
+      "mobile": false,
+      "input": [],
+      "history": [
+        {
+          "type": "action",
+          "message": "Attempted to pay with card",
+          "time": 26
+        },
+        {
+          "type": "success",
+          "message": "Successfully paid with card",
+          "time": 27
+        }
+      ]
+    },
+    "fees": 2400,
+    "fees_split": {
+      "paystack": 2400,
+      "integration": "2400",
+      "subaccount": 155200,
+      "params": {
+        "bearer": "subaccount",
+        "transaction_charge": "2400",
+        "percentage_charge": "0"
+      }
+    },
+    "authorization": {
+      "authorization_code": "AUTH_fixture",
+      "bin": "408408",
+      "last4": "4081",
+      "exp_month": "REDACTED",
+      "exp_year": "REDACTED",
+      "channel": "card",
+      "card_type": "visa ",
+      "bank": "REDACTED",
+      "country_code": "NG",
+      "brand": "visa",
+      "reusable": true,
+      "signature": "SIG_fixture",
+      "account_name": null,
+      "receiver_bank_account_number": null,
+      "receiver_bank": null
+    },
+    "customer": {
+      "id": 2000001,
+      "first_name": null,
+      "last_name": null,
+      "email": "payer@example.com",
+      "customer_code": "CUS_fixture",
+      "phone": null,
+      "metadata": null,
+      "risk_action": "default",
+      "international_format_phone": null
+    },
+    "plan": null,
+    "split": {},
+    "order_id": null,
+    "paidAt": "2026-10-26T13:48:16.000Z",
+    "createdAt": "2026-10-26T13:47:48.000Z",
+    "requested_amount": 160000,
+    "pos_transaction_data": null,
+    "source": null,
+    "fees_breakdown": null,
+    "connect": null,
+    "transaction_date": "2026-10-26T13:47:48.000Z",
+    "plan_object": {},
+    "subaccount": {
+      "id": 3000001,
+      "subaccount_code": "ACCT_fixture",
+      "business_name": "FreshFold Laundry",
+      "description": "FreshFold Laundry",
+      "primary_contact_name": null,
+      "primary_contact_email": "owner@example.com",
+      "primary_contact_phone": null,
+      "metadata": null,
+      "percentage_charge": 0,
+      "settlement_bank": "Guaranty Trust Bank",
+      "bank_id": 9,
+      "account_number": "0000000000",
+      "currency": "NGN",
+      "active": true,
+      "is_verified": false
+    }
+  }
+}

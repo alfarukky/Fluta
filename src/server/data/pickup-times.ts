@@ -6,6 +6,7 @@ import type { OrderStage, Prisma, QuoteStatus } from "@/generated/prisma/client"
 
 import { getPrisma } from "./client";
 import { ORDER_AUDIT_TARGET } from "./quotes";
+import { addStaffNotification } from "./staff-notifications";
 import { TRACKING_AUDIT_ACTIONS } from "./tracking";
 
 // A pickup order's time: Requested (by the customer when booking) →
@@ -250,9 +251,11 @@ export async function acceptPickupSuggestion<T>(
     if (latest?.id !== suggestion.id) throw new PickupConflict();
     if (await hasPriceUpdateWaiting(tx, storeId, orderId)) throw new PickupConflict();
 
-    await tx.statusEvent.create({
+    const event = await tx.statusEvent.create({
       data: { storeId, orderId, fromStage: "BOOKED", toStage: "PICKUP_SCHEDULED", actorType: "CUSTOMER", createdAt: now },
+      select: { id: true },
     });
+    await addStaffNotification(tx, { storeId, orderId, type: "PICKUP_ACCEPTED", sourceId: event.id });
     return { status: "CHANGED" };
   });
 }

@@ -4,7 +4,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import { createTestPrisma, insertThenRollBack } from "@/test/integration/db";
 
 let prisma: PrismaClient;
-let freshFold: { storeId: string; orderId: string; plainServiceId: string; perKgServiceId: string };
+let freshFold: { storeId: string; orderId: string; plainServiceId: string; quoteServiceId: string };
 let cleanWaveOrderId: string;
 
 beforeAll(async () => {
@@ -21,7 +21,7 @@ beforeAll(async () => {
     storeId: store.id,
     orderId: store.orders[0].id,
     plainServiceId: store.services.find((service) => service.name === "Shirt")!.id,
-    perKgServiceId: store.services.find((service) => service.pricingType === "PER_KG")!.id,
+    quoteServiceId: store.services.find((service) => service.name === "Duvet")!.id,
   };
   cleanWaveOrderId = cleanWave.orders[0].id;
 });
@@ -67,7 +67,7 @@ describe("OrderLine type CHECK constraint", () => {
     lineType: "SERVICE" as const,
     serviceId,
     description: "Seed service",
-    pricingType: requiresQuote ? ("PER_KG" as const) : ("PER_ITEM" as const),
+    pricingType: "PER_ITEM" as const,
     requiresQuote,
     unitPrice: 80_000,
   });
@@ -78,14 +78,14 @@ describe("OrderLine type CHECK constraint", () => {
     ).rejects.toThrow(/OrderLine_lineType_check/);
   });
 
-  it("accepts an unweighed quote-required line with no quantity or total", async () => {
+  it("accepts a quote-required line still to be counted, with no quantity or total", async () => {
     await insertThenRollBack(prisma, (tx) =>
-      tx.orderLine.create({ data: { ...serviceLine(freshFold.perKgServiceId, true), estimatedQuantity: "5" } }),
+      tx.orderLine.create({ data: { ...serviceLine(freshFold.quoteServiceId, true), estimatedQuantity: "5" } }),
     );
   });
 
   it("rejects a quote-required line with a total but no quantity, or the reverse", async () => {
-    const line = serviceLine(freshFold.perKgServiceId, true);
+    const line = serviceLine(freshFold.quoteServiceId, true);
     await expect(prisma.orderLine.create({ data: { ...line, lineTotal: 750_000 } })).rejects.toThrow(
       /OrderLine_lineType_check/,
     );
@@ -135,23 +135,30 @@ describe("composite store keys", () => {
   });
 });
 
-describe("OrderLine per-kg CHECK constraint", () => {
-  it("rejects a per-kg line that doesn't require a quote", async () => {
-    await expect(
-      prisma.orderLine.create({
-        data: {
-          storeId: freshFold.storeId,
-          orderId: freshFold.orderId,
-          lineType: "SERVICE",
-          serviceId: freshFold.perKgServiceId,
-          description: "Wash & fold",
-          pricingType: "PER_KG",
-          requiresQuote: false,
-          unitPrice: 150_000,
-          quantity: "2",
-          lineTotal: 300_000,
-        },
-      }),
-    ).rejects.toThrow(/OrderLine_per_kg_requires_quote/);
+describe("OrderLine whole-quantities CHECK constraint", () => {
+  const line = () => ({
+    storeId: freshFold.storeId,
+    orderId: freshFold.orderId,
+    lineType: "SERVICE" as const,
+    serviceId: freshFold.quoteServiceId,
+    description: "Duvet",
+    pricingType: "PER_ITEM" as const,
+    requiresQuote: true,
+    unitPrice: 150_000,
+  });
+
+  it("rejects a fractional quantity or estimate", async () => {
+    await expect(prisma.orderLine.create({ data: { ...line(), quantity: "1.5", lineTotal: 225_000 } })).rejects.toThrow(
+      /OrderLine_whole_quantities/,
+    );
+    await expect(prisma.orderLine.create({ data: { ...line(), estimatedQuantity: "2.5" } })).rejects.toThrow(
+      /OrderLine_whole_quantities/,
+    );
+  });
+
+  it("accepts whole numbers, written with or without decimal zeros", async () => {
+    await insertThenRollBack(prisma, (tx) =>
+      tx.orderLine.create({ data: { ...line(), quantity: "2", estimatedQuantity: "3.000", lineTotal: 300_000 } }),
+    );
   });
 });

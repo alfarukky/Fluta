@@ -23,6 +23,7 @@ import type { OrderListQuery } from "@/types/orders";
 import { getPrisma } from "./client";
 import { upsertCustomerByPhone, type NewCustomerData } from "./customers";
 import { queueOrderMessages, type MessageRequest, type QueuedMessages } from "./messages";
+import { addStaffNotification } from "./staff-notifications";
 
 // A store's orders. storeId always comes from the caller's membership, never
 // from the request, and is part of every where clause: an order ID from
@@ -41,7 +42,7 @@ export interface NewOrderLineData {
   pricingType: PricingType | null;
   requiresQuote: boolean;
   unitPrice: number | null;
-  estimatedQuantity: string | null; // Decimal, e.g. "2.50"
+  estimatedQuantity: string | null; // Decimal column, a whole number such as "3"
   quantity: string | null;
   lineTotal: number | null;
 }
@@ -89,6 +90,8 @@ export interface CreatedOrder {
   id: string;
   orderNumber: number;
   orderPrefix: string;
+  // False for a booking meant to be paid at booking (Book and pay).
+  payLater: boolean;
   // Messages queued with a newly created order, to send after the commit.
   queued?: QueuedMessages | null;
 }
@@ -121,7 +124,8 @@ export type OnlineOrderInsert =
 // comes first in every booking, so two bookings can't each hold the lock the
 // other is waiting for.
 //
-// It also clears the IP hash of this store's orders older than 24 hours.
+// It also clears the IP hash of this store's orders older than 24 hours, and
+// adds the staff bell's "new online booking" notification last.
 export async function insertOnlineOrder(storeId: string, data: NewOrderData): Promise<OnlineOrderInsert> {
   if (data.customer.kind !== "new" || data.bookingIpHash === null) {
     throw new Error("An online booking needs the customer's phone number and the IP hash.");
@@ -134,12 +138,12 @@ export async function insertOnlineOrder(storeId: string, data: NewOrderData): Pr
 
     const existing = await tx.order.findUnique({
       where: { storeId_clientRequestId: { storeId, clientRequestId: data.clientRequestId } },
-      select: { id: true, orderNumber: true, store: { select: { orderPrefix: true } } },
+      select: { id: true, orderNumber: true, payLater: true, store: { select: { orderPrefix: true } } },
     });
     if (existing) {
       return {
         kind: "existing",
-        order: { id: existing.id, orderNumber: existing.orderNumber, orderPrefix: existing.store.orderPrefix },
+        order: { id: existing.id, orderNumber: existing.orderNumber, orderPrefix: existing.store.orderPrefix, payLater: existing.payLater },
       };
     }
 
@@ -162,7 +166,9 @@ export async function insertOnlineOrder(storeId: string, data: NewOrderData): Pr
       data: { bookingIpHash: null },
     });
 
-    return { kind: "created", order: await createOrderRecords(tx, storeId, data) };
+    const order = await createOrderRecords(tx, storeId, data);
+    await addStaffNotification(tx, { storeId, orderId: order.id, type: "ONLINE_BOOKING", sourceId: order.id });
+    return { kind: "created", order };
   }, ONLINE_TRANSACTION_OPTIONS);
 }
 
@@ -245,7 +251,7 @@ async function createOrderRecords(tx: Prisma.TransactionClient, storeId: string,
     },
   });
   const queued = data.messages ? await queueOrderMessages(tx, storeId, id, data.messages, data.now) : null;
-  return { id, orderNumber, orderPrefix, queued };
+  return { id, orderNumber, orderPrefix, payLater: data.payLater, queued };
 }
 
 // One UPDATE … RETURNING: the row lock serialises concurrent allocations, and
@@ -285,9 +291,9 @@ function pickupFields(pickup: NewOrderData["pickup"]) {
 export async function findOrderByClientRequestId(storeId: string, clientRequestId: string): Promise<CreatedOrder | null> {
   const order = await getPrisma().order.findUnique({
     where: { storeId_clientRequestId: { storeId, clientRequestId } },
-    select: { id: true, orderNumber: true, store: { select: { orderPrefix: true } } },
+    select: { id: true, orderNumber: true, payLater: true, store: { select: { orderPrefix: true } } },
   });
-  return order && { id: order.id, orderNumber: order.orderNumber, orderPrefix: order.store.orderPrefix };
+  return order && { id: order.id, orderNumber: order.orderNumber, orderPrefix: order.store.orderPrefix, payLater: order.payLater };
 }
 
 // Whether the order is this store's: checked before the detail page starts
@@ -315,9 +321,12 @@ const LIST_ROW_SELECT = {
   customer: { select: { name: true } },
   lines: {
     where: { lineType: "SERVICE" },
-    select: { description: true, pricingType: true, quantity: true },
+    select: { description: true, quantity: true },
     orderBy: { id: "asc" },
   },
+  // getBalance: Payment required applies only to online bookings paid at booking.
+  channel: true,
+  payLater: true,
   approvedQuote: { select: { total: true } },
   payments: { select: { amount: true, status: true, voidedAt: true } },
   refunds: { select: { amount: true, voidedAt: true } },
@@ -383,18 +392,26 @@ async function findOrderPageIds(storeId: string, query: OrderListQuery, limit: n
 // written in SQL, used only to choose rows; every amount and badge shown still
 // comes from getBalance. An integration test checks they agree on every order.
 //   balance = approved total (0 if cancelled) − confirmed payments + refunds paid
+// Above 0: Pending when an online payment is still PENDING; else Payment
+// required for an open online booking paid at booking (payLater false) with
+// no confirmed payment; else Outstanding.
 function paymentStateCondition(state: PaymentState): Prisma.Sql {
   const approvedTotal = Prisma.sql`(
     CASE WHEN o."stage" = 'CANCELLED' THEN 0
     ELSE (SELECT q."total" FROM "QuoteRevision" q WHERE q."storeId" = o."storeId" AND q."id" = o."approvedQuoteId")
     END)`;
-  const confirmedPayments = Prisma.sql`(
-    SELECT COALESCE(SUM(p."amount"), 0) FROM "Payment" p
-    WHERE p."storeId" = o."storeId" AND p."orderId" = o."id" AND p."status" = 'CONFIRMED' AND p."voidedAt" IS NULL)`;
+  const confirmed = Prisma.sql`p."storeId" = o."storeId" AND p."orderId" = o."id" AND p."status" = 'CONFIRMED' AND p."voidedAt" IS NULL`;
+  const confirmedPayments = Prisma.sql`(SELECT COALESCE(SUM(p."amount"), 0) FROM "Payment" p WHERE ${confirmed})`;
   const paidRefunds = Prisma.sql`(
     SELECT COALESCE(SUM(r."amount"), 0) FROM "Refund" r
     WHERE r."storeId" = o."storeId" AND r."orderId" = o."id" AND r."voidedAt" IS NULL)`;
   const balance = Prisma.sql`(${approvedTotal} - ${confirmedPayments} + ${paidRefunds})`;
+  const pending = Prisma.sql`EXISTS (
+    SELECT 1 FROM "Payment" p WHERE p."storeId" = o."storeId" AND p."orderId" = o."id" AND p."status" = 'PENDING')`;
+  const paymentRequired = Prisma.sql`(
+    o."channel" = 'ONLINE' AND o."payLater" = false
+    AND o."stage" NOT IN ('COMPLETED', 'CANCELLED')
+    AND NOT EXISTS (SELECT 1 FROM "Payment" p WHERE ${confirmed}))`;
 
   switch (state) {
     case "AWAITING_QUOTE":
@@ -403,8 +420,12 @@ function paymentStateCondition(state: PaymentState): Prisma.Sql {
       return Prisma.sql`(o."stage" <> 'CANCELLED' AND ${balance} = 0)`;
     case "NOTHING_DUE":
       return Prisma.sql`(o."stage" = 'CANCELLED' AND ${balance} = 0)`;
+    case "PENDING":
+      return Prisma.sql`(${balance} > 0 AND ${pending})`;
+    case "PAYMENT_REQUIRED":
+      return Prisma.sql`(${balance} > 0 AND NOT ${pending} AND ${paymentRequired})`;
     case "OUTSTANDING":
-      return Prisma.sql`${balance} > 0`;
+      return Prisma.sql`(${balance} > 0 AND NOT ${pending} AND NOT ${paymentRequired})`;
     case "REFUND_OWED":
       return Prisma.sql`${balance} < 0`;
   }
@@ -436,6 +457,7 @@ export async function findOrderDetail(storeId: string, orderId: string) {
       stage: true,
       stageBeforeQuote: true,
       approvedQuoteId: true,
+      payLater: true,
       serviceAreaName: true,
       isOutOfArea: true,
       isOutsideSchedule: true,
@@ -497,6 +519,7 @@ export async function findOrderDetail(storeId: string, orderId: string) {
           source: true,
           status: true,
           paystackReference: true,
+          failureCode: true,
           reference: true,
           note: true,
           recordedByUserId: true,
@@ -505,12 +528,26 @@ export async function findOrderDetail(storeId: string, orderId: string) {
           voidedByUserId: true,
           voidReason: true,
           replacesPaymentId: true,
+          // Online: Fluta keeps its fee when the store refunds the customer.
+          flutaFeeAmount: true,
           createdAt: true,
         },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       },
       refunds: {
-        select: { id: true, amount: true, note: true, paidAt: true, voidedAt: true },
+        select: {
+          id: true,
+          amount: true,
+          method: true,
+          reference: true,
+          note: true,
+          recordedByUserId: true,
+          paidAt: true,
+          voidedAt: true,
+          voidedByUserId: true,
+          voidReason: true,
+          replacesRefundId: true,
+        },
         orderBy: [{ paidAt: "desc" }, { id: "desc" }],
       },
       statusEvents: {

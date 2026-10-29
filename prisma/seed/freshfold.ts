@@ -35,15 +35,11 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
       timeZone: "Africa/Lagos",
       orderPrefix: "FF",
       pickupDeliveryEnabled: true,
-      payLaterEnabled: true,
       activeDays: [1, 2, 3, 4, 5, 6],
       openTime: "08:00",
       closeTime: "18:00",
-      paystackSubaccountCode: "ACCT_seedfreshfold",
-      settlementBankName: "Example Bank",
-      settlementAccountName: "FRESHFOLD LAUNDRY SERVICES",
-      settlementAccountLast4: "4821",
-      paystackConnectedAt: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000),
+      // Not connected to Paystack: the seed never sets a subaccount code
+      // (plan 9.2). FreshFold is connected for real through Settings → Payments.
     },
     areas: [
       { name: LEKKI, chargeType: "FIXED", fixedCharge: 100_000 },
@@ -54,8 +50,8 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
       { name: "Trousers", category: "Wash & iron", pricingType: "PER_ITEM", price: 100_000 },
       { name: "Dress", category: "Wash & iron", pricingType: "PER_ITEM", price: 150_000 },
       { name: "Bedding", category: "Household", pricingType: "PER_PACKAGE", price: 250_000 },
-      { name: "Laundry by weight", category: "Wash & fold", pricingType: "PER_KG", price: 150_000 },
-      // Priced after inspection: a starting price, and one shown as "Price on inspection".
+      // Priced after inspection: starting prices, and one shown as "Price on inspection".
+      { name: "Duvet", category: "Household", pricingType: "PER_ITEM", price: 150_000, requiresQuote: true },
       { name: "Leather jacket", category: "Specialist care", pricingType: "PER_ITEM", price: 500_000, requiresQuote: true },
       { name: "Wedding gown", category: "Specialist care", pricingType: "PER_ITEM", price: 0, requiresQuote: true },
     ],
@@ -196,7 +192,7 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
         ],
         payments: [{ amount: 610_000, source: "STORE_COLLECTED", method: "POS", atStep: 0 }],
       },
-      // Weighed, quote approved and paid online, now being washed.
+      // Counted (3 duvets, not the 4 booked), quote approved and paid online, now being washed.
       {
         customerPhone: TUNDE,
         channel: "ONLINE",
@@ -204,17 +200,17 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
         createdHoursAgo: 5 * 24,
         stages: ["BOOKED", "RECEIVED_BY_STORE", "QUOTE_AWAITING_APPROVAL", "RECEIVED_BY_STORE", "IN_PROGRESS"],
         revisions: [
-          { lines: [{ service: "Laundry by weight", estimate: "3" }], status: "SUPERSEDED" },
+          { lines: [{ service: "Duvet", estimate: "4" }], status: "SUPERSEDED" },
           {
-            lines: [{ service: "Laundry by weight", estimate: "3", quantity: "3.5" }],
+            lines: [{ service: "Duvet", estimate: "4", quantity: "3" }],
             status: "APPROVED",
             approvedBy: "CUSTOMER",
-            reason: "Weighed at the store: 3.5 kg.",
+            reason: "Counted at the store: 3 duvets.",
             atStep: 2,
           },
         ],
         payments: [
-          { amount: 525_000, source: "ONLINE", method: "PAYSTACK", atStep: 3, payerEmail: "tunde.adeyemi@example.com" },
+          { amount: 450_000, source: "ONLINE", method: "PAYSTACK", atStep: 3, payerEmail: "tunde.adeyemi@example.com" },
         ],
       },
       // In progress with "Others" lines; part paid by bank transfer, balance outstanding.
@@ -239,7 +235,7 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
         payments: [{ amount: 400_000, source: "STORE_COLLECTED", method: "BANK_TRANSFER", atStep: 0 }],
         internalNote: "Customer will pay the balance on collection.",
       },
-      // Weighed at 7.4 kg (estimate 5 kg); priced quote waiting for the customer.
+      // Counted 3 duvets (estimate 2); priced quote waiting for the customer.
       {
         customerPhone: IBRAHIM,
         channel: "COUNTER",
@@ -248,13 +244,13 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
         stages: ["RECEIVED_BY_STORE", "QUOTE_AWAITING_APPROVAL"],
         revisions: [
           {
-            lines: [{ service: "Laundry by weight", estimate: "5" }, { service: "Shirt", quantity: "2" }],
+            lines: [{ service: "Duvet", estimate: "2" }, { service: "Shirt", quantity: "2" }],
             status: "PENDING",
           },
           {
-            lines: [{ service: "Laundry by weight", estimate: "5", quantity: "7.4" }, { service: "Shirt", quantity: "2" }],
+            lines: [{ service: "Duvet", estimate: "2", quantity: "3" }, { service: "Shirt", quantity: "2" }],
             status: "PENDING",
-            reason: "Weighed at the store: 7.4 kg (estimate was 5 kg).",
+            reason: "Counted at the store: 3 duvets (estimate was 2).",
             atStep: 1,
           },
         ],
@@ -299,7 +295,7 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
           },
         ],
       },
-      // Dropped off this morning; waiting to be weighed.
+      // Dropped off this morning; waiting to be counted and priced.
       {
         customerPhone: AISHA,
         channel: "ONLINE",
@@ -308,7 +304,7 @@ export function freshFoldSpec(now: Date): SeedStoreSpec {
         stages: ["BOOKED", "RECEIVED_BY_STORE"],
         revisions: [
           {
-            lines: [{ service: "Laundry by weight", estimate: "6" }, { service: "Dress", quantity: "1" }],
+            lines: [{ service: "Duvet", estimate: "2" }, { service: "Dress", quantity: "1" }],
             status: "PENDING",
           },
         ],

@@ -72,15 +72,14 @@ describe("buildQuoteSnapshot", () => {
     pricingType: "PER_ITEM" as const,
     requiresQuote: false,
     unitPrice: 80_000,
-    quantity: 300,
+    quantity: 3,
     estimate: null,
     lineTotal: 240_000,
   };
-  const wash = {
+  const duvet = {
     ...shirts,
-    serviceId: "wash",
-    description: "Wash & fold",
-    pricingType: "PER_KG" as const,
+    serviceId: "duvet",
+    description: "Duvet",
     requiresQuote: true,
     unitPrice: 150_000,
   };
@@ -107,20 +106,20 @@ describe("buildQuoteSnapshot", () => {
       pricingType: "PER_ITEM",
       requiresQuote: false,
       unitPrice: 80_000,
-      quantity: "3.00",
+      quantity: "3",
       quantityIsEstimate: false,
       lineTotal: 240_000,
     });
   });
 
-  it("shows an unweighed line at the customer's estimate", () => {
-    const snapshot = buildQuoteSnapshot([{ ...wash, quantity: null, estimate: 250, lineTotal: null }], NO_FULFILMENT);
-    expect(snapshot.linesSnapshot.lines).toEqual([expect.objectContaining({ quantity: "2.50", quantityIsEstimate: true, lineTotal: 375_000 })]);
-    expect(snapshot).toMatchObject({ itemsSubtotal: 375_000, fulfilmentCharge: 0, total: 375_000 });
+  it("shows a line still to be counted at the customer's estimate", () => {
+    const snapshot = buildQuoteSnapshot([{ ...duvet, quantity: null, estimate: 2, lineTotal: null }], NO_FULFILMENT);
+    expect(snapshot.linesSnapshot.lines).toEqual([expect.objectContaining({ quantity: "2", quantityIsEstimate: true, lineTotal: 300_000 })]);
+    expect(snapshot).toMatchObject({ itemsSubtotal: 300_000, fulfilmentCharge: 0, total: 300_000 });
   });
 
-  it("leaves out an unweighed line without an estimate", () => {
-    const snapshot = buildQuoteSnapshot([shirts, { ...wash, quantity: null, lineTotal: null }], NO_FULFILMENT);
+  it("leaves out a line still to be counted without an estimate", () => {
+    const snapshot = buildQuoteSnapshot([shirts, { ...duvet, quantity: null, lineTotal: null }], NO_FULFILMENT);
     expect(snapshot.linesSnapshot.lines).toHaveLength(1);
     expect(snapshot.total).toBe(240_000);
   });

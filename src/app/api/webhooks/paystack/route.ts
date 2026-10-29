@@ -38,7 +38,7 @@ export async function POST(request: Request): Promise<Response> {
     return new Response(null, { status: 200 });
   }
   try {
-    await handlePaystackEvent(event.data);
+    await handlePaystackEvent(event.data, new Date());
     return new Response(null, { status: 200 });
   } catch (error) {
     // Paystack retries, and handling is idempotent.

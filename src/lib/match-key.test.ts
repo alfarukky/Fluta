@@ -9,7 +9,7 @@ describe("toMatchKey", () => {
   });
 
   it("treats tabs and newlines as spaces", () => {
-    expect(toMatchKey("Laundry\tby\n weight")).toBe("laundry by weight");
+    expect(toMatchKey("Wash\tand\n iron")).toBe("wash and iron");
   });
 
   it("returns an empty key for whitespace", () => {

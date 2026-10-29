@@ -84,10 +84,14 @@ export function describeChangedBalance(balanceKobo: number, { excessKobo }: Over
   return `The balance has changed. ${formatNaira(Math.max(balanceKobo, 0))} is now due. This payment is ${formatNaira(excessKobo)} more. Record it anyway?`;
 }
 
+// Money still due: Outstanding, or an online booking's Payment required or
+// Pending (a payment started but not yet confirmed).
+export const BALANCE_DUE_STATES: readonly PaymentState[] = ["OUTSTANDING", "PAYMENT_REQUIRED", "PENDING"];
+
 // Record payment is the main action once the order is Ready or Completed and
 // money is still due. Otherwise it is a secondary action.
 export function isRecordPaymentPrimary(stage: OrderStage, state: PaymentState): boolean {
-  return (stage === "READY" || stage === "COMPLETED") && state === "OUTSTANDING";
+  return (stage === "READY" || stage === "COMPLETED") && BALANCE_DUE_STATES.includes(state);
 }
 
 // Payments can be recorded on any order except a cancelled one. Money owed
@@ -100,6 +104,8 @@ export interface PaymentSummary {
   amount: number;
   method: PaymentMethod;
   source: PaymentSource;
+  // Online only: money that arrived when nothing was due (plan 6.9).
+  receivedAfter?: "CANCELLED" | "PAID" | null;
 }
 
 // "₦5,000 cash", "₦6,200 online".
@@ -108,9 +114,14 @@ export function describePaymentAmount({ amount, method }: PaymentSummary): strin
 }
 
 // The staff timeline's entries. `staffName` is null when unknown.
-// "Payment recorded: ₦5,000 cash, by Ada", "Payment received online: ₦6,200".
+// "Payment recorded: ₦5,000 cash, by Ada", "Online payment received: ₦6,200 (Paystack)".
 export function describePaymentRecorded(payment: PaymentSummary, staffName: string | null): string {
-  if (payment.source === "ONLINE") return `Payment received online: ${formatNaira(payment.amount)}`;
+  if (payment.source === "ONLINE") {
+    const received = `Online payment received: ${formatNaira(payment.amount)} (Paystack)`;
+    if (payment.receivedAfter === "CANCELLED") return `${received}, after the order was cancelled`;
+    if (payment.receivedAfter === "PAID") return `${received}, after it was paid in full`;
+    return received;
+  }
   return `Payment recorded: ${describePaymentAmount(payment)}, by ${staffName ?? "Staff"}`;
 }
 

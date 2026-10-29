@@ -63,6 +63,8 @@ Always ask before:
 - Never access the Neon `production` branch
 - Never weaken a security rule, test, validation, or type to make code pass
 - Never use real customer data; use the FreshFold Laundry sample data
+- Never push to `main` or merge into it. `main` is production and changes only through a pull request from `staging`, opened by the project owner
+- Never run anything against the staging or production databases except through deployment (Railway runs `prisma migrate deploy`). The one exception is seeding staging with `ALLOW_STAGING_SEED=true`, only when the owner asks
 - Never use live Paystack or Termii keys, and never paste secrets into code, commits, or chat
 - Never log or print raw tokens, full phone numbers, or addresses, even while debugging
 
@@ -71,7 +73,7 @@ Always ask before:
 This is the common workflow that we will use for every single feature/fix:
 
 1. **Document** - Document the feature in @context/current-feature.md: goal, which overview sections it implements, and any schema changes
-2. **Branch** - Create a new branch for the feature, fix, etc.
+2. **Branch** - Create a new branch for the feature, fix, etc. from an up-to-date `staging`
 3. **Implement** - Implement the feature/fix described in @context/current-feature.md. Check library APIs with Context7 before using them
 4. **Test** - Run `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build`, and fix any errors. Add or update tests as required by @context/coding-standards.md (isolation tests for any new store-owned data). Then verify:
    - **Next.js DevTools:** no runtime or build errors
@@ -80,7 +82,7 @@ This is the common workflow that we will use for every single feature/fix:
    - Any **Verify with** steps listed in the feature spec
 5. **Iterate** - Iterate and change things if needed
 6. **Commit** - Only after all checks pass and everything works
-7. **Merge** - Merge to main
+7. **Merge** - Merge into `staging` and push `staging` (Railway deploys it to the staging site). Production gets it later through the owner's pull request from `staging` to `main`
 8. **Delete Branch** - Delete branch after merge
 9. **Review** - Review AI-generated code periodically and on demand
 10. **Complete** - Mark as completed in @context/current-feature.md and add to history
@@ -89,7 +91,7 @@ Do NOT commit without permission and until all checks pass. If a check fails, fi
 
 ## Branching
 
-We will create a new branch for every feature/fix, named as in @context/coding-standards.md: **feat/[feature]**, **fix/[fix]**, **chore/[task]** (for example `feat/guest-booking-flow`). Ask to delete the branch once merged (running `/feature complete` counts as permission).
+We will create a new branch for every feature/fix **from `staging`**, named as in @context/coding-standards.md: **feat/[feature]**, **fix/[fix]**, **chore/[task]** (for example `feat/guest-booking-flow`). Branches merge back into `staging`, never into `main`. Ask to delete the branch once merged (running `/feature complete` counts as permission).
 
 ## Commits
 

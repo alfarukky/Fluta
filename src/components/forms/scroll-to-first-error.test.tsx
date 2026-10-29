@@ -59,7 +59,7 @@ describe("focusFirstInvalidField", () => {
       <div data-form-field>
         <div role="radiogroup" aria-invalid="true">
           <button type="button" role="radio" tabindex="-1" id="first">Per item</button>
-          <button type="button" role="radio" tabindex="0" id="checked">Per kg</button>
+          <button type="button" role="radio" tabindex="0" id="checked">Per package</button>
         </div>
       </div>
     `);

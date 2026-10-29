@@ -27,7 +27,7 @@ export type StoreMemberAccess =
   | {
       allowed: true;
       user: SessionUser;
-      membership: Pick<ActiveMembership, "id" | "role">;
+      membership: Pick<ActiveMembership, "id" | "role" | "notificationsSeenAt">;
       store: Omit<ActiveMembership["store"], "subscription">;
       access: StoreAccess;
     }
@@ -91,7 +91,13 @@ export function checkStoreMember(
   const access = getStoreAccess(store, subscription, now);
   if (!access.canWorkOnExistingOrders) return { allowed: false, status: 403, reason: "STORE_UNAVAILABLE" };
 
-  return { allowed: true, user, membership: { id: membership.id, role: membership.role }, store, access };
+  return {
+    allowed: true,
+    user,
+    membership: { id: membership.id, role: membership.role, notificationsSeenAt: membership.notificationsSeenAt },
+    store,
+    access,
+  };
 }
 
 function isRolePermitted(role: StoreRole, options: StoreMemberOptions): boolean {

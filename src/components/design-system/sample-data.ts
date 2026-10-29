@@ -62,9 +62,9 @@ export const SAMPLE_ORDERS: SampleOrder[] = [
   {
     number: "FF-1047",
     customer: "Chioma Eze",
-    services: "Laundry by weight · 3.5 kg",
+    services: "Duvet × 3",
     fulfilment: "Drop-off",
-    total: "₦5,250",
+    total: "₦4,500",
     created: "Today, 8:15 AM",
     stage: { label: "Quote awaiting approval", tone: "warning" },
     payment: { label: "Not due yet", tone: "neutral" },

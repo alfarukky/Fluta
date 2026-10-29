@@ -219,19 +219,22 @@ export interface ChannelInput {
   emailCopiesEnabled: boolean;
   // False when the daily booking SMS cap stops this SMS.
   smsWithinCap: boolean;
+  // Book and pay's order-link message only (plan 3.2): checkout skips the
+  // confirmation screen, so the link is emailed even with email copies off.
+  alwaysEmail?: boolean;
 }
 
 export type MessageDestination = { channel: "SMS" | "EMAIL"; recipient: string };
 
 // SMS and email are decided independently: SMS to a Nigerian number when the
 // store's SMS is on (and within the cap), email to any customer email when
-// email copies are on.
+// email copies are on (or, for Book and pay's order link, always).
 export function chooseDestinations(input: ChannelInput): MessageDestination[] {
   const destinations: MessageDestination[] = [];
   if (input.smsEnabled && input.smsWithinCap && isNigerianNumber(input.customerPhone)) {
     destinations.push({ channel: "SMS", recipient: input.customerPhone });
   }
-  if (input.emailCopiesEnabled && input.customerEmail) {
+  if ((input.emailCopiesEnabled || input.alwaysEmail) && input.customerEmail) {
     destinations.push({ channel: "EMAIL", recipient: input.customerEmail });
   }
   return destinations;

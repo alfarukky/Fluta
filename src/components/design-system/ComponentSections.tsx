@@ -329,10 +329,9 @@ export function InputsSection() {
         </div>
         <fieldset className="flex flex-col gap-2 md:col-span-2">
           <legend className="type-label mb-2 text-foreground">Pricing</legend>
-          <RadioGroup defaultValue="per-item" className="gap-2 md:grid-cols-3">
+          <RadioGroup defaultValue="per-item" className="gap-2 md:grid-cols-2">
             {[
               { value: "per-item", label: "Per item", hint: "Each piece, like a shirt." },
-              { value: "per-kg", label: "Per kg", hint: "Weighed at the store." },
               { value: "per-package", label: "Per package", hint: "A fixed bundle." },
             ].map((option) => (
               <Label
@@ -379,7 +378,10 @@ export function BadgesSection() {
             <Badge variant="neutral" dot>Completed</Badge>
             <Badge variant="success">Paid</Badge>
             <Badge variant="warning">Outstanding</Badge>
+            <Badge variant="warning">Payment required</Badge>
+            <Badge variant="info">Pending</Badge>
             <Badge variant="error">Refund owed</Badge>
+            <Badge variant="warning">Payment needs review</Badge>
           </div>
         </ShowcaseGroup>
       </div>

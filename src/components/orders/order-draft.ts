@@ -1,8 +1,8 @@
 import type { FulfilmentType, OrderStage } from "@/generated/prisma/enums";
-import { formatNairaInput, lineTotalKobo, parseNairaToKobo } from "@/lib/money";
+import { formatNairaInput, getLineTotal, parseNairaToKobo } from "@/lib/money";
 import { getOrderTotal, isOrderFullyPriced } from "@/lib/order-pricing";
 import { getInitialStage, type StaffChannel } from "@/lib/orders";
-import { getQuantityProblem, isWeighed, parseHundredths } from "@/lib/quantity";
+import { getQuantityProblem, parseQuantity } from "@/lib/quantity";
 import type { AdjustmentKind, CreateOrderRequest } from "@/schemas/orders";
 import type { CustomerMatch, OrderEntryArea, OrderEntryService } from "@/types/orders";
 
@@ -26,7 +26,6 @@ export interface ServiceLineDraft {
   key: string;
   serviceId: string;
   quantity: string;
-  estimate: string;
 }
 
 export interface AdjustmentDraft {
@@ -131,7 +130,7 @@ export function toCreateOrderRequest(draft: OrderDraft, clientRequestId: string,
           charge: needsEnteredCharge(draft, areas) ? draft.charge : "",
         }
       : null,
-    serviceLines: draft.serviceLines.map(({ serviceId, quantity, estimate }) => ({ serviceId, quantity, estimate })),
+    serviceLines: draft.serviceLines.map(({ serviceId, quantity }) => ({ serviceId, quantity })),
     adjustments: draft.adjustments.map(({ description, kind, amount }) => ({ description, kind, amount })),
     internalNote: draft.internalNote,
   };
@@ -140,9 +139,8 @@ export function toCreateOrderRequest(draft: OrderDraft, clientRequestId: string,
 export interface ReviewLine {
   key: string;
   description: string;
-  // Null while unweighed, or while the quantity typed isn't valid yet.
+  // Null while the quantity typed isn't valid yet.
   lineTotal: number | null;
-  awaitingWeight: boolean;
 }
 
 export interface OrderReview {
@@ -165,14 +163,13 @@ export function reviewDraft(
   const serviceLines = draft.serviceLines.flatMap((line): (ReviewLine & { requiresQuote: boolean; quantity: number | null })[] => {
     const service = byId.get(line.serviceId);
     if (!service) return [];
-    const parsed = parseHundredths(line.quantity);
-    const quantity = parsed !== null && getQuantityProblem(parsed, service.pricingType) === null ? parsed : null;
+    const parsed = parseQuantity(line.quantity);
+    const quantity = parsed !== null && getQuantityProblem(parsed) === null ? parsed : null;
     return [
       {
         key: line.key,
         description: service.name,
-        lineTotal: quantity === null ? null : lineTotalKobo(service.price, quantity),
-        awaitingWeight: isWeighed(service.pricingType) && line.quantity.trim() === "",
+        lineTotal: quantity === null ? null : getLineTotal(service.price, quantity),
         requiresQuote: service.requiresQuote,
         quantity,
       },
@@ -189,7 +186,7 @@ export function reviewDraft(
   const fulfilmentCharge = previewCharge(draft, areas);
 
   return {
-    serviceLines: serviceLines.map(({ key, description, lineTotal, awaitingWeight }) => ({ key, description, lineTotal, awaitingWeight })),
+    serviceLines: serviceLines.map(({ key, description, lineTotal }) => ({ key, description, lineTotal })),
     adjustments,
     fulfilmentCharge,
     total: getOrderTotal({
@@ -209,8 +206,8 @@ function previewCharge(draft: OrderDraft, areas: readonly OrderEntryArea[]): num
 }
 
 // Adding a service already on the order adds to its line ("Shirt × 2" plus
-// one more is "Shirt × 3"); a per-kg line is weighed as a whole, so it is
-// left as it is. Returns the lines and whether an existing line was used.
+// one more is "Shirt × 3"). Returns the lines and whether an existing line
+// was used.
 export function addService(
   lines: readonly ServiceLineDraft[],
   service: OrderEntryService,
@@ -218,12 +215,10 @@ export function addService(
 ): { lines: ServiceLineDraft[]; combined: boolean } {
   const existing = lines.find((line) => line.serviceId === service.id);
   if (!existing) {
-    const quantity = isWeighed(service.pricingType) ? "" : "1";
-    return { lines: [...lines, { key, serviceId: service.id, quantity, estimate: "" }], combined: false };
+    return { lines: [...lines, { key, serviceId: service.id, quantity: "1" }], combined: false };
   }
-  if (isWeighed(service.pricingType)) return { lines: [...lines], combined: true };
-  const current = parseHundredths(existing.quantity);
-  const next = current === null ? "1" : String(Math.floor(current / 100) + 1);
+  const current = parseQuantity(existing.quantity);
+  const next = current === null ? "1" : String(current + 1);
   return {
     lines: lines.map((line) => (line === existing ? { ...line, quantity: next } : line)),
     combined: true,

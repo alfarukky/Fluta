@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { logger } from "@/lib/logger";
+import { formatNaira } from "@/lib/money";
 import { formatPhone } from "@/lib/phone";
 import {
   createOrderSchema,
@@ -44,7 +45,7 @@ const ERROR_MESSAGES: Record<OrderEntryError, string> = {
   AREA_UNAVAILABLE: "This service area isn't available any more.",
   CHARGE_REQUIRED: "Enter the pickup & delivery charge.",
   PICKUP_NOT_AVAILABLE: "Check the pickup date and time.",
-  NEGATIVE_TOTAL: "The order total can't be less than ₦0.",
+  NEGATIVE_TOTAL: `The order total can't be less than ${formatNaira(0)}.`,
 };
 
 export async function createOrder(request: unknown): Promise<CreateOrderActionResult> {

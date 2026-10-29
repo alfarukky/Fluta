@@ -38,7 +38,7 @@ interface TestStore {
   id: string;
   slug: string;
   shirt: string;
-  wash: string;
+  bedding: string;
   inspect: string;
   disabled: string;
   fixedArea: string;
@@ -73,6 +73,7 @@ afterAll(async () => {
         prisma.statusEvent.deleteMany({ where }),
         prisma.quoteRevision.deleteMany({ where }),
         prisma.orderLine.deleteMany({ where }),
+        prisma.notification.deleteMany({ where }),
         prisma.order.deleteMany({ where }),
         prisma.customer.deleteMany({ where }),
         prisma.service.deleteMany({ where }),
@@ -89,8 +90,8 @@ afterAll(async () => {
 }, 120_000);
 
 // Drop-off and pickup Monday–Friday, 8:00 AM–5:00 PM, closed on Tuesday
-// 2099-06-16. Shirts have a fixed price; washing (per kg) and an inspected
-// item are priced by the store.
+// 2099-06-16. Shirts have a fixed price; bedding and an inspected item are
+// quote-required (priced by the store after counting).
 async function createStore(name: string, orderPrefix: string): Promise<TestStore> {
   const slug = `booking-test-${randomUUID().slice(0, 8)}`;
   const { id } = await prisma.store.create({
@@ -108,7 +109,7 @@ async function createStore(name: string, orderPrefix: string): Promise<TestStore
     },
     select: { id: true },
   });
-  const service = (serviceName: string, pricingType: "PER_ITEM" | "PER_KG", price: number, requiresQuote = false, isActive = true) =>
+  const service = (serviceName: string, pricingType: "PER_ITEM" | "PER_PACKAGE", price: number, requiresQuote = false, isActive = true) =>
     prisma.service.create({
       data: { storeId: id, name: serviceName, nameKey: toMatchKey(serviceName), pricingType, price, requiresQuote, isActive },
       select: { id: true },
@@ -125,9 +126,9 @@ async function createStore(name: string, orderPrefix: string): Promise<TestStore
       },
       select: { id: true },
     });
-  const [shirt, wash, inspect, disabled, fixedArea, quoteArea, disabledArea] = await Promise.all([
+  const [shirt, bedding, inspect, disabled, fixedArea, quoteArea, disabledArea] = await Promise.all([
     service("Shirt", "PER_ITEM", 80_000),
-    service("Wash & fold", "PER_KG", 150_000, true),
+    service("Bedding (inspect)", "PER_PACKAGE", 150_000, true),
     service("Agbada (inspect)", "PER_ITEM", 500_000, true),
     service("Old service", "PER_ITEM", 10_000, false, false),
     area("Wuse 2", 150_000),
@@ -138,7 +139,7 @@ async function createStore(name: string, orderPrefix: string): Promise<TestStore
     id,
     slug,
     shirt: shirt.id,
-    wash: wash.id,
+    bedding: bedding.id,
     inspect: inspect.id,
     disabled: disabled.id,
     fixedArea: fixedArea.id,
@@ -259,13 +260,17 @@ describe("creating an online order", () => {
     expect(order.statusEvents).toEqual([
       expect.objectContaining({ fromStage: null, toStage: "BOOKED", actorType: "CUSTOMER", actorUserId: null }),
     ]);
+    // The staff bell hears about it once.
+    expect(await prisma.notification.findMany({ where: { orderId: order.id }, select: { storeId: true, type: true, sourceId: true, audience: true } })).toEqual([
+      { storeId: main.id, type: "ONLINE_BOOKING", sourceId: order.id, audience: "STAFF_AND_OWNERS" },
+    ]);
   });
 
   it("keeps a quote-required booking as an unapproved estimate", async () => {
     const order = await book(
       dropOff(main, {
         serviceLines: [
-          { serviceId: main.wash, amount: "2.5" },
+          { serviceId: main.bedding, amount: "3" },
           { serviceId: main.inspect, amount: "2" },
         ],
       }),
@@ -277,7 +282,7 @@ describe("creating an online order", () => {
     ]);
     // The customer's amounts are estimates on both lines, never billed.
     expect(order.lines.map((line) => [line.description, line.quantity, line.estimatedQuantity?.toString()])).toEqual([
-      ["Wash & fold", null, "2.5"],
+      ["Bedding (inspect)", null, "3"],
       ["Agbada (inspect)", null, "2"],
     ]);
   });
@@ -365,7 +370,7 @@ describe("the customer's note", () => {
   });
 
   it("keeps a quote-required booking's estimate as it was", async () => {
-    const lines = [{ serviceId: main.wash, amount: "2.5" }];
+    const lines = [{ serviceId: main.bedding, amount: "3" }];
     const [withNote, without] = await Promise.all([
       book(dropOff(main, { serviceLines: lines, customerNote: "Also 3 duvets" })),
       book(dropOff(main, { serviceLines: lines })),
@@ -381,6 +386,26 @@ describe("the customer's note", () => {
       book(dropOff()),
     ]);
     expect(orders.map((order) => order.customerNote)).toEqual([null, null, null]);
+  });
+
+  it("refuses a fractional, missing, or out-of-range amount sent directly, creating nothing", async () => {
+    const before = await orderCount();
+    for (const [amount, message] of [
+      ["1.5", "Enter a whole number, like 3"],
+      ["2.0", "Enter a whole number, like 3"],
+      ["", "Enter how many"],
+      ["0", "Enter at least 1"],
+      ["1000", "Enter 999 or fewer"],
+    ]) {
+      // On a fixed-price and a quote-required service alike.
+      for (const serviceId of [main.shirt, main.bedding]) {
+        const result = await createBooking(main.slug, dropOff(main, { serviceLines: [{ serviceId, amount }] }));
+        if (result.ok) throw new Error(`Expected "${amount}" to be refused`);
+        // Under serviceLines.0.amount (the form check) or .quantity (the range check).
+        expect(Object.entries(result.fieldErrors ?? {})).toEqual([[expect.stringMatching(/^serviceLines\.0\./), message]]);
+      }
+    }
+    expect(await orderCount()).toBe(before);
   });
 
   it("accepts 300 characters and refuses 301, creating nothing", async () => {
@@ -499,6 +524,8 @@ describe("repeated submissions", () => {
     const displayNumber = first.ok ? first.displayNumber : null;
     for (const result of [again, a, b]) expect(result).toMatchObject({ ok: true, displayNumber });
     expect(await prisma.order.count({ where: { storeId: main.id, clientRequestId: booking.clientRequestId } })).toBe(1);
+    // Repeats of the same booking never notify staff again.
+    expect(await prisma.notification.count({ where: { storeId: main.id, type: "ONLINE_BOOKING", order: { clientRequestId: booking.clientRequestId } } })).toBe(1);
 
     // Each response carries a fresh link (the first was never seen), and only
     // the one stored last opens the order.
@@ -592,6 +619,8 @@ describe("booking limits", () => {
     expect(results.filter((result) => result.ok)).toHaveLength(5);
     expect(results.filter((result) => !result.ok && result.code === "BOOKING_LIMIT_REACHED")).toHaveLength(5);
     expect(await prisma.order.count({ where: { storeId: main.id, customer: { phone } } })).toBe(5);
+    // Refused bookings leave no notification.
+    expect(await prisma.notification.count({ where: { storeId: main.id, order: { customer: { phone } } } })).toBe(5);
   }, 180_000);
 
   it("clears the IP hash on that store's orders older than 24 hours", async () => {

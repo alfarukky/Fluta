@@ -5,13 +5,11 @@ import { useId, useState } from "react";
 import { toast } from "sonner";
 
 import { describedBy, FormField } from "@/components/settings/FormField";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { InputWithPrefix } from "@/components/ui/input-with-prefix";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatNaira, formatServicePrice } from "@/lib/money";
-import { isWeighed } from "@/lib/quantity";
 import {
   ADJUSTMENT_DESCRIPTION_MAX,
   ADJUSTMENT_KIND_LABELS,
@@ -51,11 +49,7 @@ export function LinesSection({ draft, onChange, errors, services, review }: Line
     if (!service) return;
     const result = addService(draft.serviceLines, service, newKey());
     if (result.combined) {
-      toast.info(
-        isWeighed(service.pricingType)
-          ? `${service.name} is already on this order. Enter its total weight.`
-          : `Added 1 more to ${service.name}`,
-      );
+      toast.info(`Added 1 more to ${service.name}`);
     }
     onChange({ serviceLines: result.lines });
   }
@@ -93,7 +87,6 @@ export function LinesSection({ draft, onChange, errors, services, review }: Line
                 errors={{
                   serviceId: errors[`serviceLines.${index}.serviceId`],
                   quantity: errors[`serviceLines.${index}.quantity`],
-                  estimate: errors[`serviceLines.${index}.estimate`],
                 }}
                 onChange={(change) => updateLine(line.key, change)}
                 onRemove={() => onChange({ serviceLines: draft.serviceLines.filter((other) => other.key !== line.key) })}
@@ -183,16 +176,12 @@ interface ServiceLineRowProps {
   line: ServiceLineDraft;
   service: OrderEntryService;
   lineTotal: number | null;
-  errors: { serviceId?: string; quantity?: string; estimate?: string };
+  errors: { serviceId?: string; quantity?: string };
   onChange: (change: Partial<ServiceLineDraft>) => void;
   onRemove: () => void;
 }
 
 function ServiceLineRow({ idPrefix, line, service, lineTotal, errors, onChange, onRemove }: ServiceLineRowProps) {
-  const weighed = isWeighed(service.pricingType);
-  const unweighed = weighed && line.quantity.trim() === "";
-  const quantityHint = weighed ? "Leave empty if the clothes aren't weighed yet." : undefined;
-
   return (
     <li className="flex flex-col gap-component rounded-lg border border-border p-card">
       <div className="flex items-start justify-between gap-component">
@@ -206,39 +195,20 @@ function ServiceLineRow({ idPrefix, line, service, lineTotal, errors, onChange, 
         </Button>
       </div>
       <div className="grid grid-cols-1 gap-form xs:grid-cols-2">
-        <FormField id={`${idPrefix}-quantity`} label={weighed ? "Weight (kg)" : "Quantity"} hint={quantityHint} error={errors.quantity}>
+        <FormField id={`${idPrefix}-quantity`} label="Quantity" error={errors.quantity}>
           <Input
             id={`${idPrefix}-quantity`}
             value={line.quantity}
             onChange={(event) => onChange({ quantity: event.target.value })}
-            inputMode={weighed ? "decimal" : "numeric"}
+            inputMode="numeric"
             autoComplete="off"
             maxLength={7}
             aria-invalid={errors.quantity ? true : undefined}
-            aria-describedby={describedBy(`${idPrefix}-quantity`, quantityHint, errors.quantity)}
+            aria-describedby={describedBy(`${idPrefix}-quantity`, undefined, errors.quantity)}
           />
         </FormField>
-        {unweighed && (
-          <FormField
-            id={`${idPrefix}-estimate`}
-            label="Customer's estimate (kg, optional)"
-            error={errors.estimate}
-          >
-            <Input
-              id={`${idPrefix}-estimate`}
-              value={line.estimate}
-              onChange={(event) => onChange({ estimate: event.target.value })}
-              inputMode="decimal"
-              autoComplete="off"
-              maxLength={7}
-              aria-invalid={errors.estimate ? true : undefined}
-              aria-describedby={describedBy(`${idPrefix}-estimate`, undefined, errors.estimate)}
-            />
-          </FormField>
-        )}
       </div>
-      <div className="flex items-center justify-between gap-component">
-        {unweighed ? <Badge variant="warning">Weigh later</Badge> : <span />}
+      <div className="flex items-center justify-end gap-component">
         <span className="type-label text-foreground" aria-label={`${service.name} line total`}>
           {lineTotal === null ? "—" : formatNaira(lineTotal)}
         </span>

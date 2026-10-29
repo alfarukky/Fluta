@@ -22,6 +22,7 @@ export async function clearSeedData(prisma: PrismaClient, slugs: string[], userE
       prisma.refund.deleteMany({ where: { storeId } }),
       prisma.orderLine.deleteMany({ where: { storeId } }),
       prisma.quoteRevision.deleteMany({ where: { storeId } }),
+      prisma.notification.deleteMany({ where: { storeId } }),
       prisma.order.deleteMany({ where: { storeId } }),
       prisma.customer.deleteMany({ where: { storeId } }),
       prisma.service.deleteMany({ where: { storeId } }),

@@ -15,7 +15,15 @@ function refund(amount: number, voidedAt: Date | null = null) {
 }
 
 function order(overrides: Partial<BalanceOrder> = {}): BalanceOrder {
-  return { stage: "IN_PROGRESS", approvedQuote: { total: 620_000 }, payments: [], refunds: [], ...overrides };
+  return {
+    stage: "IN_PROGRESS",
+    channel: "COUNTER",
+    payLater: false,
+    approvedQuote: { total: 620_000 },
+    payments: [],
+    refunds: [],
+    ...overrides,
+  };
 }
 
 describe("getBalance", () => {
@@ -123,9 +131,10 @@ describe("getBalance", () => {
   });
 
   describe("what doesn't count", () => {
+    // A PENDING payment changes the state to Pending, never the amounts.
     it.each<PaymentStatus>(["PENDING", "FAILED", "VOIDED"])("ignores %s payments", (status) => {
       expect(getBalance(order({ payments: [payment(620_000, status)] }))).toMatchObject({
-        state: "OUTSTANDING",
+        state: status === "PENDING" ? "PENDING" : "OUTSTANDING",
         confirmedPaymentsKobo: 0,
         balanceKobo: 620_000,
       });
@@ -146,5 +155,46 @@ describe("getBalance", () => {
         balanceKobo: -120_000,
       });
     });
+  });
+});
+
+describe("getBalance: online payments", () => {
+  const booking = (overrides: Partial<BalanceOrder> = {}) => order({ stage: "BOOKED", channel: "ONLINE", payLater: false, ...overrides });
+
+  it("is Payment required for an unpaid online booking meant to be paid at booking", () => {
+    expect(getBalance(booking())).toMatchObject({ state: "PAYMENT_REQUIRED", balanceKobo: 620_000 });
+  });
+
+  it("is Pending while an online payment has started but isn't confirmed, and the balance doesn't move", () => {
+    expect(getBalance(booking({ payments: [payment(620_000, "PENDING")] }))).toMatchObject({
+      state: "PENDING",
+      confirmedPaymentsKobo: 0,
+      balanceKobo: 620_000,
+    });
+    // Pending wins over Outstanding too.
+    expect(getBalance(order({ payments: [payment(620_000, "PENDING")] }))).toMatchObject({ state: "PENDING" });
+  });
+
+  it("never counts failed attempts", () => {
+    expect(getBalance(booking({ payments: [payment(620_000, "FAILED")] }))).toMatchObject({ state: "PAYMENT_REQUIRED", balanceKobo: 620_000 });
+  });
+
+  it("is Paid once confirmed, even with an old pending attempt", () => {
+    expect(getBalance(booking({ payments: [payment(620_000), payment(620_000, "PENDING")] }))).toMatchObject({ state: "PAID" });
+  });
+
+  it("is Outstanding for a pay-later booking, after a part payment, or once the order is completed", () => {
+    expect(getBalance(booking({ payLater: true }))).toMatchObject({ state: "OUTSTANDING" });
+    expect(getBalance(booking({ payments: [payment(200_000)] }))).toMatchObject({ state: "OUTSTANDING", balanceKobo: 420_000 });
+    expect(getBalance(booking({ stage: "COMPLETED" }))).toMatchObject({ state: "OUTSTANDING" });
+  });
+
+  it.each(["COUNTER", "PHONE", "WHATSAPP"] as const)("keeps an unpaid %s order Outstanding, never Payment required", (channel) => {
+    expect(getBalance(order({ channel, payLater: false }))).toMatchObject({ state: "OUTSTANDING" });
+  });
+
+  it("is Refund owed when a payment arrives after cancellation or after the order was paid in full", () => {
+    expect(getBalance(booking({ stage: "CANCELLED", payments: [payment(620_000)] }))).toMatchObject({ state: "REFUND_OWED", balanceKobo: -620_000 });
+    expect(getBalance(booking({ payments: [payment(620_000), payment(620_000)] }))).toMatchObject({ state: "REFUND_OWED", balanceKobo: -620_000 });
   });
 });

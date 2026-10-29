@@ -50,7 +50,7 @@ interface FixtureOrder {
   payments?: { amount: number; status: PaymentStatus; voided?: boolean }[];
   refunds?: { amount: number; voided?: boolean }[];
   events?: number;
-  unweighed?: boolean;
+  uncounted?: boolean;
 }
 
 const CUSTOMERS = {
@@ -71,9 +71,9 @@ const FIXTURES: FixtureOrder[] = [
   // Today, 12:00 AM exactly. Outstanding.
   { name: "B", orderNumber: 5002, customer: "bola", fulfilmentType: "PICKUP_DELIVERY", stage: "PICKUP_SCHEDULED",
     createdAt: "2026-10-11T23:00:00Z", revisions: [approved(500_000)] },
-  // Yesterday, 11:59 PM. Unweighed per-kg line, version 1 never sent: Awaiting quote.
+  // Yesterday, 11:59 PM. A quote-required line still to be counted, version 1 never sent: Awaiting quote.
   { name: "C", orderNumber: 5003, customer: "chidi", stage: "RECEIVED_BY_STORE", createdAt: "2026-10-11T22:59:00Z",
-    revisions: [{ total: 450_000, status: "PENDING" }], unweighed: true },
+    revisions: [{ total: 450_000, status: "PENDING" }], uncounted: true },
   // First minute of the 7-day range. Cancelled after paying: Refund owed.
   { name: "D", orderNumber: 5004, customer: "adaeze", stage: "CANCELLED", createdAt: "2026-10-05T23:00:00Z",
     revisions: [approved(300_000)], payments: [{ amount: 300_000, status: "CONFIRMED" }] },
@@ -110,7 +110,7 @@ const FIXTURES: FixtureOrder[] = [
     revisions: [approved(350_000)] },
   // Cancelled while still awaiting its quote (never priced): Nothing due, not Awaiting quote.
   { name: "J", orderNumber: 5010, customer: "filler", stage: "CANCELLED", createdAt: "2026-06-02T09:00:00Z",
-    revisions: [{ total: 450_000, status: "PENDING" }], unweighed: true },
+    revisions: [{ total: 450_000, status: "PENDING" }], uncounted: true },
   ...Array.from({ length: 25 }, (_, index): FixtureOrder => ({
     name: `filler-${index}`,
     orderNumber: 5101 + index,
@@ -166,6 +166,7 @@ afterAll(async () => {
       prisma.refund.deleteMany({ where }),
       prisma.quoteRevision.deleteMany({ where }),
       prisma.orderLine.deleteMany({ where }),
+      prisma.notification.deleteMany({ where }),
       prisma.order.deleteMany({ where }),
       prisma.customer.deleteMany({ where }),
       prisma.service.deleteMany({ where }),
@@ -196,12 +197,12 @@ async function addStaff(label: string): Promise<string> {
 // Everything is written in bulk (a handful of round trips, not hundreds).
 async function buildFixtures(): Promise<void> {
   const storeId = store.id;
-  const service = (name: string, pricingType: "PER_ITEM" | "PER_KG", price: number) =>
+  const service = (name: string, price: number, requiresQuote: boolean) =>
     prisma.service.create({
-      data: { storeId, name, nameKey: name.toLowerCase(), pricingType, price, requiresQuote: pricingType === "PER_KG" },
+      data: { storeId, name, nameKey: name.toLowerCase(), pricingType: "PER_ITEM", price, requiresQuote },
       select: { id: true },
     });
-  const [shirt, wash] = await Promise.all([service("Shirt", "PER_ITEM", 80_000), service("Wash & fold", "PER_KG", 150_000)]);
+  const [shirt, duvet] = await Promise.all([service("Shirt", 80_000, false), service("Duvet", 150_000, true)]);
 
   const customerIds = Object.fromEntries(Object.keys(CUSTOMERS).map((key) => [key, `ol-cust-${key}-${randomUUID()}`]));
   await prisma.customer.createMany({
@@ -241,10 +242,10 @@ async function buildFixtures(): Promise<void> {
       storeId,
       orderId: orders[fixture.name],
       lineType: "SERVICE" as const,
-      serviceId: fixture.unweighed ? wash.id : shirt.id,
-      description: fixture.unweighed ? "Wash & fold" : "Shirt",
-      ...(fixture.unweighed
-        ? { pricingType: "PER_KG" as const, requiresQuote: true, unitPrice: 150_000, estimatedQuantity: "3.00" }
+      serviceId: fixture.uncounted ? duvet.id : shirt.id,
+      description: fixture.uncounted ? "Duvet" : "Shirt",
+      ...(fixture.uncounted
+        ? { pricingType: "PER_ITEM" as const, requiresQuote: true, unitPrice: 150_000, estimatedQuantity: "3" }
         : { pricingType: "PER_ITEM" as const, unitPrice: 80_000, quantity: "2", lineTotal: 160_000 }),
     })),
   });
@@ -295,7 +296,9 @@ async function buildFixtures(): Promise<void> {
         storeId,
         orderId: orders[fixture.name],
         amount: refund.amount,
+        method: "BANK_TRANSFER" as const,
         note: "Refunded by transfer",
+        clientRequestId: randomUUID(),
         recordedByUserId: staffIds[0],
         paidAt: new Date(fixture.createdAt),
         voidedAt: refund.voided ? new Date(fixture.createdAt) : null,
@@ -471,6 +474,8 @@ describe("payment-state filter", () => {
         select: {
           id: true,
           stage: true,
+          channel: true,
+          payLater: true,
           approvedQuote: { select: { total: true } },
           payments: { select: { amount: true, status: true, voidedAt: true } },
           refunds: { select: { amount: true, voidedAt: true } },
@@ -491,7 +496,7 @@ describe("list rows", () => {
     const { rows } = await getOrderListPage(store, { ...DEFAULT_ORDER_LIST_FILTERS, created: "7d" }, NOW);
     const byNumber = Object.fromEntries(rows.map((row) => [row.displayNumber, row]));
     expect(byNumber["OL-5001"]).toMatchObject({ total: "₦6,200", paymentState: "PAID", customerName: "Adaeze Nwankwo" });
-    expect(byNumber["OL-5003"]).toMatchObject({ total: null, paymentState: "AWAITING_QUOTE", services: "Wash & fold" });
+    expect(byNumber["OL-5003"]).toMatchObject({ total: null, paymentState: "AWAITING_QUOTE", services: "Duvet" });
     expect(byNumber["OL-5004"]).toMatchObject({ paymentState: "REFUND_OWED", stage: "CANCELLED" });
     expect(byNumber["OL-5002"]).toMatchObject({
       created: "Mon, 12 Oct 2026, 12:00 AM",

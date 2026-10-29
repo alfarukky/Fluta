@@ -47,6 +47,9 @@ export interface BookingOptions {
   // only the listed areas can book pickup.
   defaultFee: number | null;
   dates: BookingDateOption[];
+  // Book and pay (plan 3.2): a connected store with pay later off. A
+  // fixed-price booking is then paid on Paystack in the same step.
+  payAtBooking: boolean;
 }
 
 export interface BookingPageData {

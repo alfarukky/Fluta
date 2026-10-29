@@ -55,20 +55,18 @@ describe("ServiceCatalogue", () => {
     expect(screen.getByRole("heading", { name: "Add service" })).toBeTruthy();
   });
 
-  it("locks quote required on for per-kg, and leaves it on but editable when switched away", () => {
+  it("offers only per item and per package, with quote required off by default and editable", () => {
     render(<ServiceCatalogue services={[SHIRT]} />);
     fireEvent.click(screen.getByRole("button", { name: "Add service" }));
 
+    expect(screen.getAllByRole("radio").map((radio) => radio.getAttribute("value"))).toEqual(["PER_ITEM", "PER_PACKAGE"]);
     const quote = () => screen.getByRole("switch", { name: "Quote required" });
     expect(quote().getAttribute("aria-checked")).toBe("false");
-
-    fireEvent.click(screen.getByRole("radio", { name: /Per kg/ }));
-    expect(quote().getAttribute("aria-checked")).toBe("true");
-    expect(quote().hasAttribute("disabled")).toBe(true);
-
-    fireEvent.click(screen.getByRole("radio", { name: /Per item/ }));
-    expect(quote().getAttribute("aria-checked")).toBe("true");
     expect(quote().hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(screen.getByRole("radio", { name: /Per package/ }));
+    fireEvent.click(quote());
+    expect(quote().getAttribute("aria-checked")).toBe("true");
   });
 
   it("disables Save while a save is in progress", async () => {

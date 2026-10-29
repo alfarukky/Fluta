@@ -42,7 +42,6 @@ export function parseNairaToKobo(input: string): number | null {
 
 const PRICING_UNITS: Record<PricingType, string> = {
   PER_ITEM: "item",
-  PER_KG: "kg",
   PER_PACKAGE: "package",
 };
 
@@ -79,17 +78,14 @@ export function formatAreaChargeForCustomer(area: AreaCharge): string {
   return area.fixedCharge === 0 ? "Free" : formatNaira(area.fixedCharge);
 }
 
-// A service line's total: unit price (kobo) × quantity, where the quantity is
-// in hundredths (2.5 kg is 250; 3 items are 300). Rounded half up to the
-// nearest kobo, once, in whole-number arithmetic only, so 0.15 kg at ₦0.10/kg
-// is exactly 2 kobo (1.5 rounded up) and never 1.4999… from decimal maths.
-// The one rounding rule for every line total (per-kg weights included).
-export function lineTotalKobo(unitPrice: number, quantityHundredths: number): number {
-  if (!Number.isSafeInteger(unitPrice) || !Number.isSafeInteger(quantityHundredths)) {
-    throw new RangeError("Line totals take whole kobo and whole hundredths.");
+// A service line's total: unit price (kobo) × a whole quantity. Exact, with
+// no rounding, because both are whole numbers.
+export function getLineTotal(unitPrice: number, quantity: number): number {
+  if (!Number.isSafeInteger(unitPrice) || !Number.isSafeInteger(quantity)) {
+    throw new RangeError("Line totals take whole kobo and whole quantities.");
   }
-  if (unitPrice < 0 || quantityHundredths < 0) throw new RangeError("Line totals can't be negative.");
-  const product = unitPrice * quantityHundredths;
-  if (!Number.isSafeInteger(product)) throw new RangeError("Line total is too large.");
-  return Math.floor((product + 50) / 100);
+  if (unitPrice < 0 || quantity < 0) throw new RangeError("Line totals can't be negative.");
+  const total = unitPrice * quantity;
+  if (!Number.isSafeInteger(total)) throw new RangeError("Line total is too large.");
+  return total;
 }

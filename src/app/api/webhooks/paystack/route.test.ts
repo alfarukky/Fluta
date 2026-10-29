@@ -6,13 +6,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const SECRET = "sk_test_0123456789abcdef0123456789abcdef01234567";
 const config = vi.hoisted(() => ({ current: null as { secretKey: string; mode: "test" | "live" } | null }));
 vi.mock("@/lib/env", () => ({ getPaystackConfig: () => config.current }));
+// No database here: every reference is unknown (not Fluta's), so nothing is written.
+vi.mock("@/server/data/online-payments", () => ({ findOnlinePaymentByReference: async () => null }));
 
 const { POST } = await import("./route");
 
 const URL_ = "http://localhost:3000/api/webhooks/paystack";
 const BODY = JSON.stringify({
   event: "charge.success",
-  data: { reference: "FLT-5b1e4c2a9d", amount: 620000, customer: { email: "payer@example.com" } },
+  data: {
+    status: "success",
+    reference: "FLT-5b1e4c2a9d",
+    amount: 620000,
+    currency: "NGN",
+    domain: "test",
+    customer: { email: "payer@example.com" },
+  },
 });
 const sign = (body: string | Uint8Array, key = SECRET) => createHmac("sha512", key).update(body).digest("hex");
 
@@ -44,6 +53,14 @@ describe("POST /api/webhooks/paystack", () => {
     expect(logged).not.toContain("payer@example.com");
     expect(logged).not.toContain("620000");
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges a charge.success without the expected fields, and ignores it", async () => {
+    const body = JSON.stringify({ event: "charge.success", data: { reference: "x", customer: { email: "payer@example.com" } } });
+    const response = await POST(webhook(body, { "x-real-ip": "52.31.139.75" }));
+    expect(response.status).toBe(200);
+    expect(JSON.stringify(warn.mock.calls)).toContain("without the expected fields");
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("payer@example.com");
   });
 
   it("acknowledges other signed events and ignores them", async () => {

@@ -5,25 +5,17 @@ import type { ComponentProps } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MAX_ITEM_QUANTITY } from "@/lib/quantity";
+import { MAX_QUANTITY, MIN_QUANTITY, parseQuantity } from "@/lib/quantity";
 import { cn } from "@/lib/utils";
 
 // − [ 2 ] + for whole quantities (items, packages). The number can also be
 // typed: the value stays as typed text, so the form's own check reports
-// anything that isn't a whole number in range. Weights need decimals and
-// keep a plain field.
-
-export const MIN_STEPPER_QUANTITY = 1;
-
-// The whole number in the box, or null while it isn't one.
-function parseWhole(text: string): number | null {
-  return /^\d{1,6}$/.test(text.trim()) ? Number(text.trim()) : null;
-}
+// anything that isn't a whole number in range.
 
 // The value after − or +, kept within min–max. From an empty or unreadable
 // box, either button starts at min.
-export function stepQuantity(text: string, delta: -1 | 1, min = MIN_STEPPER_QUANTITY, max = MAX_ITEM_QUANTITY): string {
-  const current = parseWhole(text);
+export function stepQuantity(text: string, delta: -1 | 1, min = MIN_QUANTITY, max = MAX_QUANTITY): string {
+  const current = parseQuantity(text);
   if (current === null) return String(min);
   return String(Math.min(max, Math.max(min, current + delta)));
 }
@@ -45,13 +37,13 @@ export function QuantityStepper({
   value,
   onChange,
   label,
-  min = MIN_STEPPER_QUANTITY,
-  max = MAX_ITEM_QUANTITY,
+  min = MIN_QUANTITY,
+  max = MAX_QUANTITY,
   className,
   disabled,
   ...inputProps
 }: QuantityStepperProps) {
-  const current = parseWhole(value);
+  const current = parseQuantity(value);
   return (
     <div className={cn("flex items-center gap-2", className)}>
       <Button

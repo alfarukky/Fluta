@@ -10,9 +10,11 @@ const postgresUrlSchema = z.url({
 const serverEnvSchema = z.object({
   // Pooled Neon URL (host contains `-pooler`), used by the app at runtime.
   DATABASE_URL: postgresUrlSchema,
-  // Which Neon branch DATABASE_URL points at. The seed refuses `production`;
-  // integration tests require `test`.
-  DATABASE_BRANCH: z.enum(["development", "test", "production"]),
+  // Which Neon branch DATABASE_URL points at, and so which environment this
+  // is. Staging behaves like production but takes Paystack test keys and may
+  // leave Paystack and Termii unset. The seed refuses `production` (and
+  // `staging` without ALLOW_STAGING_SEED); integration tests require `test`.
+  DATABASE_BRANCH: z.enum(["development", "test", "staging", "production"]),
   // Signs Better Auth's session cookies. Generate with `openssl rand -base64 32`.
   BETTER_AUTH_SECRET: z.string().min(32, "must be at least 32 characters"),
   // The app's public origin, e.g. http://localhost:3000. Every link Fluta
@@ -90,22 +92,32 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
   );
 }
 
-// Links in emails and on screen are built from BETTER_AUTH_URL, so a
-// production server must never start with a local or plain-http address.
-function productionUrlProblems(source: Record<string, string | undefined>): string[] {
-  const url = source.BETTER_AUTH_URL;
-  if (source.NODE_ENV !== "production" || url === undefined) return [];
-  if (url.startsWith("https://") && !url.includes("localhost") && !url.includes("127.0.0.1")) return [];
-  return ["  - BETTER_AUTH_URL: must be the public https:// address (not localhost or 127.0.0.1) in production"];
+// The live site: a production server on the production database.
+function isLiveProduction(source: Record<string, string | undefined>): boolean {
+  return source.NODE_ENV === "production" && source.DATABASE_BRANCH === "production";
 }
 
-// Termii is all or nothing, and production always sends real SMS.
+// Links in emails and on screen are built from BETTER_AUTH_URL, so a
+// production server, and anything on the staging or production database,
+// must never start with a local or plain-http address.
+function productionUrlProblems(source: Record<string, string | undefined>): string[] {
+  const url = source.BETTER_AUTH_URL;
+  const deployed = source.NODE_ENV === "production" || source.DATABASE_BRANCH === "staging" || source.DATABASE_BRANCH === "production";
+  if (!deployed || url === undefined) return [];
+  if (url.startsWith("https://") && !url.includes("localhost") && !url.includes("127.0.0.1")) return [];
+  return ["  - BETTER_AUTH_URL: must be the public https:// address (not localhost or 127.0.0.1) in production and staging"];
+}
+
+// Termii is all or nothing, and the live site always sends real SMS. Staging
+// may leave it unset: messages are then marked sent without sending, so demos
+// never cost SMS.
 function termiiProblems(source: Record<string, string | undefined>): string[] {
   const names = ["TERMII_API_KEY", "TERMII_SENDER_ID", "TERMII_BASE_URL"] as const;
   const set = names.filter((name) => source[name]?.trim());
   if (set.length === names.length) return [];
-  if (set.length === 0 && source.NODE_ENV !== "production") return [];
-  return [`  - ${names.join(", ")}: set all three${source.NODE_ENV === "production" ? " (required in production)" : ", or none"}`];
+  const required = isLiveProduction(source);
+  if (set.length === 0 && !required) return [];
+  return [`  - ${names.join(", ")}: set all three${required ? " (required in production)" : ", or none"}`];
 }
 
 // Live money never touches a development or test database, and the
@@ -115,9 +127,7 @@ function paystackProblems(source: Record<string, string | undefined>): string[] 
   const key = source.PAYSTACK_SECRET_KEY?.trim();
   const mode = source.PAYSTACK_MODE?.trim();
   const keyMode = key?.startsWith("sk_live_") ? "live" : key?.startsWith("sk_test_") ? "test" : undefined;
-  const production = source.NODE_ENV === "production" && source.DATABASE_BRANCH === "production";
-
-  if (production) {
+  if (isLiveProduction(source)) {
     if (keyMode === "live" && mode === "live") return [];
     return ["  - PAYSTACK_SECRET_KEY, PAYSTACK_MODE: production requires PAYSTACK_MODE=live and an sk_live_ key"];
   }
@@ -183,6 +193,13 @@ export function readR2PublicUrl(): URL | undefined {
 // ServerEnv: the app never needs it, and production never sets it.
 export function readSeedUserPassword(): string | undefined {
   return process.env.SEED_USER_PASSWORD;
+}
+
+// True on the staging site (DATABASE_BRANCH=staging). Never throws, so
+// next.config.ts and layouts can call it during `next build`. Decides the
+// staging banner, the noindex header, and the "[Staging]" email prefix.
+export function isStaging(): boolean {
+  return process.env.DATABASE_BRANCH === "staging";
 }
 
 export function isDevelopment(): boolean {

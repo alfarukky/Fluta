@@ -8,18 +8,22 @@ import type { OrderStage } from "@/generated/prisma/client";
 import { CLOSED_STAGES, formatOrderNumber } from "@/lib/orders";
 import { maskPhone } from "@/lib/phone";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
-import { formatQuantity, fromDecimalString, isWeighed } from "@/lib/quantity";
+import { fromStoredQuantity } from "@/lib/quantity";
 import { findPendingRevision, formatDifference, getTotalDifference } from "@/lib/quotes";
 import { formatCalendarDate, formatDateTime, toDateKey } from "@/lib/time";
 import { getTrackingLinkStatus, hashToken, isWellFormedToken } from "@/lib/tokens";
-import { getCustomerPaymentText, getCustomerStageLabel, getCustomerTimeline } from "@/lib/tracking";
+import { getCustomerPaymentText, getCustomerRefundText, getCustomerStageLabel, getCustomerTimeline } from "@/lib/tracking";
 import { ADJUSTMENT_KIND_LABELS } from "@/schemas/orders";
 import { acceptPickupSuggestion, findLatestPickupSuggestion, type PickupOrderRecord } from "@/server/data/pickup-times";
 import { findTrackedOrder, type TrackedOrderRecord } from "@/server/data/tracking";
+import { getPaymentWarning } from "@/lib/online-payment";
 import { getBalance, type Balance } from "@/server/domain/balance";
+import { canPayOnline, hasRecentPendingAttempt } from "@/server/domain/online-payment";
+import { getPaystackClient } from "@/server/integrations/paystack";
 import { canTransition, getStageOrderState, toContext } from "@/server/domain/order-stages";
 import type { QuoteSnapshot } from "@/server/domain/orders";
 import type {
+  PayNowOffer,
   PriceUpdateReview,
   TrackingItem,
   TrackingPage,
@@ -74,8 +78,22 @@ export const loadTrackingPage = cache(async (token: string, now: Date = new Date
   }
   const suggestion =
     order.pickupWindowStatus === "PROPOSED_BY_STORE" ? await findLatestPickupSuggestion(order.storeId, order.id) : null;
-  return { kind: "VALID", view: buildView(order, balance, suggestion) };
+  return { kind: "VALID", view: buildView(order, balance, suggestion, now) };
 });
+
+// Back from Paystack (/o/{token}?paystack=return&reference=…): whether that
+// reference is this order's online attempt and still PENDING, so the page
+// shows "Confirming your payment…". The return itself never changes
+// anything: confirming comes from Paystack's webhook or verify (Phase 4).
+export async function isPaymentBeingConfirmed(token: string, reference: string): Promise<boolean> {
+  if (!isWellFormedToken(token)) return false;
+  const order = await findTrackedOrder(hashToken(token));
+  return (
+    order?.payments.some(
+      (payment) => payment.source === "ONLINE" && payment.status === "PENDING" && payment.paystackReference === reference,
+    ) ?? false
+  );
+}
 
 const CLOSED: ReadonlySet<OrderStage> = new Set(CLOSED_STAGES);
 
@@ -83,6 +101,7 @@ function buildView(
   order: TrackedOrderRecord,
   balance: Balance,
   suggestion: Awaited<ReturnType<typeof findLatestPickupSuggestion>>,
+  now: Date,
 ): TrackingView {
   const timeZone = order.store.timeZone;
   const closed = CLOSED.has(order.stage);
@@ -96,6 +115,7 @@ function buildView(
     closed,
     timeline: buildTimeline(order, timeZone),
     payment: getCustomerPaymentText(balance),
+    refunded: getCustomerRefundText(balance.paidRefundsKobo),
     price: buildPrice(order),
     pickup: buildPickup(order),
     maskedPhone: maskPhone(order.customer.phone),
@@ -113,7 +133,22 @@ function buildView(
               : null,
           }
         : null,
+    payNow: buildPayNow(order, now),
   } satisfies TrackingView;
+}
+
+// Pay now, when the order can be paid online now: never at a store that
+// isn't connected, or while Paystack isn't configured.
+function buildPayNow(order: TrackedOrderRecord, now: Date): PayNowOffer | null {
+  if (!getPaystackClient()) return null;
+  const decision = canPayOnline(order, order.store, now);
+  if (!decision.allowed) return null;
+  return {
+    amount: formatNaira(decision.amountKobo),
+    email: order.customer.email ?? "",
+    warning: getPaymentWarning(order.store.name),
+    recentAttempt: hasRecentPendingAttempt(order.payments, now),
+  };
 }
 
 function buildTimeline(order: TrackedOrderRecord, timeZone: string): TrackingTimelineStep[] {
@@ -166,8 +201,8 @@ function buildPrice(order: TrackedOrderRecord): TrackingPrice {
       price: line.unitPrice ?? 0,
       pricingType: line.pricingType ?? "PER_ITEM",
       requiresQuote: line.requiresQuote,
-      quantity: toHundredths(line.quantity),
-      estimate: toHundredths(line.estimatedQuantity),
+      quantity: toQuantity(line.quantity),
+      estimate: toQuantity(line.estimatedQuantity),
     })),
     fulfilmentCharge: order.fulfilmentCharge,
   });
@@ -176,21 +211,18 @@ function buildPrice(order: TrackedOrderRecord): TrackingPrice {
   return { kind: "estimate", items, total: formatNaira(summary.total + others) };
 }
 
-function toHundredths(value: { toString(): string } | null): number | null {
-  return value === null ? null : fromDecimalString(value.toString());
+function toQuantity(value: { toString(): string } | null): number | null {
+  return value === null ? null : fromStoredQuantity(value.toString());
 }
 
 type ServiceLine = TrackedOrderRecord["lines"][number];
 
 function describeUnpricedLine(line: ServiceLine): string | null {
-  const pricingType = line.pricingType ?? "PER_ITEM";
-  const quantity = toHundredths(line.quantity);
-  // "× 2" for items or packages, "3.5 kg" for a weight.
-  if (quantity !== null) return isWeighed(pricingType) ? formatQuantity(quantity, pricingType) : `× ${formatQuantity(quantity, pricingType)}`;
-  const estimate = toHundredths(line.estimatedQuantity);
-  const what = pricingType === "PER_KG" ? "weigh" : "count";
-  if (estimate !== null) return `About ${formatQuantity(estimate, pricingType)}. The store will ${what} it.`;
-  return `The store will ${what} it.`;
+  const quantity = toQuantity(line.quantity);
+  if (quantity !== null) return `× ${quantity}`;
+  const estimate = toQuantity(line.estimatedQuantity);
+  if (estimate !== null) return `About ${estimate}. The store will count it.`;
+  return "The store will count it.";
 }
 
 function snapshotItems(snapshot: QuoteSnapshot): TrackingItem[] {
@@ -203,9 +235,8 @@ function snapshotItems(snapshot: QuoteSnapshot): TrackingItem[] {
         amount: formatNaira(line.lineTotal),
       };
     }
-    const quantity = line.quantity === null ? null : fromDecimalString(line.quantity);
-    const detail =
-      quantity === null ? null : `${formatQuantity(quantity, line.pricingType ?? "PER_ITEM")} × ${formatNaira(line.unitPrice ?? 0)}`;
+    const quantity = line.quantity === null ? null : fromStoredQuantity(line.quantity);
+    const detail = quantity === null ? null : `${quantity} × ${formatNaira(line.unitPrice ?? 0)}`;
     return { key: `${index}`, name: line.description, detail, amount: formatNaira(line.lineTotal) };
   });
 }

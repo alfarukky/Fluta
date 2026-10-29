@@ -38,11 +38,6 @@ describe("serviceFormSchema", () => {
     expect(parse({ category: "    " }).data?.category).toBeNull();
   });
 
-  it("always requires a quote for per-kg services", () => {
-    expect(parse({ pricingType: "PER_KG", requiresQuote: "" }).data?.requiresQuote).toBe(true);
-    expect(parse({ pricingType: "PER_KG", requiresQuote: "false" }).data?.requiresQuote).toBe(true);
-  });
-
   it("lets per-item and per-package services set the quote flag", () => {
     expect(parse({ requiresQuote: "on" }).data?.requiresQuote).toBe(true);
     expect(parse({ pricingType: "PER_PACKAGE", requiresQuote: "" }).data?.requiresQuote).toBe(false);
@@ -51,7 +46,7 @@ describe("serviceFormSchema", () => {
   it("allows a ₦0 price only when a quote is required", () => {
     expect(errorField({ price: "0" })).toBe("price");
     expect(parse({ price: "0", requiresQuote: "on" }).data?.price).toBe(0);
-    expect(parse({ price: "0", pricingType: "PER_KG" }).data?.price).toBe(0);
+    expect(errorField({ price: "0", pricingType: "PER_PACKAGE" })).toBe("price");
   });
 
   it("caps the price at ₦10,000,000", () => {

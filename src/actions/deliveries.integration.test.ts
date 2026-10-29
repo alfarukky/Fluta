@@ -95,6 +95,7 @@ afterAll(async () => {
       prisma.messageEvent.deleteMany({ where }),
       prisma.statusEvent.deleteMany({ where }),
       prisma.quoteRevision.deleteMany({ where }),
+      prisma.notification.deleteMany({ where }),
       prisma.order.deleteMany({ where }),
       prisma.customer.deleteMany({ where }),
       prisma.subscription.deleteMany({ where }),

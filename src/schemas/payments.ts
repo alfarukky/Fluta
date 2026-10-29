@@ -10,37 +10,42 @@ export const VOID_REASON_MAX = 200;
 
 export const PAYMENT_FORM_EXPIRED_MESSAGE = "This form has expired. Close it and try again.";
 
-const recordId = z.string().trim().min(1).max(64);
+export const recordId = z.string().trim().min(1).max(64);
 
 const AMOUNT_FORMAT_MESSAGE = "Enter an amount in Naira, like 5,000 or 5,000.50";
 
 // The amount as staff typed it, in kobo: above ₦0 and at most ₦10,000,000.
-export const paymentAmountSchema = z
-  .string(AMOUNT_FORMAT_MESSAGE)
-  .max(40, AMOUNT_FORMAT_MESSAGE)
-  .transform((value, ctx) => {
-    if (!value.trim()) {
-      ctx.addIssue({ code: "custom", message: "Enter the amount paid" });
-      return z.NEVER;
-    }
-    const kobo = parseNairaToKobo(value);
-    if (kobo === null) {
-      ctx.addIssue({ code: "custom", message: AMOUNT_FORMAT_MESSAGE });
-      return z.NEVER;
-    }
-    if (kobo === 0) {
-      ctx.addIssue({ code: "custom", message: "Enter an amount above ₦0" });
-      return z.NEVER;
-    }
-    if (kobo > MAX_PAYMENT_AMOUNT) {
-      ctx.addIssue({ code: "custom", message: `Amount must be ${formatNaira(MAX_PAYMENT_AMOUNT)} or less` });
-      return z.NEVER;
-    }
-    return kobo;
-  });
+// `emptyMessage` is shown when nothing was entered.
+export function nairaAmountSchema(emptyMessage: string) {
+  return z
+    .string(AMOUNT_FORMAT_MESSAGE)
+    .max(40, AMOUNT_FORMAT_MESSAGE)
+    .transform((value, ctx) => {
+      if (!value.trim()) {
+        ctx.addIssue({ code: "custom", message: emptyMessage });
+        return z.NEVER;
+      }
+      const kobo = parseNairaToKobo(value);
+      if (kobo === null) {
+        ctx.addIssue({ code: "custom", message: AMOUNT_FORMAT_MESSAGE });
+        return z.NEVER;
+      }
+      if (kobo === 0) {
+        ctx.addIssue({ code: "custom", message: "Enter an amount above ₦0" });
+        return z.NEVER;
+      }
+      if (kobo > MAX_PAYMENT_AMOUNT) {
+        ctx.addIssue({ code: "custom", message: `Amount must be ${formatNaira(MAX_PAYMENT_AMOUNT)} or less` });
+        return z.NEVER;
+      }
+      return kobo;
+    });
+}
+
+export const paymentAmountSchema = nairaAmountSchema("Enter the amount paid");
 
 // Trimmed, and stored as NULL when blank.
-function optionalText(max: number, label: string) {
+export function optionalText(max: number, label: string) {
   return z
     .string()
     .trim()
@@ -126,7 +131,13 @@ export const PAYMENT_TOTALS_LABELS: Record<PaymentDateRange, string> = {
 
 // The page's filters, from its address. Anything missing or invalid falls
 // back to its default rather than failing the page.
+// Payments received, or refunds paid back (Feature 18). The Refunds view
+// uses only the date filter.
+export const PAYMENT_PAGE_VIEWS = ["payments", "refunds"] as const;
+export type PaymentPageView = (typeof PAYMENT_PAGE_VIEWS)[number];
+
 export const paymentListFiltersSchema = z.object({
+  view: z.enum(PAYMENT_PAGE_VIEWS).catch("payments"),
   date: z.enum(PAYMENT_DATE_RANGES).catch("today"),
   method: z.enum(PaymentMethod).nullable().catch(null),
   source: z.enum(PaymentSource).nullable().catch(null),
@@ -152,6 +163,7 @@ export function encodePaymentListCursor(cursor: { confirmedAt: Date; id: string 
 // The page address for a set of filters, leaving out defaults ("" for none).
 export function toPaymentListSearch(filters: PaymentListFilters): string {
   const params = new URLSearchParams();
+  if (filters.view !== DEFAULT_PAYMENT_LIST_FILTERS.view) params.set("view", filters.view);
   if (filters.date !== DEFAULT_PAYMENT_LIST_FILTERS.date) params.set("date", filters.date);
   if (filters.method) params.set("method", filters.method);
   if (filters.source) params.set("source", filters.source);

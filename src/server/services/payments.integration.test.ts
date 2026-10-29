@@ -104,6 +104,7 @@ afterAll(async () => {
   const where = { storeId: store.id };
   await prisma.$transaction([
     prisma.payment.deleteMany({ where }),
+    prisma.notification.deleteMany({ where }),
     prisma.order.deleteMany({ where }),
     prisma.customer.deleteMany({ where }),
     prisma.subscription.deleteMany({ where }),

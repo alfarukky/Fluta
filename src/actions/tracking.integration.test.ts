@@ -44,13 +44,13 @@ const CUSTOMER_NOTE = "Please be gentle with the silk blouse";
 const STAFF_NAME = "Tunde Staffname";
 
 const SHIRT_PRICE = 80_000;
-const WASH_PRICE = 150_000;
+const DUVET_PRICE = 150_000;
 const WUSE_CHARGE = 150_000;
 
 let prisma: PrismaClient;
 let storeId: string;
 let customerId: string;
-let ids: { shirt: string; wash: string; wuse: string; maitama: string };
+let ids: { shirt: string; duvet: string; wuse: string; maitama: string };
 let staff: { id: string; headers: Headers };
 let nextOrderNumber = 1;
 
@@ -80,9 +80,9 @@ beforeAll(async () => {
   storeId = store.id;
   customerId = store.customers[0].id;
 
-  const service = (name: string, pricingType: "PER_ITEM" | "PER_KG", price: number) =>
+  const service = (name: string, price: number, requiresQuote: boolean) =>
     prisma.service.create({
-      data: { storeId, name, nameKey: toMatchKey(name), pricingType, price, requiresQuote: pricingType === "PER_KG" },
+      data: { storeId, name, nameKey: toMatchKey(name), pricingType: "PER_ITEM", price, requiresQuote },
       select: { id: true },
     });
   const area = (name: string, fixedCharge: number | null) =>
@@ -90,13 +90,13 @@ beforeAll(async () => {
       data: { storeId, name, nameKey: toMatchKey(name), chargeType: fixedCharge === null ? "QUOTE_REQUIRED" : "FIXED", fixedCharge },
       select: { id: true },
     });
-  const [shirt, wash, wuse, maitama] = await Promise.all([
-    service("Shirt", "PER_ITEM", SHIRT_PRICE),
-    service("Wash & fold", "PER_KG", WASH_PRICE),
+  const [shirt, duvet, wuse, maitama] = await Promise.all([
+    service("Shirt", SHIRT_PRICE, false),
+    service("Duvet", DUVET_PRICE, true),
     area("Wuse 2", WUSE_CHARGE),
     area("Maitama", null),
   ]);
-  ids = { shirt: shirt.id, wash: wash.id, wuse: wuse.id, maitama: maitama.id };
+  ids = { shirt: shirt.id, duvet: duvet.id, wuse: wuse.id, maitama: maitama.id };
 
   const email = `staff-${suffix}@${EMAIL_DOMAIN}`;
   const { createUserWithPassword } = await import("@/server/data/users");
@@ -119,6 +119,7 @@ afterAll(async () => {
       prisma.payment.deleteMany({ where }),
       prisma.quoteRevision.deleteMany({ where }),
       prisma.orderLine.deleteMany({ where }),
+      prisma.notification.deleteMany({ where }),
       prisma.order.deleteMany({ where }),
       prisma.customer.deleteMany({ where }),
       prisma.service.deleteMany({ where }),
@@ -139,8 +140,8 @@ afterAll(async () => {
 // ───────────── Building orders ─────────────
 
 interface LineSpec {
-  service: "shirt" | "wash";
-  quantity: number | null; // hundredths; null = not weighed yet
+  service: "shirt" | "duvet";
+  quantity: number | null; // null = not counted yet
 }
 
 interface OrderSpec {
@@ -157,8 +158,8 @@ interface OrderSpec {
   paid?: number;
 }
 
-const priceOf = (line: LineSpec) => (line.service === "shirt" ? SHIRT_PRICE : WASH_PRICE);
-const totalOf = (line: LineSpec) => (line.quantity === null ? 0 : Math.round((priceOf(line) * line.quantity) / 100));
+const priceOf = (line: LineSpec) => (line.service === "shirt" ? SHIRT_PRICE : DUVET_PRICE);
+const totalOf = (line: LineSpec) => (line.quantity === null ? 0 : priceOf(line) * line.quantity);
 const REQUESTED_DATE = new Date(Date.UTC(2026, 11, 1));
 
 // An order as order entry, an online booking, and earlier moves would have
@@ -167,7 +168,7 @@ async function makeOrder(spec: OrderSpec): Promise<{ id: string; token: string; 
   const fulfilmentType = spec.fulfilmentType ?? "DROP_OFF";
   const pickup = fulfilmentType === "PICKUP_DELIVERY";
   const stage = spec.path.at(-1) ?? "BOOKED";
-  const lines = spec.lines ?? [{ service: "shirt", quantity: 200 }];
+  const lines = spec.lines ?? [{ service: "shirt", quantity: 2 }];
   const charge = pickup ? (spec.area === "maitama" ? null : WUSE_CHARGE) : null;
   const itemsSubtotal = lines.reduce((sum, line) => sum + totalOf(line), 0);
   const total = itemsSubtotal + (charge ?? 0);
@@ -215,11 +216,11 @@ async function makeOrder(spec: OrderSpec): Promise<{ id: string; token: string; 
       orderId: order.id,
       lineType: "SERVICE" as const,
       serviceId: ids[line.service],
-      description: line.service === "shirt" ? "Shirt" : "Wash & fold",
-      pricingType: line.service === "shirt" ? ("PER_ITEM" as const) : ("PER_KG" as const),
-      requiresQuote: line.service === "wash",
+      description: line.service === "shirt" ? "Shirt" : "Duvet",
+      pricingType: "PER_ITEM" as const,
+      requiresQuote: line.service === "duvet",
       unitPrice: priceOf(line),
-      quantity: line.quantity === null ? null : (line.quantity / 100).toFixed(2),
+      quantity: line.quantity === null ? null : String(line.quantity),
       lineTotal: line.quantity === null ? null : totalOf(line),
     })),
   });
@@ -236,11 +237,11 @@ async function makeOrder(spec: OrderSpec): Promise<{ id: string; token: string; 
                 {
                   lineType: "SERVICE",
                   serviceId: ids[line.service],
-                  description: line.service === "shirt" ? "Shirt" : "Wash & fold",
-                  pricingType: line.service === "shirt" ? "PER_ITEM" : "PER_KG",
-                  requiresQuote: line.service === "wash",
+                  description: line.service === "shirt" ? "Shirt" : "Duvet",
+                  pricingType: "PER_ITEM",
+                  requiresQuote: line.service === "duvet",
                   unitPrice: priceOf(line),
-                  quantity: (line.quantity / 100).toFixed(2),
+                  quantity: String(line.quantity),
                   quantityIsEstimate: false,
                   lineTotal: totalOf(line),
                 },
@@ -337,14 +338,23 @@ async function sendPriceUpdate(
       .map((line) => ({
         kind: "existing" as const,
         lineId: line.id,
-        quantity: String((options.quantity ?? (line.quantity === null ? 300 : Number(line.quantity) * 100)) / 100),
+        quantity: String(options.quantity ?? (line.quantity === null ? 3 : Number(line.quantity))),
       })),
     adjustments: [],
     ...(options.charge && { charge: options.charge }),
-    reason: options.reason === undefined ? "Heavier than expected" : options.reason,
+    reason: options.reason === undefined ? "More items than expected" : options.reason,
   });
   expect(result).toEqual({ ok: true, message: expect.any(String) });
   return (await readOrder(orderId)).quoteRevisions.at(-1)?.id ?? "";
+}
+
+// The staff bell's notifications for an order, oldest first.
+async function notificationsOf(orderId: string) {
+  return prisma.notification.findMany({
+    where: { orderId },
+    select: { type: true, sourceId: true, audience: true },
+    orderBy: { createdAt: "asc" },
+  });
 }
 
 async function asStaff<T>(action: () => Promise<T>): Promise<T> {
@@ -373,7 +383,7 @@ describe("opening a tracking link", () => {
   it("never acts on another order, even with its revision ID", async () => {
     const mine = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"] });
     const other = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"] });
-    const otherRevision = await sendPriceUpdate(other.id, { quantity: 300 });
+    const otherRevision = await sendPriceUpdate(other.id, { quantity: 3 });
 
     expect(await decidePriceUpdate(mine.token, { decision: "APPROVE", revisionId: otherRevision })).toEqual({
       ok: false,
@@ -419,7 +429,7 @@ describe("opening a tracking link", () => {
     const page = await loadTrackingPage(order.token);
     if (page.kind !== "VALID") throw new Error("The link should work");
 
-    const html = renderToStaticMarkup(TrackingOrder({ view: page.view, basePath: "/o/test" }));
+    const html = renderToStaticMarkup(TrackingOrder({ view: page.view, basePath: "/o/test", token: order.token }));
     const metadata = JSON.stringify(await getTrackingMetadata(order.token));
     for (const text of [JSON.stringify(page.view), html]) {
       for (const secret of [ADDRESS, "Hidden Close", CUSTOMER_PHONE, "803 123 4521", INTERNAL_NOTE, CUSTOMER_NOTE, STAFF_NAME, "Tracking Test Customer"]) {
@@ -541,11 +551,13 @@ describe("approving and declining a price update", () => {
     });
     expect(after.quoteRevisions.at(-1)).toMatchObject({ status: "APPROVED", approvedByActor: "CUSTOMER" });
     expect(after.statusEvents.at(-1)).toMatchObject({ fromStage: "QUOTE_AWAITING_APPROVAL", toStage: "BOOKED", actorType: "SYSTEM" });
+    // Staff sending the update made none; the customer's approval made one.
+    expect(await notificationsOf(order.id)).toEqual([{ type: "PRICE_APPROVED", sourceId: revisionId, audience: "STAFF_AND_OWNERS" }]);
   });
 
   it("keeps the progress shown while a price update waits during cleaning", async () => {
     const order = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"] });
-    await sendPriceUpdate(order.id, { quantity: 300 });
+    await sendPriceUpdate(order.id, { quantity: 3 });
     const page = await loadTrackingPage(order.token);
     if (page.kind !== "VALID") throw new Error("The link should work");
     expect(page.view.timeline.map((step) => `${step.state} ${step.label}`)).toEqual([
@@ -561,8 +573,8 @@ describe("approving and declining a price update", () => {
 
   it("refuses an update that was replaced, as no longer current", async () => {
     const order = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"] });
-    const replaced = await sendPriceUpdate(order.id, { quantity: 300 });
-    const latest = await sendPriceUpdate(order.id, { quantity: 400 });
+    const replaced = await sendPriceUpdate(order.id, { quantity: 3 });
+    const latest = await sendPriceUpdate(order.id, { quantity: 4 });
 
     expect(await decidePriceUpdate(order.token, { decision: "APPROVE", revisionId: replaced })).toEqual({ ok: false, message: NOT_CURRENT });
     expect(await decidePriceUpdate(order.token, { decision: "APPROVE", revisionId: latest })).toMatchObject({ ok: true });
@@ -574,7 +586,7 @@ describe("approving and declining a price update", () => {
 
   it("declines with a message and changes nothing else", async () => {
     const order = await makeOrder({ fulfilmentType: "PICKUP_DELIVERY", path: ["BOOKED"], pickup: "REQUESTED" });
-    const revisionId = await sendPriceUpdate(order.id, { quantity: 300 });
+    const revisionId = await sendPriceUpdate(order.id, { quantity: 3 });
     const before = await readOrder(order.id);
     const balanceBefore = (await getOrderDetail(storeId, order.id, "STAFF"))?.balance;
 
@@ -588,19 +600,20 @@ describe("approving and declining a price update", () => {
     expect(restAfter).toEqual(restBefore);
     expect(revisionsAfter.slice(0, -1)).toEqual(revisionsBefore.slice(0, -1));
     expect(revisionsAfter.at(-1)).toMatchObject({ status: "DECLINED", customerMessage: "Can you check the count again?" });
+    expect(await notificationsOf(order.id)).toEqual([{ type: "PRICE_DECLINED", sourceId: revisionId, audience: "STAFF_AND_OWNERS" }]);
     expect((await getOrderDetail(storeId, order.id, "STAFF"))?.balance).toEqual(balanceBefore);
   });
 
   it("refuses a message over 300 characters", async () => {
     const order = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"] });
-    const revisionId = await sendPriceUpdate(order.id, { quantity: 300 });
+    const revisionId = await sendPriceUpdate(order.id, { quantity: 3 });
     expect(await decidePriceUpdate(order.token, { decision: "DECLINE", revisionId, message: "x".repeat(301) })).toMatchObject({ ok: false });
     expect((await readOrder(order.id)).quoteRevisions.at(-1)).toMatchObject({ status: "PENDING" });
   });
 
   it("applies exactly one of a customer approval and a staff decision made at the same moment", async () => {
     const order = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"] });
-    const revisionId = await sendPriceUpdate(order.id, { quantity: 300 });
+    const revisionId = await sendPriceUpdate(order.id, { quantity: 3 });
     request.headers = staff.headers;
     const [customer, store] = await Promise.all([
       decidePriceUpdate(order.token, { decision: "APPROVE", revisionId }),
@@ -609,11 +622,13 @@ describe("approving and declining a price update", () => {
     expect([customer.ok, store.ok].filter(Boolean)).toHaveLength(1);
     const revision = (await readOrder(order.id)).quoteRevisions.at(-1);
     expect(revision?.status).toBe(customer.ok ? "APPROVED" : "DECLINED");
+    // Only the customer's decision notifies staff, and only if it applied.
+    expect(await notificationsOf(order.id)).toEqual(customer.ok ? [{ type: "PRICE_APPROVED", sourceId: revisionId, audience: "STAFF_AND_OWNERS" }] : []);
   });
 
   it("refuses every customer action once the order is closed or the link expired", async () => {
     const order = await makeOrder({ path: ["RECEIVED_BY_STORE", "IN_PROGRESS"] });
-    const revisionId = await sendPriceUpdate(order.id, { quantity: 300 });
+    const revisionId = await sendPriceUpdate(order.id, { quantity: 3 });
     await prisma.order.update({ where: { id: order.id }, data: { stage: "CANCELLED", cancelledAt: new Date() } });
 
     expect(await decidePriceUpdate(order.token, { decision: "APPROVE", revisionId })).toEqual({
@@ -688,6 +703,9 @@ describe("pickup times", () => {
       requestedWindowStart: "10:00",
     });
     expect(after.statusEvents.at(-1)).toEqual({ fromStage: "BOOKED", toStage: "PICKUP_SCHEDULED", actorType: "CUSTOMER", actorUserId: null });
+    // One notification, from the accepted time only (not the refused one, nor staff's suggestions).
+    const accepted = await prisma.statusEvent.findFirstOrThrow({ where: { orderId: order.id, toStage: "PICKUP_SCHEDULED" }, select: { id: true } });
+    expect(await notificationsOf(order.id)).toEqual([{ type: "PICKUP_ACCEPTED", sourceId: accepted.id, audience: "STAFF_AND_OWNERS" }]);
 
     // One audit event per suggestion, both shown in the staff timeline.
     const detail = await getOrderDetail(storeId, order.id, "STAFF");
@@ -779,6 +797,8 @@ describe("pickup times", () => {
     const after = await readOrder(order.id);
     if (customer.ok) expect(after).toMatchObject({ stage: "PICKUP_SCHEDULED", scheduledWindowStart: "08:00" });
     else expect(after).toMatchObject({ stage: "BOOKED", pickupWindowStatus: "PROPOSED_BY_STORE", scheduledWindowStart: "12:00" });
+    // A refused or rolled-back acceptance leaves no notification.
+    expect((await notificationsOf(order.id)).map((n) => n.type)).toEqual(customer.ok ? ["PICKUP_ACCEPTED"] : []);
   });
 
   it("refuses staff changes to another store's order", async () => {

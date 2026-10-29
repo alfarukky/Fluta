@@ -1,6 +1,6 @@
 import type { FulfilmentType, PricingType } from "@/generated/prisma/enums";
 
-import { lineTotalKobo } from "./money";
+import { getLineTotal } from "./money";
 import { isOrderFullyPriced } from "./order-pricing";
 import { getPickupWindows, parseClockTime, type PickupSchedule, type PickupWindow } from "./pickup-schedule";
 import { addDaysToDateKey, fromDateKey } from "./time";
@@ -65,16 +65,15 @@ export interface BookingLineService {
   requiresQuote: boolean;
 }
 
-// What the customer entered for a service: how many items or packages, or
-// the estimated weight (optional), in hundredths.
+// What the customer entered for a service: how many items or packages.
 export interface BookingLineAmount {
   quantity: number | null;
   estimate: number | null;
 }
 
 // Online, only fixed-price lines are counted for the bill. What the customer
-// enters on a quote-required line (per kg always, and items or packages the
-// store inspects) is an estimate: the store weighs or counts it later.
+// enters on a quote-required line is an estimate: the store counts the items
+// and sets the real quantity when pricing.
 export function toBookingLineAmount(service: Pick<BookingLineService, "requiresQuote">, amount: number | null): BookingLineAmount {
   return service.requiresQuote ? { quantity: null, estimate: amount } : { quantity: amount, estimate: null };
 }
@@ -84,9 +83,8 @@ export type BookingPriceSummary =
   | { kind: "total"; total: number }
   // Needs a price from the store, but every part has an estimate.
   | { kind: "estimate"; total: number }
-  // Something is still unknown (a weight without an estimate, an item priced
-  // on inspection, or a pickup charge the store will confirm): no number at
-  // all, never a partial sum.
+  // Something is still unknown (an item priced on inspection, or a pickup
+  // charge the store will confirm): no number at all, never a partial sum.
   | { kind: "unknown" };
 
 export interface BookingPriceInput {
@@ -105,6 +103,6 @@ export function getBookingPriceSummary({ fulfilmentType, lines, fulfilmentCharge
   const unpriceable = lines.some((line) => line.requiresQuote && line.price === 0);
   if (charge === null || unpriceable || amounts.some((amount) => amount === null)) return { kind: "unknown" };
 
-  const total = lines.reduce((sum, line, i) => sum + lineTotalKobo(line.price, amounts[i] ?? 0), charge);
+  const total = lines.reduce((sum, line, i) => sum + getLineTotal(line.price, amounts[i] ?? 0), charge);
   return fullyPriced ? { kind: "total", total } : { kind: "estimate", total };
 }

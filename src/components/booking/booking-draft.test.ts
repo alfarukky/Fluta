@@ -7,6 +7,7 @@ import {
   createDraft,
   EMPTY_DRAFT,
   fromServerErrors,
+  getBookAndPayTotal,
   getSteps,
   isShortAddress,
   reviewBooking,
@@ -19,11 +20,12 @@ const OPTIONS: BookingOptions = {
   today: "2099-06-15",
   services: [
     { id: "shirt", name: "Shirt", category: null, pricingType: "PER_ITEM", price: 80_000, requiresQuote: false },
-    { id: "wash", name: "Wash & fold", category: null, pricingType: "PER_KG", price: 150_000, requiresQuote: true },
+    { id: "bedding", name: "Bedding set", category: null, pricingType: "PER_PACKAGE", price: 250_000, requiresQuote: false },
     { id: "agbada", name: "Agbada", category: "Native", pricingType: "PER_ITEM", price: 500_000, requiresQuote: true },
     { id: "gown", name: "Wedding gown", category: "Specialist care", pricingType: "PER_ITEM", price: 0, requiresQuote: true },
   ],
   dropOff: true,
+  payAtBooking: false,
   pickup: true,
   areas: [
     { id: "wuse", name: "Wuse 2", chargeType: "FIXED", fixedCharge: 150_000 },
@@ -51,7 +53,7 @@ describe("getSteps", () => {
 });
 
 describe("validateStep", () => {
-  it("needs a service, a count for items, and a sensible weight", () => {
+  it("needs a service and a whole count from 1 to 999 for every service", () => {
     expect(validateStep("services", draft({}), OPTIONS)).toEqual({ services: "Choose at least one service" });
     expect(
       validateStep(
@@ -59,15 +61,19 @@ describe("validateStep", () => {
         draft({
           lines: [
             { serviceId: "shirt", amount: "" },
-            { serviceId: "wash", amount: "" },
+            { serviceId: "bedding", amount: "0" },
             { serviceId: "agbada", amount: "1.5" },
           ],
         }),
         OPTIONS,
       ),
-    ).toEqual({ "service.shirt": "Enter how many", "service.agbada": "Enter a whole number" });
-    expect(validateStep("services", draft({ lines: [{ serviceId: "wash", amount: "0.05" }] }), OPTIONS)).toEqual({
-      "service.wash": "Enter at least 0.1 kg",
+    ).toEqual({
+      "service.shirt": "Enter how many",
+      "service.bedding": "Enter at least 1",
+      "service.agbada": "Enter a whole number",
+    });
+    expect(validateStep("services", draft({ lines: [{ serviceId: "bedding", amount: "1000" }] }), OPTIONS)).toEqual({
+      "service.bedding": "Enter 999 or fewer",
     });
   });
 
@@ -204,12 +210,12 @@ describe("fromServerErrors", () => {
   it("maps the server's fields onto this form's", () => {
     const lines = [
       { serviceId: "shirt", amount: "3" },
-      { serviceId: "wash", amount: "" },
+      { serviceId: "bedding", amount: "0" },
     ];
     expect(
       fromServerErrors(
         {
-          "serviceLines.1.quantity": "Enter at least 0.1 kg",
+          "serviceLines.1.quantity": "Enter at least 1",
           "pickup.window": "That pickup time is no longer available. Please choose another.",
           "pickup.areaId": "This area isn't available any more. Choose another.",
           "customer.phone": "Enter a valid phone number",
@@ -217,7 +223,7 @@ describe("fromServerErrors", () => {
         draft({ lines }),
       ),
     ).toEqual({
-      "service.wash": "Enter at least 0.1 kg",
+      "service.bedding": "Enter at least 1",
       window: "That pickup time is no longer available. Please choose another.",
       areaId: "This area isn't available any more. Choose another.",
       phone: "Enter a valid phone number",
@@ -239,8 +245,8 @@ describe("reviewBooking", () => {
       OPTIONS,
     );
     expect(review.lines).toEqual([
-      { serviceId: "shirt", name: "Shirt", amount: 300, isEstimate: false, lineTotal: 240_000 },
-      { serviceId: "agbada", name: "Agbada", amount: 200, isEstimate: true, lineTotal: null },
+      { serviceId: "shirt", name: "Shirt", amount: 3, isEstimate: false, lineTotal: 240_000 },
+      { serviceId: "agbada", name: "Agbada", amount: 2, isEstimate: true, lineTotal: null },
     ]);
     expect(review.pickupCharge).toBe(150_000);
     expect(review.summary).toEqual({ kind: "estimate", total: 240_000 + 1_000_000 + 150_000 });
@@ -276,5 +282,31 @@ describe("reviewBooking", () => {
     );
     expect(review.pickupCharge).toBeNull();
     expect(review.summary).toEqual({ kind: "unknown" });
+  });
+});
+
+describe("Book and pay", () => {
+  const PAY_AT_BOOKING = { ...OPTIONS, payAtBooking: true };
+  const shirts = draft({ lines: [{ serviceId: "shirt", amount: "3" }], fulfilmentType: "DROP_OFF", name: "Ada Obi", phone: "0803 123 4567" });
+
+  it("applies to a fixed-price booking at a store that takes payment at booking", () => {
+    expect(getBookAndPayTotal(PAY_AT_BOOKING, reviewBooking(shirts, PAY_AT_BOOKING))).toBe(240_000);
+  });
+
+  it("never applies when the store doesn't take payment at booking", () => {
+    expect(getBookAndPayTotal(OPTIONS, reviewBooking(shirts, OPTIONS))).toBeNull();
+  });
+
+  it("never applies while the store still has to confirm a price", () => {
+    const estimate = draft({ ...shirts, lines: [{ serviceId: "agbada", amount: "2" }] });
+    expect(getBookAndPayTotal(PAY_AT_BOOKING, reviewBooking(estimate, PAY_AT_BOOKING))).toBeNull();
+    const quotedArea = draft({ ...shirts, fulfilmentType: "PICKUP_DELIVERY", areaId: "maitama" });
+    expect(getBookAndPayTotal(PAY_AT_BOOKING, reviewBooking(quotedArea, PAY_AT_BOOKING))).toBeNull();
+  });
+
+  it("requires the email only on the Book and pay path", () => {
+    expect(validateStep("details", shirts, PAY_AT_BOOKING)).toEqual({ email: "Enter your email for your Paystack receipt" });
+    expect(validateStep("details", draft({ ...shirts, email: "ada@example.com" }), PAY_AT_BOOKING)).toEqual({});
+    expect(validateStep("details", shirts, OPTIONS)).toEqual({});
   });
 });

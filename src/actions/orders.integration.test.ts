@@ -36,7 +36,7 @@ const SUNDAY = "2099-06-21";
 
 let prisma: PrismaClient;
 let store: { id: string };
-let ids: { shirt: string; wash: string; inspect: string; fixedArea: string; quoteArea: string };
+let ids: { shirt: string; bedding: string; inspect: string; fixedArea: string; quoteArea: string };
 let signedIn: Record<"owner" | "staff" | "freshFoldStaff", Headers>;
 let cleanWave: { customerId: string; serviceId: string; areaId: string };
 let freshFold: { storeId: string; serviceId: string; customerId: string };
@@ -59,7 +59,7 @@ beforeAll(async () => {
     },
     select: { id: true },
   });
-  const service = (name: string, pricingType: "PER_ITEM" | "PER_KG", price: number, requiresQuote = false) =>
+  const service = (name: string, pricingType: "PER_ITEM" | "PER_PACKAGE", price: number, requiresQuote = false) =>
     prisma.service.create({
       data: { storeId: store.id, name, nameKey: toMatchKey(name), pricingType, price, requiresQuote },
       select: { id: true },
@@ -75,14 +75,14 @@ beforeAll(async () => {
       },
       select: { id: true },
     });
-  const [shirt, wash, inspect, fixedArea, quoteArea] = await Promise.all([
+  const [shirt, bedding, inspect, fixedArea, quoteArea] = await Promise.all([
     service("Shirt", "PER_ITEM", 80_000),
-    service("Wash & fold", "PER_KG", 150_000, true),
+    service("Bedding set", "PER_PACKAGE", 250_000),
     service("Agbada (inspect)", "PER_ITEM", 500_000, true),
     area("Wuse 2", 150_000),
     area("Maitama", null),
   ]);
-  ids = { shirt: shirt.id, wash: wash.id, inspect: inspect.id, fixedArea: fixedArea.id, quoteArea: quoteArea.id };
+  ids = { shirt: shirt.id, bedding: bedding.id, inspect: inspect.id, fixedArea: fixedArea.id, quoteArea: quoteArea.id };
 
   const owner = await addUser("owner", "OWNER");
   const staff = await addUser("staff", "STAFF");
@@ -120,6 +120,7 @@ afterAll(async () => {
       prisma.statusEvent.deleteMany({ where }),
       prisma.quoteRevision.deleteMany({ where }),
       prisma.orderLine.deleteMany({ where }),
+      prisma.notification.deleteMany({ where }),
       prisma.order.deleteMany({ where }),
       prisma.customer.deleteMany({ where }),
       prisma.service.deleteMany({ where }),
@@ -160,7 +161,7 @@ function counterOrder(overrides: Partial<CreateOrderRequest> = {}): CreateOrderR
     channel: "COUNTER",
     fulfilmentType: "DROP_OFF",
     pickup: null,
-    serviceLines: [{ serviceId: ids.shirt, quantity: "3", estimate: "" }],
+    serviceLines: [{ serviceId: ids.shirt, quantity: "3" }],
     adjustments: [],
     internalNote: "",
     ...overrides,
@@ -248,12 +249,12 @@ describe("access", () => {
 describe("store isolation", () => {
   it("doesn't let a FreshFold user use a CleanWave customer, service, or area", async () => {
     const before = await nextOrderNumber(freshFold.storeId);
-    const ownLine = [{ serviceId: freshFold.serviceId, quantity: "1", estimate: "" }];
+    const ownLine = [{ serviceId: freshFold.serviceId, quantity: "1" }];
     const attempts = [
       counterOrder({ customer: { kind: "existing", customerId: cleanWave.customerId }, serviceLines: ownLine }),
       counterOrder({
         customer: { kind: "existing", customerId: freshFold.customerId },
-        serviceLines: [{ serviceId: cleanWave.serviceId, quantity: "1", estimate: "" }],
+        serviceLines: [{ serviceId: cleanWave.serviceId, quantity: "1" }],
       }),
       {
         ...pickupOrder({ area: { kind: "area", areaId: cleanWave.areaId }, charge: "0" }),
@@ -292,14 +293,16 @@ describe("creating an order", () => {
     expect(order.statusEvents).toEqual([
       expect.objectContaining({ fromStage: null, toStage: "RECEIVED_BY_STORE", actorType: "STAFF" }),
     ]);
+    // Staff's own orders never notify staff.
+    expect(await prisma.notification.count({ where: { orderId: order.id } })).toBe(0);
   });
 
   it("keeps nothing, and uses no number, when any part fails", async () => {
     const before = await nextOrderNumber();
     const clientRequestId = randomUUID();
     const phone = newPhone();
-    // A per-kg line without the quote flag breaks OrderLine_per_kg_requires_quote
-    // after the number, customer, and order have been written.
+    // A fractional quantity breaks OrderLine_whole_quantities after the
+    // number, customer, and order have been written.
     await expect(
       insertOrder(store.id, {
         clientRequestId,
@@ -323,22 +326,22 @@ describe("creating an order", () => {
         lines: [
           {
             lineType: "SERVICE",
-            serviceId: ids.wash,
-            description: "Wash & fold",
-            pricingType: "PER_KG",
+            serviceId: ids.shirt,
+            description: "Shirt",
+            pricingType: "PER_ITEM",
             requiresQuote: false,
-            unitPrice: 150_000,
+            unitPrice: 80_000,
             estimatedQuantity: null,
-            quantity: "2.00",
-            lineTotal: 300_000,
+            quantity: "2.5",
+            lineTotal: 200_000,
           },
         ],
-        revision: { linesSnapshot: [], itemsSubtotal: 300_000, fulfilmentCharge: 0, total: 300_000, approved: true },
+        revision: { linesSnapshot: [], itemsSubtotal: 200_000, fulfilmentCharge: 0, total: 200_000, approved: true },
         messages: null,
         actor: { type: "STAFF", userId: null },
         now: new Date(),
       }),
-    ).rejects.toThrow(/OrderLine_per_kg_requires_quote/);
+    ).rejects.toThrow(/OrderLine_whole_quantities/);
 
     expect(await prisma.order.count({ where: { clientRequestId } })).toBe(0);
     expect(await prisma.customer.count({ where: { storeId: store.id, phone } })).toBe(0);
@@ -350,33 +353,32 @@ describe("creating an order", () => {
       "staff",
       counterOrder({
         serviceLines: [
-          { serviceId: ids.shirt, quantity: "2", estimate: "" },
-          { serviceId: ids.wash, quantity: "2.5", estimate: "" },
+          { serviceId: ids.shirt, quantity: "2" },
+          { serviceId: ids.bedding, quantity: "2" },
+          { serviceId: ids.inspect, quantity: "1" },
         ],
       }),
     );
     const [version1] = order.quoteRevisions;
-    expect(version1).toMatchObject({ status: "APPROVED", approvedByActor: "STAFF", total: 160_000 + 375_000 });
+    // A quote-required line staff count at entry is priced at its "from" price.
+    expect(version1).toMatchObject({ status: "APPROVED", approvedByActor: "STAFF", total: 160_000 + 500_000 + 500_000 });
     expect(version1.approvedAt).not.toBeNull();
     expect(order.approvedQuoteId).toBe(version1.id);
   });
 
-  it("leaves version 1 unapproved while a per-kg line is unweighed", async () => {
-    const order = await created(
-      "staff",
-      counterOrder({
-        serviceLines: [
-          { serviceId: ids.shirt, quantity: "2", estimate: "" },
-          { serviceId: ids.wash, quantity: "", estimate: "3" },
-        ],
-      }),
-    );
-    const wash = order.lines.find((line) => line.serviceId === ids.wash);
-    expect(wash).toMatchObject({ requiresQuote: true, quantity: null, lineTotal: null });
-    expect(wash?.estimatedQuantity?.toString()).toBe("3");
-    expect(order.quoteRevisions[0]).toMatchObject({ status: "PENDING", approvedAt: null, total: 160_000 + 450_000 });
-    expect(order.approvedQuoteId).toBeNull();
-    expect(order.stage).toBe("RECEIVED_BY_STORE");
+  it("refuses a fractional, missing, or out-of-range quantity sent directly, saving nothing", async () => {
+    for (const [quantity, message] of [
+      ["1.5", "Enter a whole number, like 3"],
+      ["2.0", "Enter a whole number, like 3"],
+      ["", "Enter how many"],
+      ["0", "Enter at least 1"],
+      ["1000", "Enter 999 or fewer"],
+    ]) {
+      const order = counterOrder({ serviceLines: [{ serviceId: ids.bedding, quantity }] });
+      const result = await createAs("staff", order);
+      expect(result).toMatchObject({ ok: false, fieldErrors: { "serviceLines.0.quantity": message } });
+      expect(await prisma.order.count({ where: { clientRequestId: order.clientRequestId } })).toBe(0);
+    }
   });
 
   it("combines a service added twice into one line", async () => {
@@ -384,8 +386,8 @@ describe("creating an order", () => {
       "staff",
       counterOrder({
         serviceLines: [
-          { serviceId: ids.shirt, quantity: "2", estimate: "" },
-          { serviceId: ids.shirt, quantity: "3", estimate: "" },
+          { serviceId: ids.shirt, quantity: "2" },
+          { serviceId: ids.shirt, quantity: "3" },
         ],
       }),
     );
@@ -416,7 +418,7 @@ describe("creating an order", () => {
   it("ignores prices and charges sent by the browser", async () => {
     const result = await createAs("staff", {
       ...pickupOrder({ charge: "1" }),
-      serviceLines: [{ serviceId: ids.shirt, quantity: "1", estimate: "", unitPrice: 1, lineTotal: 1 }],
+      serviceLines: [{ serviceId: ids.shirt, quantity: "1", unitPrice: 1, lineTotal: 1 }],
     });
     if (!result.ok) throw new Error(`Expected an order, got ${result.code}`);
     const order = await loadOrder(result.orderId);

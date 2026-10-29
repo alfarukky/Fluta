@@ -1,0 +1,9 @@
+{
+  "status": true,
+  "message": "Authorization URL created",
+  "data": {
+    "authorization_url": "https://checkout.paystack.com/fixtureaccesscode",
+    "access_code": "fixtureaccesscode",
+    "reference": "FL-0123456789abcdef0123"
+  }
+}

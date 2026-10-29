@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { OrderStage } from "@/generated/prisma/enums";
 
-import { getCustomerPaymentText, getCustomerStageLabel, getCustomerTimeline, type CustomerTimelineOrder } from "./tracking";
+import {
+  getCustomerPaymentText,
+  getCustomerRefundText,
+  getCustomerStageLabel,
+  getCustomerTimeline,
+  type CustomerTimelineOrder,
+} from "./tracking";
 
 describe("getCustomerStageLabel", () => {
   it("uses the customer wording for every stage", () => {
@@ -30,6 +36,13 @@ describe("getCustomerStageLabel", () => {
     for (const stage of stages) {
       expect(getCustomerStageLabel(stage, "DROP_OFF")).not.toMatch(/quote|revision|version|fulfilment/i);
     }
+  });
+});
+
+describe("getCustomerRefundText", () => {
+  it("shows the total refunded in customer wording, or nothing when none", () => {
+    expect(getCustomerRefundText(300_000)).toBe("Refunded: ₦3,000");
+    expect(getCustomerRefundText(0)).toBeNull();
   });
 });
 

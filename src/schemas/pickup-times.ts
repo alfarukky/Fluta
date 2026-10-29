@@ -34,5 +34,4 @@ export const suggestPickupSchema = z
     }
   });
 
-export type SuggestPickupRequest = z.input<typeof suggestPickupSchema>;
 export type SuggestPickupInput = z.output<typeof suggestPickupSchema>;

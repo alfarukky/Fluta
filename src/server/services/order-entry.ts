@@ -2,9 +2,10 @@ import "server-only";
 
 import { getBookingDateOptions, isBookablePickup, toBookingLineAmount } from "@/lib/booking";
 import { MESSAGE_TEMPLATES } from "@/lib/messages";
-import { formatNaira, lineTotalKobo } from "@/lib/money";
+import { PAYSTACK_EMAIL_REQUIRED } from "@/lib/online-payment";
+import { formatNaira, getLineTotal } from "@/lib/money";
 import { formatOrderNumber } from "@/lib/orders";
-import { getQuantityProblem, isWeighed, MAX_ITEM_QUANTITY, toDecimalString, type QuantityProblem } from "@/lib/quantity";
+import { getQuantityMessage, toStoredQuantity } from "@/lib/quantity";
 import { fromDateKey, getLocalDateKey, getMinutesInTimeZone } from "@/lib/time";
 import { generateToken, hashToken } from "@/lib/tokens";
 import { UNLISTED_AREA_ID, type BookingInput } from "@/schemas/booking";
@@ -101,18 +102,22 @@ export interface OnlineBookingActor {
   timeZone: string;
   // HMAC of the booking's IP address (src/lib/client-ip.ts).
   ipHash: string;
+  // A connected store with pay later off: a fixed-price booking is paid at
+  // booking (Book and pay, plan 3.2).
+  payAtBooking: boolean;
 }
 
-export type OnlineOrderError = OrderEntryError | "BOOKING_LIMIT_REACHED" | "NO_ONLINE_BOOKING";
+export type OnlineOrderError = OrderEntryError | "BOOKING_LIMIT_REACHED" | "NO_ONLINE_BOOKING" | "EMAIL_REQUIRED";
 
 export type CreateOnlineOrderResult =
   // The raw tracking token, for the confirmation's link (shown once, never
   // stored). Null only if a repeated booking's order can't be given a new one.
-  | { ok: true; orderId: string; displayNumber: string; trackingToken: string | null }
+  // bookAndPay: the order was created to be paid now (payLater false).
+  | { ok: true; orderId: string; displayNumber: string; trackingToken: string | null; bookAndPay: boolean }
   | { ok: false; error: OnlineOrderError; fieldErrors: Record<string, string> };
 
 // A customer's booking: channel Online, no staff user, starting at Booked,
-// pay later. Created by insertOnlineOrder, which returns an order this
+// pay later unless it is Book and pay. Created by insertOnlineOrder, which returns an order this
 // request already created, then applies the booking limits. Whether the
 // store accepts bookings at all is the caller's check (getStoreAccess).
 export async function createOnlineOrder(
@@ -136,7 +141,7 @@ export async function createOnlineOrder(
     if (result.kind === "limitReached") return { ok: false, error: "BOOKING_LIMIT_REACHED", fieldErrors: {} };
     if (result.kind === "existing") return repeatedBooking(actor, input, result.order, now);
     await sendAfterCommit(result.order.queued);
-    return { ...created(result.order), trackingToken: prepared.trackingToken };
+    return { ...created(result.order), trackingToken: prepared.trackingToken, bookAndPay: !result.order.payLater };
   } catch (error) {
     // The same request with a different phone number: the unique rule
     // refused a second order, so return the first one.
@@ -159,7 +164,7 @@ async function repeatedBooking(
 ): Promise<CreateOnlineOrderResult> {
   const token = generateToken();
   const replaced = await replaceBookingTrackingToken(actor.storeId, input.clientRequestId, hashToken(token), now);
-  return { ...created(order), trackingToken: replaced ? token : null };
+  return { ...created(order), trackingToken: replaced ? token : null, bookAndPay: !order.payLater };
 }
 
 // What the booking is checked against, read in one go.
@@ -215,33 +220,39 @@ async function prepareOnlineOrder(
 
   // Shown once on the confirmation; only its hash is stored.
   const trackingToken = generateToken();
-  return {
-    ok: true,
-    trackingToken,
-    data: assembleOrder({
-      clientRequestId: input.clientRequestId,
-      trackingTokenHash: hashToken(trackingToken),
-      customer: { kind: "new", ...input.customer, fillMissingEmail: true },
-      channel: "ONLINE",
-      fulfilmentType: input.fulfilmentType,
-      lines: serviceLines.lines,
-      fulfilment: fulfilment.fields,
-      internalNote: null,
-      customerNote: input.customerNote,
-      // No online payment yet (Feature 17): every booking is paid later.
-      payLater: true,
-      bookingIpHash: actor.ipHash,
-      actor: { type: "CUSTOMER", userId: null },
-      // The same link the confirmation shows. Counted against the store's
-      // daily booking SMS cap.
-      messages: customerMessages({
-        template: MESSAGE_TEMPLATES.orderLink,
-        createdByUserId: null,
-        link: { token: trackingToken, stored: true },
-      }),
-      now,
-    }),
-  };
+  // The same link the confirmation shows. Counted against the store's daily
+  // booking SMS cap. Book and pay's is always emailed too (plan 3.2).
+  const orderLink = (alwaysEmailTo?: string) =>
+    customerMessages({
+      template: MESSAGE_TEMPLATES.orderLink,
+      createdByUserId: null,
+      link: { token: trackingToken, stored: true },
+      alwaysEmailTo,
+    });
+  const order = assembleOrder({
+    clientRequestId: input.clientRequestId,
+    trackingTokenHash: hashToken(trackingToken),
+    customer: { kind: "new", ...input.customer, fillMissingEmail: true },
+    channel: "ONLINE",
+    fulfilmentType: input.fulfilmentType,
+    lines: serviceLines.lines,
+    fulfilment: fulfilment.fields,
+    internalNote: null,
+    customerNote: input.customerNote,
+    payLater: true,
+    bookingIpHash: actor.ipHash,
+    actor: { type: "CUSTOMER", userId: null },
+    messages: orderLink(),
+    now,
+  });
+
+  // Book and pay: a connected store with pay later off, and an approved
+  // total at creation (no quote-required lines and no quoted charge). Paid
+  // on Paystack, which needs an email.
+  const bookAndPay = actor.payAtBooking && order.revision.approved && order.revision.total > 0;
+  if (!bookAndPay) return { ok: true, trackingToken, data: order };
+  if (!input.customer.email) return fail("EMAIL_REQUIRED", "customer.email", PAYSTACK_EMAIL_REQUIRED);
+  return { ok: true, trackingToken, data: { ...order, payLater: false, messages: orderLink(input.customer.email) } };
 }
 
 // An active area of this store (its fixed charge, or none yet when the store
@@ -344,7 +355,7 @@ async function prepareOrder(
     fulfilmentCharge,
   });
   if (total < 0) {
-    return fail("NEGATIVE_TOTAL", "adjustments", `Discounts can't make the total less than ₦0 (it would be ${formatNaira(total)}).`);
+    return fail("NEGATIVE_TOTAL", "adjustments", `Discounts can't make the total less than ${formatNaira(0)} (it would be ${formatNaira(total)}).`);
   }
 
   // Sent to the customer in the order link message (never capped), and
@@ -401,11 +412,11 @@ function assembleOrder({ lines, fulfilment, ...order }: OrderParts): NewOrderDat
     fulfilmentType: order.fulfilmentType,
     lines: lines
       .filter((line) => line.lineType === "SERVICE")
-      .map((line) => ({ requiresQuote: line.requiresQuote, quantity: line.quantityHundredths })),
+      .map((line) => ({ requiresQuote: line.requiresQuote, quantity: line.quantity })),
     fulfilmentCharge,
   });
   const snapshot = buildQuoteSnapshot(
-    lines.map((line) => ({ ...line, quantity: line.quantityHundredths, estimate: line.estimateHundredths })),
+    lines,
     { areaName: fulfilment.serviceAreaName, isOutOfArea: fulfilment.isOutOfArea, charge: fulfilmentCharge },
   );
 
@@ -418,7 +429,11 @@ function assembleOrder({ lines, fulfilment, ...order }: OrderParts): NewOrderDat
   };
 }
 
-function fail(error: OrderEntryError, field: string, message: string): Failure {
+function fail<E extends OnlineOrderError = OrderEntryError>(
+  error: E,
+  field: string,
+  message: string,
+): { ok: false; error: E; fieldErrors: Record<string, string> } {
   return { ok: false, error, fieldErrors: { [field]: message } };
 }
 
@@ -433,30 +448,15 @@ async function resolveCustomer(
 }
 
 interface PricedLine extends Omit<NewOrderLineData, "quantity" | "estimatedQuantity"> {
-  quantityHundredths: number | null;
-  estimateHundredths: number | null;
+  quantity: number | null;
+  estimate: number | null;
 }
-
-const QUANTITY_MESSAGES: Record<"ITEMS" | "WEIGHT", Record<QuantityProblem | "REQUIRED", string>> = {
-  ITEMS: {
-    REQUIRED: "Enter how many",
-    INVALID: "Enter a whole number",
-    TOO_SMALL: "Enter at least 1",
-    TOO_LARGE: `Enter ${MAX_ITEM_QUANTITY} or fewer`,
-  },
-  WEIGHT: {
-    REQUIRED: "Enter the weight",
-    INVALID: "Enter the weight in kg, like 2.5",
-    TOO_SMALL: "Enter at least 0.1 kg",
-    TOO_LARGE: "Enter 999.99 kg or less",
-  },
-};
 
 // Each line's name, price, pricing type, and quote flag come from the store's
 // own active service; repeated services become one line. Online, the
 // customer's amount is billed only on a fixed-price line: on a quote-required
-// one it is an estimate (toBookingLineAmount), and the store weighs or counts
-// the items later.
+// one it is an estimate (toBookingLineAmount), and the store counts the items
+// later. Staff always enter the billed quantity.
 async function priceServiceLines(
   storeId: string,
   requested: CreateOrderInput["serviceLines"],
@@ -465,7 +465,7 @@ async function priceServiceLines(
   catalogue?: readonly OrderableService[],
 ): Promise<{ ok: true; lines: PricedLine[] } | Failure> {
   const merged = mergeServiceLines(
-    requested.map((line) => ({ serviceId: line.serviceId, quantity: line.quantity, estimate: line.estimate })),
+    requested.map((line) => ({ serviceId: line.serviceId, quantity: line.quantity, estimate: null })),
   );
   const active = catalogue ?? (await findActiveServices(storeId, merged.map((line) => line.serviceId)));
   const services = new Map(active.map((service) => [service.id, service]));
@@ -478,9 +478,10 @@ async function priceServiceLines(
       fieldErrors[`serviceLines.${index}.serviceId`] = "This service isn't available any more. Remove it.";
       continue;
     }
-    const problem = online ? getBookingAmountProblem(service, line.quantity) : getLineQuantityProblem(service, line.quantity, line.estimate);
+    // Every line needs a whole number from 1 to 999, billed or estimated.
+    const problem = getQuantityMessage(line.quantity);
     if (problem) {
-      fieldErrors[`serviceLines.${index}.${problem.field}`] = problem.message;
+      fieldErrors[`serviceLines.${index}.quantity`] = problem;
       continue;
     }
     const { quantity, estimate } = online ? toBookingLineAmount(service, line.quantity) : line;
@@ -493,36 +494,6 @@ async function priceServiceLines(
   return { ok: false, error, fieldErrors };
 }
 
-// Items and packages always need a quantity; a per-kg line may wait to be
-// weighed (per-kg services always require a quote).
-function getLineQuantityProblem(
-  service: OrderableService,
-  quantity: number | null,
-  estimate: number | null,
-): { field: "quantity" | "estimate"; message: string } | null {
-  const messages = QUANTITY_MESSAGES[isWeighed(service.pricingType) ? "WEIGHT" : "ITEMS"];
-  if (quantity === null) {
-    if (!isWeighed(service.pricingType)) return { field: "quantity", message: messages.REQUIRED };
-  } else {
-    const problem = getQuantityProblem(quantity, service.pricingType);
-    if (problem) return { field: "quantity", message: messages[problem] };
-  }
-  const estimateProblem = estimate === null ? null : getQuantityProblem(estimate, service.pricingType);
-  return estimateProblem ? { field: "estimate", message: messages[estimateProblem] } : null;
-}
-
-// A customer's amount: how many items or packages (required), or an
-// estimated weight (optional).
-function getBookingAmountProblem(
-  service: OrderableService,
-  amount: number | null,
-): { field: "quantity"; message: string } | null {
-  const messages = QUANTITY_MESSAGES[isWeighed(service.pricingType) ? "WEIGHT" : "ITEMS"];
-  if (amount === null) return isWeighed(service.pricingType) ? null : { field: "quantity", message: messages.REQUIRED };
-  const problem = getQuantityProblem(amount, service.pricingType);
-  return problem ? { field: "quantity", message: messages[problem] } : null;
-}
-
 function toServiceLine(service: OrderableService, quantity: number | null, estimate: number | null): PricedLine {
   return {
     lineType: "SERVICE",
@@ -531,9 +502,9 @@ function toServiceLine(service: OrderableService, quantity: number | null, estim
     pricingType: service.pricingType,
     requiresQuote: service.requiresQuote,
     unitPrice: service.price,
-    quantityHundredths: quantity,
-    estimateHundredths: estimate,
-    lineTotal: quantity === null ? null : lineTotalKobo(service.price, quantity),
+    quantity,
+    estimate,
+    lineTotal: quantity === null ? null : getLineTotal(service.price, quantity),
   };
 }
 
@@ -545,17 +516,17 @@ function toAdjustmentLine(adjustment: CreateOrderInput["adjustments"][number]): 
     pricingType: null,
     requiresQuote: false,
     unitPrice: null,
-    quantityHundredths: null,
-    estimateHundredths: null,
+    quantity: null,
+    estimate: null,
     lineTotal: adjustment.amount,
   };
 }
 
-function toLineData({ quantityHundredths, estimateHundredths, ...line }: PricedLine): NewOrderLineData {
+function toLineData({ quantity, estimate, ...line }: PricedLine): NewOrderLineData {
   return {
     ...line,
-    quantity: quantityHundredths === null ? null : toDecimalString(quantityHundredths),
-    estimatedQuantity: estimateHundredths === null ? null : toDecimalString(estimateHundredths),
+    quantity: quantity === null ? null : toStoredQuantity(quantity),
+    estimatedQuantity: estimate === null ? null : toStoredQuantity(estimate),
   };
 }
 

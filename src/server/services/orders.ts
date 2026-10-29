@@ -5,9 +5,11 @@ import { fromStoredCoordinates, type Coordinates } from "@/lib/location";
 import { formatNaira } from "@/lib/money";
 import { formatOrderNumber, summarizeServices } from "@/lib/orders";
 import { canRecordPaymentAt, isRecordPaymentPrimary } from "@/lib/payments";
+import { hasActiveConfirmedPayment } from "@/lib/receipts";
+import { getRefundableKobo } from "@/lib/refunds";
 import { canReviseQuote, findDeclinedRevision, findPendingRevision } from "@/lib/quotes";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
-import { fromDecimalString } from "@/lib/quantity";
+import { fromStoredQuantity } from "@/lib/quantity";
 import { formatCalendarDate, formatDateTime, toDateKey } from "@/lib/time";
 import { encodeOrderListCursor, type OrderListFilters } from "@/schemas/orders";
 import {
@@ -22,6 +24,7 @@ import {
 import { buildOrderTimeline, type TimelineEntry } from "@/server/data/order-timeline";
 import { findPickupTimeEvents } from "@/server/data/pickup-times";
 import { findRevisionAudits } from "@/server/data/quotes";
+import { findOnlinePaymentNotes } from "@/server/data/online-payments";
 import { getBalance, type Balance } from "@/server/domain/balance";
 import { getAvailableTransitions, getStageOrderState, type AvailableTransitions } from "@/server/domain/order-stages";
 import { buildOrderListQuery, ORDER_LIST_PAGE_SIZE } from "@/server/domain/order-list";
@@ -64,8 +67,7 @@ function toListRow(order: OrderListRecord, store: OrderListStore): OrderListRow 
     services: summarizeServices(
       order.lines.map((line) => ({
         description: line.description,
-        pricingType: line.pricingType,
-        quantity: line.quantity === null ? null : fromDecimalString(line.quantity.toString()),
+        quantity: line.quantity === null ? null : fromStoredQuantity(line.quantity.toString()),
       })),
     ),
     total: order.approvedQuote ? formatNaira(order.approvedQuote.total) : null,
@@ -113,6 +115,19 @@ export interface OrderDetail {
   // The store's WhatsApp button setting.
   whatsappEnabled: boolean;
   payments: OrderPaymentActions;
+  refunds: OrderRefundActions;
+  // "Print receipt" appears once the order has an active confirmed payment.
+  hasReceipt: boolean;
+}
+
+// Refunds: offered only while the order shows Refund owed, whatever its stage
+// (the page also needs the store to be able to work on existing orders).
+export interface OrderRefundActions {
+  // What is owed to the customer now (0 when nothing is): Record refund is
+  // offered, as the main action, only above 0.
+  owedKobo: number;
+  // Owners only, on refunds that aren't voided.
+  canVoid: boolean;
 }
 
 // What this member may do in the payments section (the page also needs the
@@ -124,6 +139,9 @@ export interface OrderPaymentActions {
   recordPrimary: boolean;
   // Owners only, on confirmed store-collected payments.
   canVoid: boolean;
+  // A payment has started on Paystack but isn't confirmed: the record form
+  // says so, so staff don't take the same money again at the counter.
+  hasPendingOnlinePayment: boolean;
 }
 
 export interface OrderPickupTimeState {
@@ -163,12 +181,16 @@ export async function getOrderDetail(
   const order = await findOrderDetail(storeId, orderId);
   if (!order) return null;
 
-  const [audits, pickupTimes] = await Promise.all([
+  const [audits, pickupTimes, onlineNotes] = await Promise.all([
     findRevisionAudits(
       storeId,
       order.quoteRevisions.map((revision) => revision.id),
     ),
     findPickupTimeEvents(storeId, orderId),
+    findOnlinePaymentNotes(
+      storeId,
+      order.payments.filter((payment) => payment.source === "ONLINE" && payment.status === "CONFIRMED").map((payment) => payment.id),
+    ),
   ]);
   const timeline = buildOrderTimeline(
     order.statusEvents,
@@ -176,11 +198,12 @@ export async function getOrderDetail(
     audits,
     pickupTimes.suggestions,
     pickupTimes.resets,
-    order.payments,
+    order.payments.map((payment) => ({ ...payment, receivedAfter: onlineNotes.get(payment.id) ?? null })),
+    order.refunds,
   );
   const actorIds = timeline.flatMap((entry) => {
     const id =
-      entry.kind === "payment"
+      entry.kind === "payment" || entry.kind === "refund"
         ? entry.staffUserId
         : entry.kind === "stage"
         ? entry.event.actorUserId
@@ -216,7 +239,13 @@ export async function getOrderDetail(
       canRecord: canRecordPaymentAt(order.stage),
       recordPrimary: isRecordPaymentPrimary(order.stage, balance.state),
       canVoid: role === "OWNER",
+      hasPendingOnlinePayment: order.payments.some((payment) => payment.source === "ONLINE" && payment.status === "PENDING"),
     },
+    refunds: {
+      owedKobo: getRefundableKobo(balance.balanceKobo),
+      canVoid: role === "OWNER",
+    },
+    hasReceipt: hasActiveConfirmedPayment(order.payments),
   };
 }
 

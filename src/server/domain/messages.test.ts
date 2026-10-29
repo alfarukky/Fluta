@@ -202,6 +202,18 @@ describe("chooseDestinations", () => {
     smsWithinCap: true,
   };
 
+  it("emails Book and pay's order link even with email copies off, only when alwaysEmail is set", () => {
+    const off = { ...input, emailCopiesEnabled: false };
+    expect(chooseDestinations(off)).toEqual([{ channel: "SMS", recipient: "+2348031234567" }]);
+    expect(chooseDestinations({ ...off, alwaysEmail: false })).toEqual([{ channel: "SMS", recipient: "+2348031234567" }]);
+    expect(chooseDestinations({ ...off, alwaysEmail: true })).toEqual([
+      { channel: "SMS", recipient: "+2348031234567" },
+      { channel: "EMAIL", recipient: "ada@example.com" },
+    ]);
+    // The SMS still follows its own rules.
+    expect(chooseDestinations({ ...off, smsWithinCap: false, alwaysEmail: true })).toEqual([{ channel: "EMAIL", recipient: "ada@example.com" }]);
+  });
+
   it("sends SMS to a Nigerian number and an email copy", () => {
     expect(chooseDestinations(input)).toEqual([
       { channel: "SMS", recipient: "+2348031234567" },

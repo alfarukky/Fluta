@@ -67,6 +67,9 @@ export interface CustomerMessageOptions {
   link?: { token: string; stored: boolean };
   // Only these channels (Send again).
   channels?: readonly NewMessage["channel"][];
+  // Book and pay's order link (plan 3.2): always emailed, to the email typed
+  // for this booking, whatever the store's email copies setting says.
+  alwaysEmailTo?: string;
 }
 
 export function customerMessages(options: CustomerMessageOptions): MessageRequest {
@@ -85,10 +88,11 @@ export function customerMessages(options: CustomerMessageOptions): MessageReques
           : { allowed: true, alert: false };
       const destinations = chooseDestinations({
         customerPhone: context.customer.phone,
-        customerEmail: context.customer.email,
+        customerEmail: options.alwaysEmailTo ?? context.customer.email,
         smsEnabled: context.store.smsEnabled,
         emailCopiesEnabled: context.store.emailCopiesEnabled,
         smsWithinCap: cap.allowed,
+        alwaysEmail: options.alwaysEmailTo !== undefined,
       }).filter((destination) => !options.channels || options.channels.includes(destination.channel));
 
       const link = options.link ? getTrackingUrl(options.link.token) : null;

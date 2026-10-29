@@ -13,8 +13,8 @@ import {
   type PrismaClient,
 } from "@/generated/prisma/client";
 
-import { lineTotalKobo } from "@/lib/money";
-import { parseHundredths } from "@/lib/quantity";
+import { getLineTotal } from "@/lib/money";
+import { getQuantityProblem, parseQuantity } from "@/lib/quantity";
 
 import { hoursAfter, hoursBefore, lagosDate, seedTrackingTokenHash } from "./helpers";
 import { getSeedStartProblem } from "./order-start";
@@ -187,7 +187,7 @@ function resolveLines(ctx: SeedStoreContext, lines: SeedLine[]): ResolvedLine[] 
   });
 }
 
-// What a revision shows the customer. An unweighed line uses the customer's
+// What a revision shows the customer. A line still to be counted uses the customer's
 // estimate when there is one and is left out otherwise (version 1 of a
 // quote-required order is only ever an estimate and is never approved).
 function revisionAmounts(ctx: SeedStoreContext, spec: SeedOrder, revision: SeedRevision, fulfilmentCharge: number) {
@@ -356,11 +356,11 @@ async function createPayments(
   }
 }
 
-// The app's one rounding rule (money.ts), for a seed quantity like "3.6".
+// The app's line total (money.ts), for a seed quantity like "3".
 function priceLine(unitPrice: number, quantity: string): number {
-  const hundredths = parseHundredths(quantity);
-  if (hundredths === null) throw new Error(`Seed data: "${quantity}" isn't a quantity with up to two decimal places.`);
-  return lineTotalKobo(unitPrice, hundredths);
+  const parsed = parseQuantity(quantity);
+  if (parsed === null || getQuantityProblem(parsed)) throw new Error(`Seed data: "${quantity}" isn't a whole number from 1 to 999.`);
+  return getLineTotal(unitPrice, parsed);
 }
 
 function earlierOf(a: Date, b: Date): Date {

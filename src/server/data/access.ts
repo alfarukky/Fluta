@@ -30,7 +30,7 @@ export const STORE_ACCESS_SELECT = {
 export async function findActiveMemberships(userId: string) {
   return getPrisma().membership.findMany({
     where: { userId, isActive: true },
-    select: { id: true, role: true, store: { select: STORE_ACCESS_SELECT } },
+    select: { id: true, role: true, notificationsSeenAt: true, store: { select: STORE_ACCESS_SELECT } },
     orderBy: { id: "asc" },
     take: 2,
   });

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { logger } from "@/lib/logger";
-import { formatLongDate } from "@/lib/time";
+import { formatDateTime, formatLongDate } from "@/lib/time";
 import type { StoreRole } from "@/generated/prisma/client";
 import { describeInvitedRole, INVITATION_VALID_DAYS } from "@/schemas/staff";
 import { getMailer, type EmailMessage } from "@/server/integrations/email";
@@ -62,6 +62,33 @@ export function buildPasswordResetEmail(input: { to: string; storeName: string |
       button: { label: "Choose a new password", url: input.url },
       smallPrint: [expiry, ignore],
       footer: input.storeName ? `Sent by Fluta for your ${input.storeName} account.` : "Sent by Fluta.",
+    }),
+  };
+}
+
+// To the owner's sign-in email when the bank account for online payments
+// changes (plan 4.3): only the bank name and last 4 digits, never the full
+// account number. No link, so a phishing copy has nothing to imitate.
+export function buildBankChangedEmail(input: {
+  to: string;
+  storeName: string;
+  bankName: string;
+  last4: string;
+  changedAt: Date;
+  timeZone: string;
+}): EmailMessage {
+  const changed = `${input.storeName}: the bank account for online payments was changed to ${input.bankName} •••• ${input.last4} on ${formatDateTime(input.changedAt, input.timeZone)}.`;
+  const warning = "If you didn't do this, contact Fluta support now.";
+  return {
+    to: input.to,
+    subject: `${input.storeName}: your bank account for online payments was changed`,
+    text: [input.storeName, "", changed, "", warning].join("\n"),
+    html: renderEmailHtml({
+      preview: changed,
+      heading: input.storeName,
+      paragraphs: [changed, warning],
+      smallPrint: ["Online payments from now on are paid into this account."],
+      footer: `Sent by Fluta for your ${input.storeName} account.`,
     }),
   };
 }

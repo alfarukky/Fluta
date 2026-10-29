@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/env", () => ({ getServerEnv: () => ({ BETTER_AUTH_URL: "https://fluta.example" }) }));
 
 const { escapeHtml, renderEmailHtml } = await import("./email-layout");
-const { buildInvitationEmail, buildPasswordResetEmail } = await import("./emails");
+const { buildBankChangedEmail, buildInvitationEmail, buildPasswordResetEmail } = await import("./emails");
 
 const URL_WITH_QUERY = "https://fluta.example/invite/abc?x=1&y=2";
 
@@ -94,5 +94,26 @@ describe("buildPasswordResetEmail", () => {
     const withoutStore = buildPasswordResetEmail({ to: "a@x.example", storeName: null, url: URL_WITH_QUERY });
     expect(withoutStore.text.split("\n")[0]).toBe("Fluta");
     expect(withoutStore.html).toContain("expires in 1 hour");
+  });
+});
+
+describe("buildBankChangedEmail", () => {
+  it("names the store, the new bank and last 4 digits, and when, with no link", () => {
+    const email = buildBankChangedEmail({
+      to: "ada@freshfold.example",
+      storeName: "FreshFold Laundry",
+      bankName: "GTBank",
+      last4: "4521",
+      changedAt: new Date("2026-10-20T14:15:00Z"),
+      timeZone: "Africa/Lagos",
+    });
+    expect(email.to).toBe("ada@freshfold.example");
+    expect(email.subject).toBe("FreshFold Laundry: your bank account for online payments was changed");
+    expect(email.text).toContain(
+      "FreshFold Laundry: the bank account for online payments was changed to GTBank •••• 4521 on Tue, 20 Oct 2026, 3:15 PM.",
+    );
+    expect(email.text).toContain("If you didn't do this, contact Fluta support now.");
+    expect(email.html).toContain("GTBank •••• 4521");
+    expect(email.html).not.toContain("<a ");
   });
 });

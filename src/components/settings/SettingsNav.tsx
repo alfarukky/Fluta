@@ -8,9 +8,10 @@ import { cn } from "@/lib/utils";
 const LINKS = [
   { href: "/settings", label: "Store" },
   { href: "/settings/staff", label: "Team" },
+  { href: "/settings/payments", label: "Payments" },
 ] as const;
 
-// Switches between the settings pages. Both are owner-only and check that
+// Switches between the settings pages. All are owner-only and check that
 // themselves.
 export function SettingsNav() {
   const pathname = usePathname();

@@ -65,6 +65,9 @@ function createAuth() {
       storage: "database",
       customRules: {
         "/sign-in/email": { window: SIGN_IN_WINDOW_SECONDS, max: SIGN_IN_MAX_ATTEMPTS },
+        // Re-entering the password before changing bank details
+        // (src/server/auth/password-check.ts): the same limit as sign-in.
+        "/verify-password": { window: SIGN_IN_WINDOW_SECONDS, max: SIGN_IN_MAX_ATTEMPTS },
         "/request-password-reset": { window: PASSWORD_RESET_WINDOW_SECONDS, max: PASSWORD_RESET_REQUEST_MAX_ATTEMPTS },
         "/reset-password": { window: PASSWORD_RESET_WINDOW_SECONDS, max: PASSWORD_RESET_MAX_ATTEMPTS },
         // The emailed link (GET /reset-password/<token>) only checks the token

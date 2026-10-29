@@ -17,7 +17,7 @@ export interface TrackingTimelineStep {
 export interface TrackingItem {
   key: string;
   name: string;
-  // "2 × ₦800", "2.5 kg × ₦1,500", "About 3 kg. The store will weigh it."
+  // "2 × ₦800", "× 2", "About 3. The store will count it."
   detail: string | null;
   // Only from an approved price (or the price update under review).
   amount: string | null;
@@ -59,6 +59,18 @@ export interface PickupSuggestionReview {
   requested: string | null;
 }
 
+// Pay now (plan section 7): the full balance due, on Paystack's page.
+export interface PayNowOffer {
+  amount: string; // "₦6,200"
+  // Pre-filled from the customer's saved email; "" when there is none.
+  email: string;
+  // The anti-fraud line (plan 3.6).
+  warning: string;
+  // A PENDING attempt under 15 minutes old: "A payment is being confirmed",
+  // with Pay again as a secondary link.
+  recentAttempt: boolean;
+}
+
 export interface TrackingView {
   store: PublicStore;
   displayNumber: string;
@@ -67,6 +79,8 @@ export interface TrackingView {
   closed: boolean;
   timeline: TrackingTimelineStep[];
   payment: string;
+  // "Refunded: ₦X", the total of refunds recorded, or null when none.
+  refunded: string | null;
   price: TrackingPrice;
   pickup: TrackingPickup | null;
   maskedPhone: string;
@@ -74,6 +88,8 @@ export interface TrackingView {
   // update first, since a pickup time can't be confirmed until it's decided.
   priceUpdate: PriceUpdateReview | null;
   pickupSuggestion: PickupSuggestionReview | null;
+  // Only when the order can be paid online now (canPayOnline).
+  payNow: PayNowOffer | null;
 }
 
 export type TrackingPage =

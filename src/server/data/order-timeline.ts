@@ -13,8 +13,8 @@ import { AUDIT_ACTIONS } from "./quotes";
 
 // One timeline for an order: stage events, revision moments (issued,
 // approved, declined), pickup times the store suggested, and payments
-// recorded or voided, newest first. Payments are their own entries, never
-// status events.
+// and refunds recorded or voided, newest first. Payments and refunds are
+// their own entries, never status events.
 // The page shows it as it comes; it never merges lists itself. Staff only:
 // the tracking page has its own customer timeline (src/lib/tracking.ts).
 
@@ -86,10 +86,34 @@ export interface TimelinePayment {
   voidedByUserId: string | null;
   // Staff only: never shown on the tracking page or in customer messages.
   voidReason: string | null;
+  // Online only: money that arrived when nothing was due (plan 6.9).
+  receivedAfter?: "CANCELLED" | "PAID" | null;
+}
+
+// A refund as the timeline needs it: money the store paid back outside Fluta.
+export interface TimelineRefund {
+  id: string;
+  amount: number;
+  method: PaymentMethod;
+  recordedByUserId: string;
+  paidAt: Date;
+  voidedAt: Date | null;
+  voidedByUserId: string | null;
+  // Staff only: never shown on the tracking page or in customer messages.
+  voidReason: string | null;
 }
 
 export type TimelineEntry =
   | { kind: "stage"; key: string; at: Date; event: TimelineStageEvent }
+  | {
+      kind: "refund";
+      key: string;
+      at: Date;
+      moment: "RECORDED" | "VOIDED";
+      refund: TimelineRefund;
+      // Who recorded it, or who voided it.
+      staffUserId: string | null;
+    }
   | {
       kind: "payment";
       key: string;
@@ -122,8 +146,8 @@ export type TimelineEntry =
 // Within the same moment: a revision is issued before the stage moves, and
 // approved before the order returns from Quote awaiting approval.
 function rank(entry: TimelineEntry): number {
-  // A correct payment recorded in place of a voided one follows the void.
-  if (entry.kind === "payment") return entry.moment === "RECORDED" ? 5 : 4;
+  // A correct payment or refund recorded in place of a voided one follows the void.
+  if (entry.kind === "payment" || entry.kind === "refund") return entry.moment === "RECORDED" ? 5 : 4;
   // A pickup time reset is written with the step back that caused it, and
   // follows it.
   if (entry.kind === "pickupReset") return 3;
@@ -139,6 +163,7 @@ export function buildOrderTimeline(
   pickupSuggestions: readonly TimelinePickupSuggestion[] = [],
   pickupResets: readonly TimelinePickupReset[] = [],
   payments: readonly TimelinePayment[] = [],
+  refunds: readonly TimelineRefund[] = [],
 ): TimelineEntry[] {
   const recorder = new Map<string, string | null>();
   for (const audit of audits) {
@@ -228,6 +253,27 @@ export function buildOrderTimeline(
         moment: "VOIDED",
         payment,
         staffUserId: payment.voidedByUserId,
+      });
+    }
+  }
+
+  for (const refund of refunds) {
+    entries.push({
+      kind: "refund",
+      key: `refund-${refund.id}`,
+      at: refund.paidAt,
+      moment: "RECORDED",
+      refund,
+      staffUserId: refund.recordedByUserId,
+    });
+    if (refund.voidedAt) {
+      entries.push({
+        kind: "refund",
+        key: `refund-void-${refund.id}`,
+        at: refund.voidedAt,
+        moment: "VOIDED",
+        refund,
+        staffUserId: refund.voidedByUserId,
       });
     }
   }

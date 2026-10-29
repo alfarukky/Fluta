@@ -10,7 +10,7 @@ These rules apply to all Fluta code. Product rules live in `project-overview.md`
 - Use type inference where obvious, explicit types where helpful
 - Use the Prisma-generated types for database models; do not hand-write duplicates
 - Use TypeScript enums only through Prisma's generated enums (`OrderStage`, `PaymentStatus`, …); elsewhere use string literal unions
-- Money is always an integer number of **kobo** (`number`, never a float); weights use Prisma `Decimal`, never `number`
+- Money is always an integer number of **kobo** (`number`, never a float); quantities are whole numbers (`number` in code, stored in Prisma `Decimal` columns as text such as `"3"`)
 - Never assert types (`as`) on external input; parse it with Zod instead
 
 ## React
@@ -120,7 +120,7 @@ Example v4 configuration:
 
 - Tailwind CSS for all styling
 - Use shadcn/ui components where applicable, with Lucide icons
-- No inline styles, **except** the single `style` attribute on the customer layout root that sets validated store brand CSS variables
+- No inline styles, **except** the single `style` attribute on the customer layout root that sets validated store brand CSS variables, and the server-drawn `next/og` images (store app icon and link preview), which can only be styled inline
 - Light and dark themes share the same semantic tokens; light is the default. Components never define their own colours
 - Mobile-first: design for ~360px wide first, then scale up; touch targets at least 44px
 - No horizontal scrolling in primary workflows; wide tables collapse to stacked cards on mobile
@@ -163,7 +163,7 @@ Example v4 configuration:
 
 ## Money, Time, and Phone Numbers
 
-- All money maths uses integer kobo. Per-kg line totals round to the nearest kobo once, in one helper
+- All money maths uses integer kobo. A line total is unit price × whole quantity (`getLineTotal` in `money.ts`), never rounded
 - Format money only in `money.ts` (`formatNaira(kobo)` → "₦6,200")
 - Store all timestamps in UTC; display in the **store's** time zone using helpers in `time.ts`
 - Show times of day in **12-hour format** with AM/PM ("8:00 AM"); store times of day as 24-hour `HH:MM`. Convert only through `time.ts`
@@ -195,6 +195,8 @@ Example v4 configuration:
 - Clear `MessageEvent.body` once the message is `SENT` or finally `FAILED`
 - Automatic SMS only to `+234` numbers, and only within the store's daily booking-SMS cap
 - Every message starts with the store name
+- Staff bell: add a `Notification` with `addStaffNotification` as the **last write inside the event's own transaction**, only when the event actually changed something (never for staff's own actions, never for riders). One per event via `[storeId, type, sourceId]`
+- Build lines when shown, from the order: no phone numbers or addresses in notifications
 
 ## Error Handling
 
@@ -227,14 +229,22 @@ Every feature must pass these before `/feature complete` commits it, in order:
 2. `npm run typecheck` (`tsc --noEmit`)
 3. `prisma validate` and a check that no schema change is missing a migration
 4. `npm run test:unit`, then `npm run test:integration` (run in this order, so a failure shows which side broke)
-5. Playwright journeys on the main branch before deploy
+5. Playwright journeys on `staging` before a pull request to `main`
 
-`/feature complete` runs these before committing; GitHub Actions can also run them on push to `main` (optional).
+`/feature complete` runs these before committing; GitHub Actions can also run them on push to `staging` and on pull requests to `main` (optional).
 
 ## Git Workflow
 
 - One branch per feature or fix: `feat/guest-booking-flow`, `fix/refund-owed-calculation`
-- Small, focused feature branches, merged locally into `main` with `/feature complete`
+- Branch flow: **feature branch → `staging` → `main`**
+  - Every `feat/` or `fix/` branch starts from an up-to-date `staging`
+  - `/feature complete` merges it into `staging` locally, pushes `staging`, and deletes the branch
+  - `main` is production. It changes only through a pull request from `staging` to `main`, opened by the project owner when a set of changes is ready for production
+- GitHub protection:
+  - `main`: pull requests required, no direct pushes, no force-pushes, no deletion
+  - `staging`: no force-pushes and no deletion; direct pushes allowed so `/feature complete` can push its merge
+- Deployment: Railway, one project with two environments. `staging` deploys automatically from the `staging` branch; `production` deploys from `main`. Every deploy runs `prisma migrate deploy` before the app starts, and Railway checks `/api/health`
+- Small, focused feature branches
 - Schema changes are called out in the commit message with the migration name
 
 ## Review Checklist

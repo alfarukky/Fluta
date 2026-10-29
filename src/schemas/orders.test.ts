@@ -8,7 +8,7 @@ const dropOff: CreateOrderRequest = {
   channel: "COUNTER",
   fulfilmentType: "DROP_OFF",
   pickup: null,
-  serviceLines: [{ serviceId: "svc_shirt", quantity: "3", estimate: "" }],
+  serviceLines: [{ serviceId: "svc_shirt", quantity: "3" }],
   adjustments: [],
   internalNote: "  ",
 };
@@ -42,11 +42,19 @@ describe("createOrderSchema", () => {
     expect(firstMessage(noWindow, "pickup.windowStart")).toBe("Choose a pickup window");
   });
 
-  it("parses a counter drop-off: trimmed name, E.164 phone, hundredths, blank note as null", () => {
+  it("parses a counter drop-off: trimmed name, E.164 phone, whole quantity, blank note as null", () => {
     const order = createOrderSchema.parse(dropOff);
     expect(order.customer).toEqual({ kind: "new", name: "Tunde Bakare", phone: "+2348031234521", email: null });
-    expect(order.serviceLines).toEqual([{ serviceId: "svc_shirt", quantity: 300, estimate: null }]);
+    expect(order.serviceLines).toEqual([{ serviceId: "svc_shirt", quantity: 3 }]);
     expect(order.internalNote).toBeNull();
+  });
+
+  it("refuses a fractional quantity", () => {
+    for (const quantity of ["1.5", "2.0", "0.5"]) {
+      const result = createOrderSchema.safeParse({ ...dropOff, serviceLines: [{ serviceId: "svc_shirt", quantity }] });
+      expect(result.success).toBe(false);
+      expect(result.error?.issues[0].message).toBe("Enter a whole number, like 3");
+    }
   });
 
   it("requires a UUID request ID", () => {
@@ -60,10 +68,10 @@ describe("createOrderSchema", () => {
   it("ignores prices sent by the browser", () => {
     const order = createOrderSchema.parse({
       ...dropOff,
-      serviceLines: [{ serviceId: "svc_shirt", quantity: "3", estimate: "", unitPrice: 1, lineTotal: 1 }],
+      serviceLines: [{ serviceId: "svc_shirt", quantity: "3", unitPrice: 1, lineTotal: 1 }],
       total: 1,
     });
-    expect(order.serviceLines[0]).toEqual({ serviceId: "svc_shirt", quantity: 300, estimate: null });
+    expect(order.serviceLines[0]).toEqual({ serviceId: "svc_shirt", quantity: 3 });
     expect(order).not.toHaveProperty("total");
   });
 

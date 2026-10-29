@@ -18,9 +18,15 @@ export const SEED_USER_EMAILS = Object.values(SEED_USERS).map((user) => user.ema
 
 // Through the app's one user-creation function, so seeded users are exactly
 // what invitation acceptance will create.
-export async function seedUsers(prisma: PrismaClient, password: string): Promise<Record<SeedUserKey, string>> {
+// Only the users named in `only`, when given; the others' IDs are missing.
+export async function seedUsers(
+  prisma: PrismaClient,
+  password: string,
+  only?: readonly SeedUserKey[],
+): Promise<Record<SeedUserKey, string>> {
   const ids: Partial<Record<SeedUserKey, string>> = {};
   for (const [key, user] of Object.entries(SEED_USERS) as [SeedUserKey, (typeof SEED_USERS)[SeedUserKey]][]) {
+    if (only && !only.includes(key)) continue;
     ids[key] = (await createUserWithPassword({ ...user, password }, prisma)).id;
   }
   return ids as Record<SeedUserKey, string>;

@@ -122,15 +122,23 @@ describe("access", () => {
   });
 });
 
-describe("per-kg services", () => {
-  it("are always saved with quote required, even if the request says otherwise", async () => {
-    const created = await createAsOwner({ ...SILK_SCARF, name: "Duvet by weight", pricingType: "PER_KG", requiresQuote: "" });
-    expect(await readService(created.id)).toMatchObject({ pricingType: "PER_KG", requiresQuote: true });
+describe("pricing types", () => {
+  it("refuses a pricing type Fluta doesn't offer, saving nothing", async () => {
+    request.headers = signedIn.owner;
+    const before = await prisma.service.count();
+    const created = await createService(form({ ...SILK_SCARF, name: "Priced by the hour", pricingType: "PER_HOUR" }));
+    expect(created).toMatchObject({ ok: false, fieldErrors: { pricingType: expect.any(String) } });
+    expect(await prisma.service.count()).toBe(before);
 
     const scarf = await createAsOwner(SILK_SCARF);
-    const result = await updateService(scarf.id, form({ ...SILK_SCARF, pricingType: "PER_KG", requiresQuote: "false" }));
-    expect(result).toMatchObject({ ok: true, service: { requiresQuote: true } });
-    expect(await readService(scarf.id)).toMatchObject({ pricingType: "PER_KG", requiresQuote: true });
+    request.headers = signedIn.owner;
+    expect(await updateService(scarf.id, form({ ...SILK_SCARF, pricingType: "PER_HOUR" }))).toMatchObject({ ok: false });
+    expect(await readService(scarf.id)).toMatchObject({ pricingType: SILK_SCARF.pricingType });
+  });
+
+  it("lets per-package services turn quote required on and off", async () => {
+    const created = await createAsOwner({ ...SILK_SCARF, name: "Curtain bundle", pricingType: "PER_PACKAGE", requiresQuote: "on" });
+    expect(await readService(created.id)).toMatchObject({ pricingType: "PER_PACKAGE", requiresQuote: true });
   });
 });
 

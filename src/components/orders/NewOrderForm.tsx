@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { createOrder } from "@/actions/orders";
 import { useScrollToFirstError } from "@/components/forms/scroll-to-first-error";
 import { Button } from "@/components/ui/button";
+import { getOrderPath } from "@/lib/order-links";
 import type { OrderEntryArea, OrderEntryService } from "@/types/orders";
 
 import { CustomerSection } from "./CustomerSection";
@@ -51,7 +52,7 @@ export function NewOrderForm({ services, areas, settings }: NewOrderFormProps) {
       if (result.ok) {
         setCreated(true);
         toast.success(result.message);
-        router.push(`/orders/${result.orderId}`);
+        router.push(getOrderPath(result.orderId));
         return;
       }
       setErrors(result.fieldErrors ?? {});

@@ -30,9 +30,11 @@ interface RecordPaymentButtonProps {
   balance: BalanceFigures;
   // The main action on the page (Ready or Completed with a balance due).
   primary: boolean;
+  // An online payment for this order is being confirmed.
+  pendingOnline: boolean;
 }
 
-export function RecordPaymentButton({ orderId, balance, primary }: RecordPaymentButtonProps) {
+export function RecordPaymentButton({ orderId, balance, primary, pendingOnline }: RecordPaymentButtonProps) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -40,7 +42,7 @@ export function RecordPaymentButton({ orderId, balance, primary }: RecordPayment
         Record payment
       </Button>
       {/* Mounted only while open, so each opening starts fresh with a new request ID. */}
-      {open && <RecordPaymentDialog orderId={orderId} balance={balance} onClose={() => setOpen(false)} />}
+      {open && <RecordPaymentDialog orderId={orderId} balance={balance} pendingOnline={pendingOnline} onClose={() => setOpen(false)} />}
     </>
   );
 }
@@ -52,7 +54,17 @@ interface PendingConfirmation {
   message: string;
 }
 
-function RecordPaymentDialog({ orderId, balance, onClose }: { orderId: string; balance: BalanceFigures; onClose: () => void }) {
+function RecordPaymentDialog({
+  orderId,
+  balance,
+  pendingOnline,
+  onClose,
+}: {
+  orderId: string;
+  balance: BalanceFigures;
+  pendingOnline: boolean;
+  onClose: () => void;
+}) {
   const [requestId] = useState(() => crypto.randomUUID());
   const suggested = getSuggestedPaymentKobo(balance.balanceKobo);
   const [draft, setDraft] = useState<PaymentDraft>({
@@ -131,6 +143,12 @@ function RecordPaymentDialog({ orderId, balance, onClose }: { orderId: string; b
           <DialogTitle>Record payment</DialogTitle>
           <DialogDescription>Money the customer paid at the store or straight to the store.</DialogDescription>
         </DialogHeader>
+        {/* Information only: it never blocks recording. */}
+        {pendingOnline && (
+          <p role="status" className="type-body-sm rounded-md border border-info/40 bg-info/10 px-3 py-2.5 text-foreground">
+            An online payment for this order is being confirmed.
+          </p>
+        )}
         <div className="flex items-baseline justify-between gap-component rounded-md bg-muted px-3 py-2.5">
           <span className="type-body-sm text-muted-foreground">{shown.label}</span>
           <span className="type-label text-foreground">{shown.value}</span>

@@ -21,8 +21,8 @@ const EDITOR: QuoteEditorData = {
   latestVersion: 2,
   lines: [
     // Added at ₦700; the catalogue says ₦800 today.
-    { id: "l1", name: "Shirt", pricingType: "PER_ITEM", requiresQuote: false, unitPrice: 70_000, quantity: 300, estimate: null },
-    { id: "l2", name: "Wash & fold", pricingType: "PER_KG", requiresQuote: true, unitPrice: 150_000, quantity: null, estimate: 500 },
+    { id: "l1", name: "Shirt", pricingType: "PER_ITEM", requiresQuote: false, unitPrice: 70_000, quantity: 3, estimate: null },
+    { id: "l2", name: "Duvet", pricingType: "PER_ITEM", requiresQuote: true, unitPrice: 150_000, quantity: null, estimate: 2 },
   ],
   adjustments: [{ description: "Loyalty discount", amount: -20_000 }],
   pickup: { areaName: "Wuse 2", isOutOfArea: false, chargeEntered: false, charge: 150_000 },
@@ -47,7 +47,7 @@ describe("the edit-quote draft", () => {
     const draft = initialQuoteDraft(EDITOR);
     expect(draft.lines.map((line) => [line.name, line.unitPrice, line.quantity])).toEqual([
       ["Shirt", 70_000, "3"],
-      ["Wash & fold", 150_000, ""],
+      ["Duvet", 150_000, ""],
     ]);
     expect(draft.adjustments).toEqual([{ key: "adjustment-0", description: "Loyalty discount", kind: "DISCOUNT", amount: "200" }]);
     expect(draft).toMatchObject({ areaChoice: CURRENT_AREA, charge: "1,500", reason: "" });
@@ -59,20 +59,20 @@ describe("the edit-quote draft", () => {
     const twice = addQuoteService(once, SHIRT, "k2");
     expect(twice.map((line) => [line.name, line.unitPrice, line.quantity, line.source.kind])).toEqual([
       ["Shirt", 70_000, "3", "existing"],
-      ["Wash & fold", 150_000, "", "existing"],
+      ["Duvet", 150_000, "", "existing"],
       ["Shirt", 80_000, "2", "new"],
     ]);
   });
 
   it("previews the total and the difference from the last approved total", () => {
     const draft = initialQuoteDraft(EDITOR);
-    const weighed = { ...draft, lines: draft.lines.map((line) => (line.key === "l2" ? { ...line, quantity: "4.2" } : line)) };
+    const counted = { ...draft, lines: draft.lines.map((line) => (line.key === "l2" ? { ...line, quantity: "4" } : line)) };
     expect(reviewQuoteDraft(draft, EDITOR, AREAS)).toMatchObject({ fullyPriced: false });
-    // ₦2,100 + ₦6,300 − ₦200 + ₦1,500 = ₦9,700, ₦6,300 more than ₦3,400.
-    expect(reviewQuoteDraft(weighed, EDITOR, AREAS)).toMatchObject({ total: 970_000, difference: 630_000, fullyPriced: true, charge: 150_000 });
+    // ₦2,100 + ₦6,000 − ₦200 + ₦1,500 = ₦9,400, ₦6,000 more than ₦3,400.
+    expect(reviewQuoteDraft(counted, EDITOR, AREAS)).toMatchObject({ total: 940_000, difference: 600_000, fullyPriced: true, charge: 150_000 });
     // A fixed area's own charge, or the typed one for a quote-required area.
-    expect(reviewQuoteDraft({ ...weighed, areaChoice: "garki" }, EDITOR, AREAS).charge).toBe(100_000);
-    expect(reviewQuoteDraft({ ...weighed, areaChoice: "maitama", charge: "" }, EDITOR, AREAS)).toMatchObject({ charge: null, fullyPriced: false });
+    expect(reviewQuoteDraft({ ...counted, areaChoice: "garki" }, EDITOR, AREAS).charge).toBe(100_000);
+    expect(reviewQuoteDraft({ ...counted, areaChoice: "maitama", charge: "" }, EDITOR, AREAS)).toMatchObject({ charge: null, fullyPriced: false });
   });
 
   it("sends IDs, quantities, the area choice, and a price only for quote-required lines", () => {
@@ -100,30 +100,30 @@ describe("the edit-quote draft", () => {
       const draft = initialQuoteDraft(EDITOR);
       expect(draft.lines.map((line) => [line.name, line.requiresQuote, line.price])).toEqual([
         ["Shirt", false, ""],
-        ["Wash & fold", true, "1,500"],
+        ["Duvet", true, "1,500"],
       ]);
       // "Price on inspection" starts at ₦0.
       const gown = addQuoteService(draft.lines, GOWN, "k1").at(-1);
       expect(gown).toMatchObject({ requiresQuote: true, unitPrice: 0, price: "0", quantity: "1" });
     });
 
-    it("previews line and order totals from the typed price, per item and per kg", () => {
-      const weighed = withLine(initialQuoteDraft(EDITOR), "l2", { quantity: "4.2", price: "₦2,000" });
-      const draft = { ...weighed, lines: addQuoteService(weighed.lines, GOWN, "k1") };
+    it("previews line and order totals from the typed unit price × the quantity", () => {
+      const counted = withLine(initialQuoteDraft(EDITOR), "l2", { quantity: "4", price: "₦2,000" });
+      const draft = { ...counted, lines: addQuoteService(counted.lines, GOWN, "k1") };
       const priced = withLine(draft, "k1", { price: "45,000" });
       const review = reviewQuoteDraft(priced, EDITOR, AREAS);
-      // 4.2 kg × ₦2,000 = ₦8,400; gown ₦45,000. ₦2,100 + ₦8,400 + ₦45,000 − ₦200 + ₦1,500 = ₦56,800.
-      expect(review.lineTotals.get("l2")).toBe(840_000);
+      // 4 × ₦2,000 = ₦8,000; gown ₦45,000. ₦2,100 + ₦8,000 + ₦45,000 − ₦200 + ₦1,500 = ₦56,400.
+      expect(review.lineTotals.get("l2")).toBe(800_000);
       expect(review.lineTotals.get("k1")).toBe(4_500_000);
-      expect(review).toMatchObject({ total: 5_680_000, fullyPriced: true });
+      expect(review).toMatchObject({ total: 5_640_000, fullyPriced: true });
       // A fixed line ignores anything typed into its (hidden) price.
       expect(reviewQuoteDraft(withLine(priced, "l1", { price: "1" }), EDITOR, AREAS).lineTotals.get("l1")).toBe(210_000);
     });
 
     it("treats a missing or invalid price as not priced yet", () => {
-      const weighed = withLine(initialQuoteDraft(EDITOR), "l2", { quantity: "4.2" });
+      const counted = withLine(initialQuoteDraft(EDITOR), "l2", { quantity: "4" });
       for (const price of ["", "abc", "-5", "10,000,000.01"]) {
-        const review = reviewQuoteDraft(withLine(weighed, "l2", { price }), EDITOR, AREAS);
+        const review = reviewQuoteDraft(withLine(counted, "l2", { price }), EDITOR, AREAS);
         expect(review.lineTotals.get("l2")).toBeNull();
         expect(review.fullyPriced).toBe(false);
       }

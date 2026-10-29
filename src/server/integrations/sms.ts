@@ -5,8 +5,8 @@ import { getTermiiConfig } from "@/lib/env";
 import { createTermiiProvider } from "./termii";
 
 // Fluta's SMS sender. Termii when it is configured. Otherwise (development
-// only: production refuses to start without it) a provider that marks
-// messages as sent without sending or printing them. Tests replace it with
+// and staging: production refuses to start without it) a provider that marks
+// messages as sent without sending or printing them, so demos cost no SMS. Tests replace it with
 // the fake in src/test/fake-sms.ts.
 
 export interface SmsMessage {

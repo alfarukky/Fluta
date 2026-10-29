@@ -57,21 +57,21 @@ describe("summarizeServices", () => {
   it("shows the first two lines and how many more", () => {
     expect(
       summarizeServices([
-        { description: "Shirt", pricingType: "PER_ITEM", quantity: 400 },
-        { description: "Trousers", pricingType: "PER_ITEM", quantity: 200 },
-        { description: "Duvet", pricingType: "PER_ITEM", quantity: 100 },
-        { description: "Bedsheet", pricingType: "PER_PACKAGE", quantity: 100 },
+        { description: "Shirt", quantity: 4 },
+        { description: "Trousers", quantity: 2 },
+        { description: "Duvet", quantity: 1 },
+        { description: "Bedsheet", quantity: 1 },
       ]),
     ).toBe("Shirt × 4, Trousers × 2 +2 more");
   });
 
-  it("shows weights in kg and an unweighed line by name", () => {
+  it("shows a line still to be counted by name", () => {
     expect(
       summarizeServices([
-        { description: "Laundry by weight", pricingType: "PER_KG", quantity: 350 },
-        { description: "Wash & fold", pricingType: "PER_KG", quantity: null },
+        { description: "Wedding gown", quantity: null },
+        { description: "Shirt", quantity: 3 },
       ]),
-    ).toBe("Laundry by weight 3.5 kg, Wash & fold");
+    ).toBe("Wedding gown, Shirt × 3");
   });
 
   it("is empty for an order with no service lines", () => {
@@ -139,9 +139,8 @@ describe("isAwaitingApproval", () => {
 });
 
 describe("describeCustomerEstimate", () => {
-  it("shows a weight or a count the same way", () => {
-    expect(describeCustomerEstimate(250, "PER_KG")).toBe("Customer's estimate: 2.5 kg (not billed)");
-    expect(describeCustomerEstimate(200, "PER_ITEM")).toBe("Customer's estimate: 2 (not billed)");
-    expect(describeCustomerEstimate(100, "PER_PACKAGE")).toBe("Customer's estimate: 1 (not billed)");
+  it("shows the customer's count", () => {
+    expect(describeCustomerEstimate(2)).toBe("Customer's estimate: 2 (not billed)");
+    expect(describeCustomerEstimate(1)).toBe("Customer's estimate: 1 (not billed)");
   });
 });
