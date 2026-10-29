@@ -22,7 +22,7 @@ interface AppShellProps {
 // Sidebar (desktop), top bar, and the page. Pages render their own <main>.
 export function AppShell({ member, navCounts, timeZone, now, children }: AppShellProps) {
   return (
-    <div className="flex min-h-dvh flex-1">
+    <div className="flex min-h-dvh flex-1 print:min-h-0">
       <a
         href="#content"
         className="type-label sr-only z-50 rounded-md bg-card px-4 py-2 text-foreground focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:ring-[3px] focus:ring-ring/50"
@@ -32,7 +32,7 @@ export function AppShell({ member, navCounts, timeZone, now, children }: AppShel
       <Sidebar member={member} navCounts={navCounts} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b border-border bg-background">
+        <header className="sticky top-0 z-30 print:hidden border-b border-border bg-background">
           <div className="flex h-16 items-center gap-2 px-page md:gap-3">
             <MobileNav member={member} navCounts={navCounts} />
             <TopBarGreeting

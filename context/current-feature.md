@@ -1,40 +1,82 @@
-# Current Feature
+# Current Feature: Receipts (staff only)
 
 ## Status
 
-Not Started
+In Progress
 
 ## Spec
 
-<!-- The spec file for this feature -->
+- Spec: `context/features/19-receipts-spec.md`
+- Implements project-overview.md: **13. Receipts**, and reads from **12. Payments** (payment states, balance)
 
 ## Goals
 
-<!-- The spec's requirements -->
+- Show a receipt at `/orders/[id]/receipt` only once the order has at least one active confirmed payment (confirmed, not voided). Pending or failed online attempts and refunds alone never count; otherwise show "A receipt will be available once a payment is recorded" with the order number only, including for saved links whose only payment was later voided
+- Add "Print receipt" to the order detail page's secondary actions, shown only once there is an active confirmed payment
+- Owners and staff only: `requireStoreMember()` on the page itself; riders refused; store comes from the membership, so another store's order returns "Order not found"
+- One server function (e.g. `getReceiptData`) does all the work: checks access and store, checks for an active confirmed payment, reads the approved revision, active payments and active refunds, calls `getBalance`, masks the phone through `phone.ts`, and returns only the receipt's fields. The page only displays it
+- Store details (logo, name, address, phone) are current from settings; all money comes from the approved revision, payments and refunds, never the catalogue or the order's working lines. Total is the approved revision's total, never summed from lines
+- Lines from the approved revision's lines copy: service lines as name, quantity × unit price, line total; Others lines as description with their stored signed amount; then, on pickup orders, "Pickup and delivery" ("Free" at ₦0); drop-off orders have no pickup line
+- A pending price update never changes any figure; show the plain-wording note instead
+- Cancelled orders keep the approved total, with "This order was cancelled" at the top and the balance line from `getBalance`
+- Show order number, created date/time (12-hour, store time zone), customer name, masked phone, items, total, one date-ordered list of active payments and refunds, and the balance wording ("Fully paid", "Amount still to pay: ₦X", "Amount to be refunded to you: ₦X", "Nothing to pay")
+- Never show voided records, pending/failed attempts, fees, staff names, notes, references, the full phone, or any customer address
+- Use the exact plain wording table from the spec; no internal terms; amounts through the shared `formatNaira` (kobo only when there is some) from the stored amounts so they add up; order date "30 Oct 2026, 10:42 AM", payment and refund dates "30 Oct 2026"
+- Deposit before price approval: item names and quantities only, "Final price to be confirmed by the store", then payments; no prices, totals or balance figure
+- Print button using the browser's print; print layout with narrow width fitting 58 mm, 80 mm and A4 (stays narrow on A4); only the receipt prints, black on white, amounts right-aligned, rows never split, long names wrap
 
 ## Not in this feature
 
-<!-- Out of scope -->
+- A receipt page for customers, or a "View receipt" link on the tracking page
+- Emailing receipts from Fluta
+- PDF files or printer integrations
+- Separate receipts per payment
 
 ## Done when
 
-<!-- The spec's Done when items -->
+- Unit tests for the receipt data:
+  - lines, Others lines with their stored sign, the pickup charge, the total taken from the approved revision, payment history in date order, and the balance wording
+  - no receipt without an active confirmed payment, none when the only payment is voided or still pending, and none from refunds alone
+  - a part-paid receipt shows the balance due
+  - a deposit before approval shows names and quantities only, with no prices or totals
+  - a pending price update never changes any figure
+  - a cancelled order keeps its approved total, with the balance from `getBalance`
+  - it never includes voided records, pending attempts, fees, references, notes, staff names, the full phone, or an address
+  - every label and message matches the plain wording table exactly, and no internal term ("revision", "adjustment", "Others", codes) ever appears
+- Integration tests:
+  - owners and staff can open a receipt, riders are refused by the page itself, and a FreshFold user can't open a CleanWave receipt, even by sending its ID
+  - a receipt link for an order whose only payment was later voided shows "A receipt will be available once a payment is recorded"
+  - the receipt's balance always matches the order page's for the same order
+- `npm run lint`, `npm run typecheck`, `npm run test:unit`, `npm run test:integration`, and `npm run build` all pass
 
 ## Verify with
 
-<!-- How to verify the feature -->
+- **Playwright MCP**, at ~360px and desktop, light and dark:
+  - an unpaid order (no receipt), a paid, a part-paid, a refunded, a cancelled, and a deposit-only order
+  - print preview at 58 mm, 80 mm, and A4, including an order with a very long item name and a long Others description: nothing clipped, no row split across pages
+- **Next.js DevTools:** no runtime or build errors on `/orders/[id]/receipt`
 
 ## References
 
-<!-- Related context files -->
+- @context/project-overview.md (Receipts, Payment states)
+- @context/features/10-orders-list-and-detail-spec.md (`getBalance`)
+- @context/features/12-quotes-and-revisions-spec.md (approved revisions)
+- @context/features/16-store-collected-payments-spec.md and @context/features/18-refunds-spec.md
 
 ## Schema changes
 
-<!-- Migrations, or None -->
+None. The receipt reads existing records (approved revision, payments, refunds, store settings).
 
 ## Notes
 
-<!-- Anything to remember while working -->
+- Ask First items involved:
+  - **Money code:** the receipt reads payments, refunds and voids and calls `getBalance`. Reuse `getBalance` as-is; ask before changing it or any payment/refund query it relies on
+  - **Security-sensitive code:** the page and data function use `requireStoreMember()` / store scoping. Ask before changing membership checks or store-scoping in `src/server/data/`
+- Phone masking must go through `phone.ts`; never log the full phone
+- Receipt is read by customers, so test that no internal term ("revision", "adjustment", "Others", "balance state", "source", codes) appears
+- Print styles must force black on white regardless of the `.dark` theme
+- Approved (2026-10-28): read-only use of payments, refunds and `getBalance`; new store-scoped query in `src/server/data/receipts.ts`; page calls `requireStoreMember()` itself
+- Decided: a deposit before approval lists names and quantities from the order's own lines (as the tracking page does), never prices or totals
 
 ## History
 
@@ -209,3 +251,8 @@ Not Started
 - 2026-10-28: Verified. Full `test:integration` passes (36 files, 533 tests, about 71 minutes with `--maxWorkers=2`). Checked in the browser on development as the FreshFold owner, on test order FF-1002 (made-up customer): paid ₦700 in cash, cancelled → Refund owed ₦700 with Record refund as the main button; the form's own checks (method, note, more than owed); ₦300 by transfer then ₦400 in cash (pre-filled) → Nothing due; voided the ₦400 (reason required) → Refund owed ₦400; voided the ₦300 and recorded a ₦500 correction → Refund owed ₦200, three timeline entries with reasons. Payments → Refunds: owner total ₦500 (voided refunds left out), status badges right. Tracking page: "Refunded: ₦500", no notes, references or void reasons. Checked at 360px (light) and desktop (dark): no horizontal scroll, no console or server errors. Staff seeing no total is covered by the integration test (development has no staff account). Neon read-only on development: amounts in kobo, one audit event per void, the correction linked to the refund it replaces, all three CHECKs present. The browser tool printed the test order's tracking link once, so a new link was made straight after (the old one no longer works).
 - 2026-10-28: Staff view checked. Invited "Bola Test" (bola@freshfold.example, Staff) through Settings → Team and accepted the invite in a separate browser session (password random, kept out of chat). As staff: Payments → Refunds lists the same three refunds with no "Refunds paid today" total; on FF-1002, Record refund shows and no Void buttons do. Checked at desktop (light) and 360px (dark): no horizontal scroll. Development already had a staff member (Kemi Adeyemi), so the earlier note that it had none was wrong.
 - 2026-10-28: Completed Feature 18 — Refunds (spec: `context/features/18-refunds-spec.md`). Owners and staff record refunds whenever the order shows Refund owed, at any stage, up to `max(0, −balance)`; anything more is refused with the new amount owed. Recording and void-and-replace lock the order row, and a UUID request ID makes retries safe. Only owners void (void only, or void and record the correct refund in one transaction, linked by `replacesRefundId`, with an `AuditEvent`). Schema change: migration `20261028120000_refund_method_reference_request_id` (`Refund.method`, `reference`, required `clientRequestId` unique per store, unique `replacesRefundId`, index `(storeId, paidAt)`, CHECKs `Refund_amount_check`, `Refund_method_check`, `Refund_voided_check`). `getBalance` unchanged. Order detail: Refunds list, refund and void timeline entries, Record refund as the main action when owed, and "Fluta's fee on this payment isn't refunded" on online payments with a fee. Tracking page: "Refunded: ₦X" only. Payments page: Refunds view with the date filter, Load more, and an owner-only "Refunds paid today" total without voided refunds. lint, typecheck, test:unit (956), test:integration (full run 533 earlier the same day; the two refund files, 34 tests, rerun at completion) and build pass. Merged to `staging` as `feat: add refunds (Feature 18)`.
+- 2026-10-28: Started Feature 19 — Receipts (staff only)
+- 2026-10-28: Implemented on `feat/receipts`: `getReceiptData` (`src/server/services/receipts.ts`) with the store-scoped `findReceiptOrder` and the pure `buildReceipt`, wording in `src/lib/receipts.ts`, the `/orders/[id]/receipt` page with Print and a print layout (black on white, 72 mm max width), and Print receipt on the order page once there is an active confirmed payment. lint, typecheck, test:unit (971), the receipts integration file (7 tests) and build pass. Browser checks (Playwright, print preview) still to do.
+- 2026-10-28: Browser checks done (dev server, FreshFold on development): paid FF-1001 (Fully paid), cancelled FF-1002 (paid ₦700, refunded ₦500, "Amount to be refunded to you: ₦200"), unpaid FF-1003 and FF-1004 show the no-receipt message; Print receipt shows only on paid orders. Desktop light and 360px dark, no horizontal scroll. Print to PDF at 58 mm (3 pages, long names wrap, no row split), 80 mm and A4 (stays 72 mm, centred), black on white in the dark theme after forcing `color-scheme: light` in print (next-themes sets it inline). Next.js DevTools: no errors (one hydration warning came from the test editing the page text, not the app). Development has no part-paid, deposit-only or refunded-only orders, so those are covered by unit tests only.
+- 2026-10-28: Changes after review: amounts use the shared `formatNaira` (kobo shown when present, no rounding, rows always add up to the stored total); payment and refund dates include the year ("30 Oct 2026"); pickup orders show "Pickup and delivery: Free" at ₦0, drop-off orders have no pickup line. Spec wording rule, payment examples and pickup row updated to match. Tests added for a kobo amount adding up exactly and for the free pickup line.
+- 2026-10-29: Final checks on development, through the app: part-paid FF-1005 (Shirt 3 × ₦700 plus a +₦1,000.50 extra charge, total ₦3,100.50, ₦2,000 cash, "Amount still to pay: ₦1,100.50"), refunded FF-1006 (₦3,700 total, ₦4,000 by bank transfer, ₦300 refunded in cash, "Fully paid") and deposit-only FF-1007 (online booking, ₦1,500 cash deposit, names and quantities only, "Final price to be confirmed by the store", no total or balance). Each printed to PDF at 58 mm, 80 mm and A4 from the dark theme: black on white, long text wraps, one page each; 360px dark and desktop light on screen with no horizontal scroll; no console or Next.js errors. Creating these orders sent the usual order-link SMS through Termii. lint, typecheck, build pass; 972 unit tests and the full integration suite (37 files, 540 tests) pass.

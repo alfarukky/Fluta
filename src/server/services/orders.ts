@@ -5,6 +5,7 @@ import { fromStoredCoordinates, type Coordinates } from "@/lib/location";
 import { formatNaira } from "@/lib/money";
 import { formatOrderNumber, summarizeServices } from "@/lib/orders";
 import { canRecordPaymentAt, isRecordPaymentPrimary } from "@/lib/payments";
+import { hasActiveConfirmedPayment } from "@/lib/receipts";
 import { getRefundableKobo } from "@/lib/refunds";
 import { canReviseQuote, findDeclinedRevision, findPendingRevision } from "@/lib/quotes";
 import { formatPickupWindow } from "@/lib/pickup-schedule";
@@ -115,6 +116,8 @@ export interface OrderDetail {
   whatsappEnabled: boolean;
   payments: OrderPaymentActions;
   refunds: OrderRefundActions;
+  // "Print receipt" appears once the order has an active confirmed payment.
+  hasReceipt: boolean;
 }
 
 // Refunds: offered only while the order shows Refund owed, whatever its stage
@@ -242,6 +245,7 @@ export async function getOrderDetail(
       owedKobo: getRefundableKobo(balance.balanceKobo),
       canVoid: role === "OWNER",
     },
+    hasReceipt: hasActiveConfirmedPayment(order.payments),
   };
 }
 

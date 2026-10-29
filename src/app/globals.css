@@ -321,3 +321,55 @@
     }
   }
 }
+
+/* ───────────── Receipts (/orders/[id]/receipt) ─────────────
+   Printed, only the receipt shows (the shell hides itself with print:hidden),
+   black on white whatever the screen theme. The width fits 58 mm and 80 mm
+   thermal paper (it shrinks to the printable width) and stays narrow on A4. */
+@media print {
+  @page {
+    margin: 4mm;
+  }
+  html,
+  body {
+    /* next-themes sets color-scheme inline on <html>; light here keeps the page margins from printing dark. */
+    color-scheme: light !important;
+    background: #ffffff;
+    color: #000000;
+  }
+  .receipt {
+    --card: #ffffff;
+    --card-foreground: #000000;
+    --foreground: #000000;
+    --muted-foreground: #000000;
+    --border: #000000;
+    width: 100%;
+    max-width: 72mm;
+    margin: 0 auto;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    gap: 3mm;
+    font-size: 9pt;
+    line-height: 1.35;
+    print-color-adjust: exact;
+  }
+  /* The type-* sizes are for screens; on paper everything is receipt-sized. */
+  .receipt :is(h1, h2, p, li, span, div) {
+    font-size: inherit;
+    line-height: inherit;
+  }
+  .receipt h1 {
+    font-size: 11pt;
+    font-weight: 700;
+  }
+  .receipt h2,
+  .receipt .type-label {
+    font-weight: 700;
+  }
+}
+
+/* A row never splits across pages. */
+.receipt-row {
+  break-inside: avoid;
+}

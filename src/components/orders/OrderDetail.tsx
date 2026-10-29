@@ -6,6 +6,7 @@ import {
   CircleCheckIcon,
   CircleXIcon,
   PhoneIcon,
+  PrinterIcon,
   ReceiptTextIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -28,7 +29,7 @@ import {
   ORDER_CHANNEL_LABELS,
   PAYMENT_METHOD_LABELS,
 } from "@/lib/orders";
-import { getOrderQuotePath } from "@/lib/order-links";
+import { getOrderQuotePath, getOrderReceiptPath } from "@/lib/order-links";
 import { describeBalance, describePaymentRecorded, describePaymentVoided, PAYMENT_SOURCE_LABELS } from "@/lib/payments";
 import { formatPhone } from "@/lib/phone";
 import {
@@ -100,25 +101,36 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
           <StageBadge stage={order.stage} />
           <PaymentBadge state={balance.state} />
         </div>
-        {canChangeStage && (
+        {(canChangeStage || detail.hasReceipt) && (
           <div className="flex flex-wrap items-start gap-2">
             {refundPrimary && <RecordRefundButton orderId={order.id} owedKobo={detail.refunds.owedKobo} primary />}
             {recordPrimary && (
               <RecordPaymentButton orderId={order.id} balance={balance} primary pendingOnline={detail.payments.hasPendingOnlinePayment} />
             )}
-            <OrderStageActions
-              orderId={order.id}
-              stage={order.stage}
-              fulfilmentType={order.fulfilmentType}
-              // The quote banner explains a pending or declined quote itself.
-              moves={quote.pending || quote.declined ? { ...detail.stageMoves, blockedReason: null } : detail.stageMoves}
-              quote={{
-                editQuoteHref: quote.canEdit ? editQuoteHref : null,
-                priceOrder: quote.needsPricing,
-                address: quote.canEdit && order.fulfilmentType === "PICKUP_DELIVERY" ? (order.addressText ?? "") : null,
-              }}
-              quietPrimary={recordPrimary || refundPrimary}
-            />
+            {canChangeStage && (
+              <OrderStageActions
+                orderId={order.id}
+                stage={order.stage}
+                fulfilmentType={order.fulfilmentType}
+                // The quote banner explains a pending or declined quote itself.
+                moves={quote.pending || quote.declined ? { ...detail.stageMoves, blockedReason: null } : detail.stageMoves}
+                quote={{
+                  editQuoteHref: quote.canEdit ? editQuoteHref : null,
+                  priceOrder: quote.needsPricing,
+                  address: quote.canEdit && order.fulfilmentType === "PICKUP_DELIVERY" ? (order.addressText ?? "") : null,
+                }}
+                quietPrimary={recordPrimary || refundPrimary}
+              />
+            )}
+            {/* Once the order has an active confirmed payment. */}
+            {detail.hasReceipt && (
+              <Button asChild variant="outline">
+                <Link href={getOrderReceiptPath(order.id)}>
+                  <PrinterIcon data-icon="inline-start" aria-hidden />
+                  Print receipt
+                </Link>
+              </Button>
+            )}
           </div>
         )}
       </header>
