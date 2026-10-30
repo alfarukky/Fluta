@@ -1,100 +1,40 @@
-# Current Feature: Customer Reviews (Feature 19b)
+# Current Feature
 
 ## Status
 
-In Progress
+Not Started
 
 ## Spec
 
-- `context/features/19b-customer-reviews-spec.md`
-- Implements from `context/project-overview.md`: §10 Guest tracking link (the review card and token action on `/o/{token}`), §11 Notifications (the `REVIEW_REQUEST` reminder email through the outbox and scheduled job; the `REVIEW_RECEIVED` staff bell notification), §2 Staff accounts and roles (Reviews page for owners and staff, riders refused)
+<!-- The spec file for this feature -->
 
 ## Goals
 
-- Customers can rate a completed order 1–5 stars with an optional comment (≤300 chars, plain text, trimmed, empty → `NULL`), only through the order's private link `/o/{token}`
-- One review per order, final once submitted, no editing or deleting; enforced by a unique rule on the order, even with simultaneous submits
-- Review window: until exactly 7 × 24 hours after `completedAt`; only while the order is Completed (never cancelled); a reopened order hides the card until completed again (window counted from the new completion)
-- A review is permanent even if the order is later reopened or cancelled, and never changes the order's stage, payments, prices, or link
-- Usual link rules apply: expired/unknown link or Deactivated store can't review
-- Review card on the customer's order page: "How was your laundry? Rate your experience with {store name}.", accessible 1–5 star choice, optional comment box ("Tell us more (optional)"), thank-you card with chosen stars after submit; double submits just show the thank-you card
-- Suggestion chips that follow the stars (5/4, 3, 2/1 sets), never prefilled, appended with " · ", not added twice as their own phrase, never cut short or added past 300 chars, keyboard/screen-reader buttons, wording in one place in the code
-- Token-based save action (like Feature 14's): store and order come only from the token's order
-- One `REVIEW_REQUEST` reminder email per order (email only), ~3 hours after completion, only 8:00 AM–8:00 PM in the store's time zone (otherwise waits until 8:00 AM), queued by the existing 5-minute scheduled job through Feature 15's outbox, enforced once per order in the database
-- Reminder only when the customer has an email and the store's email copies setting is on; link issued fresh through Feature 14's link issuing; wording "{Store name}: thank you for your order {order number}. How did we do? Leave a quick rating here: {link}"
-- Last check before sending: already reviewed, reopened, cancelled, or window ended → not sent, marked as no longer needed
-- Reviews page `/reviews` (owners and staff, "Reviews" menu item): average rating and count for last 30 days (30 × 24 h) and all time; reviews newest first with stars, comment, customer's current name, order number (linked), date; star filter; "Load more" 25 at a time
-- Order page shows that order's review near the top
-- Staff notification `REVIEW_RECEIVED` per new review ("Musa rated FF-1024 ★★★★★ (5 out of 5)", never the comment), source: the review, audience: owners and staff, same transaction as the review
-- Riders see no reviews anywhere
-- Privacy: never public; comments escaped; no phone or address alongside a review
-- Store isolation: workspace store from membership only; customer side store from the token's order only; review's store enforced by the `[storeId, orderId]` database link
+<!-- The spec's requirements -->
 
 ## Not in this feature
 
-- Public reviews, star ratings on booking pages, or anything for the marketplace
-- Store replies to reviews, reporting or hiding reviews
-- Editing or deleting reviews
-- SMS review reminders, or more than one reminder
-- Rewards or discounts for leaving a review
+<!-- Out of scope -->
 
 ## Done when
 
-- Unit tests: the chips shown for each star rating, the " · " separator, a chip added once only as its own phrase, a chip never cut short or added past 300 characters, and nothing in the comment before the customer acts
-- Unit tests: the 7-day window, the daytime sending window in the store's time zone (including completion late in the evening waiting until 8:00 AM), and the rating and comment rules
-- Integration tests:
-  - a customer can review a completed order through their link, once only. A second submit, including two at the same moment, creates no second review
-  - reviews are refused for orders that aren't completed, are cancelled, are past 7 days, or have an expired or unknown link
-  - a retried reminder email that is no longer needed (already reviewed, reopened, cancelled, or past the window) isn't sent
-  - a reopened and re-completed order gets no second reminder and no second review
-  - the scheduled job queues exactly one review email per eligible order, only after 3 hours, only in daytime, never twice across repeated runs, and not when the customer already reviewed, has no email, or email copies are off
-  - a new review creates one staff notification
-  - owners and staff see the Reviews page and averages, riders are refused, and a FreshFold user never sees a CleanWave review
-  - reviews never appear on the booking page or any customer-facing page other than the reviewer's own thank-you card
-- `npm run lint`, `npm run typecheck`, `npm run test:unit`, `npm run test:integration`, and `npm run build` all pass
+<!-- The spec's Done when items -->
 
 ## Verify with
 
-- **Playwright MCP**, at ~360px and desktop, light and dark:
-  - complete an order, open its link as the customer, choose 4 stars, tap two suggestions, edit the comment, submit, and see the thank-you card
-  - change the stars after tapping a chip, and confirm the chips change while the comment stays
-  - as staff, see the bell notification, the review on the order page, and the Reviews page with its average
-  - as a rider, confirm there's no Reviews menu item and the page is refused
-- **Next.js DevTools:** no runtime or build errors on `/o/[token]`, `/reviews`, and `/orders/[id]`
-- **Neon MCP** (`development`, read-only): one review per order, and one review email per eligible order
+<!-- How to verify the feature -->
 
 ## References
 
-- @context/project-overview.md (Guest tracking link, Notifications, Staff accounts and roles)
-- @context/features/14-guest-tracking-and-approvals-spec.md (token actions, link rules, link issuing)
-- @context/features/15-notifications-spec.md (outbox, scheduled job, email)
-- @context/features/17b-remove-per-kg-and-staff-notifications-spec.md (the bell)
+<!-- Related context files -->
 
 ## Schema changes
 
-**Ask First** — one migration (proposed name `add_customer_reviews`), needs approval before touching `schema.prisma`:
-
-- New model `Review`: `id`, `storeId`, `orderId` (`@unique`), `rating` (`Int`, CHECK 1–5), `comment` (`String?`, CHECK length ≤ 300), `createdAt`. Relation to `Order` through `[storeId, orderId]` → `Order[storeId, id]`; relation to `Store`. `@@index([storeId, createdAt])`
-- `NotificationType` gains `REVIEW_RECEIVED` (source: the review)
-- One review email per order in the database: **approved** as a partial unique index in the schema — enable the `partialIndexes` preview feature (Prisma 7.10) and declare `@@unique([orderId], where: { template: "REVIEW_REQUEST" })` on `MessageEvent`. CHECK constraints (rating 1–5, comment ≤ 300) hand-added via `--create-only`
-- Approved by the owner on 2026-10-30 (schema and token-code Ask First items)
+<!-- Migrations, or None -->
 
 ## Notes
 
-- Ask First items this feature touches: the schema change above; tracking tokens (the token-based review action and fresh link issuing for the reminder); Neon MCP stays read-only on `development`
-- Reuse Feature 14's token action pattern and link rules, Feature 15's outbox/scheduled job (`REVIEW_REQUEST` template, retries are attempts at the same message), and 17b's `addStaffNotification` inside the review's transaction
-- Test clean-up must delete notifications (and reviews) before orders
-- `/reviews` and its data calls use `requireStoreMember()` with no `allowRider`; add the item once in `nav-items.ts`
-- Time zone logic uses the store's time zone for the 8 AM–8 PM window
-
-### Decisions made while building (2026-10-30)
-
-- Migration `20261030120000_add_customer_reviews`, written with `prisma migrate diff` and applied with `migrate deploy` (`migrate dev` refuses to run in this non-interactive shell). `Review` also has `@@unique([storeId, orderId])`, which Prisma needs for the one-to-one link to its order
-- "No longer needed" (owner's choice): a review reminder stopped by the last check is marked `REPLACED` with `lastError` "No longer needed", and the order page labels a replaced review reminder "No longer needed". No new enum value
-- A newer link (staff Send link, Get tracking link, a price update) also replaces an unsent review reminder (`LINK_MESSAGE_TEMPLATES`), since its link would no longer work
-- Send again is never offered for, and the server refuses, a review reminder: the database allows one per order
-- The cron route queues due reminders first (`queueReviewReminders`), then `runMessageJob` sends them in the same run
-- Saving a review locks the order row (`FOR UPDATE`), so an owner reopening at the same moment either goes first or waits
-- Reviews nav item sits after Payments, for owners and staff
+<!-- Anything to remember while working -->
 
 ## History
 
@@ -277,3 +217,4 @@ In Progress
 - 2026-10-29: Completed Feature 19 — Receipts (staff only) (spec: `context/features/19-receipts-spec.md`). Owners and staff open `/orders/[id]/receipt` from Print receipt on the order page once the order has an active confirmed payment; riders are refused and another store's order is not found. `getReceiptData` does all the work: store-scoped `findReceiptOrder`, then the pure `buildReceipt` with the approved price, active payments and refunds in date order, and the balance from `getBalance`, so it always matches the order page. Wording lives only in `src/lib/receipts.ts`. Agreed rules: amounts through `formatNaira` from stored values (kobo shown when present, rows add up to the stored total); payment and refund dates include the year; pickup orders show the charge ("Free" at ₦0), drop-off orders have no pickup line; a deposit before approval uses the order's own lines (names and quantities only, no total or balance); a pending price update only adds a note. Print layout: black on white in either theme, 72 mm max width, fits 58 mm, 80 mm and A4. No schema changes, no new packages. lint, typecheck, test (972 unit + 540 integration) and build pass. Merged to staging as `feat: add receipts (Feature 19)`.
 - 2026-10-30: Reviewed Feature 19b. All goals and Done when items met, no scope creep. Changes made during review: the order page's review section moved above the "Customer's note" comment it had split from its function; at the owner's request every `break-words` class (76, in 24 files) became Tailwind 4's canonical `wrap-break-word` (same CSS: `overflow-wrap: break-word`). Checks run fresh: lint, typecheck, test:unit (1017) and build pass; integration (39 files, 565 tests) pass, run one file at a time with `--maxWorkers=2` because the full parallel run timed out against Neon. A seed-test failure came from a tracking test store left half-cleaned by a stopped run (an order cancelled without its status event); the three leftover test stores were removed from the test branch and the seed test passes. Development was reseeded (the seed password no longer matched), then FF-1001 to FF-1003 created and completed through the app. Browser (local Playwright script, password read from `.env.local`): customer at 360px light and 1440px dark (4 stars, two chips, comment kept when the stars change, chips change for 4/3/2, thank-you card, reload shows no form), staff at 1440px light and 360px dark (bell lines without the comment, review on the order page, Reviews page 4.7 from 3 reviews, star filter), no horizontal scroll, no console errors. Rider not checked in the browser (no rider in development; covered by `rider-access` and nav-items tests). Next.js DevTools: no errors on `/o/[token]`, `/reviews`, `/orders/[id]`. Neon (development, read-only): one review per order, store matches the order's, comments trimmed, 3 review notifications, both unique indexes and both CHECK constraints present. No reminder email in development (the job isn't run there; covered by `review-reminders` tests). Verdict: ready to complete.
 - 2026-10-30: After review, at the owner's request: the Reviews page's average stars are filled to the exact average (Google's method) instead of rounded to whole stars, so 4.5 shows four and a half stars, not five. `getStarFillTenths` in `src/lib/reviews.ts` (unit tested for 4.5, 4.7, 3.1, 5 and 1); `RatingStars` overlays a filled star clipped to one of eleven fixed width classes (averages have one decimal place, so tenths are exact; no inline style). Single reviews still fill whole stars. Checked in the live Playwright MCP browser in light and dark; the review walkthrough was also repeated there (customer at 360px light, staff bell, order page and Reviews page with the star filter at desktop light and 360px dark).
+- 2026-10-30: Completed Feature 19b — Customer Reviews (spec: `context/features/19b-customer-reviews-spec.md`). Customers rate a completed order 1–5 stars with an optional comment (≤300 characters, trimmed, empty stored as NULL) from `/o/{token}` for exactly 7 × 24 hours after completion; one review per order, final, enforced by a row lock on the order plus the unique `orderId` (simultaneous submits get the thank-you card with the saved stars). Suggestion chips follow the stars (wording only in `src/lib/reviews.ts`). One `REVIEW_REQUEST` email per order, about 3 h after completion and only 8 AM–8 PM store time, queued by the 5-minute job before it sends, with a fresh link; a last check before each attempt marks it "No longer needed" (status REPLACED) once the order is reviewed, reopened, cancelled or past 7 days; it is never offered for Send again. Reviews page `/reviews` (owners and staff; riders refused): 30-day and all-time averages with stars filled to the exact average, star filter, Load more 25 at a time; the order page shows its review; `REVIEW_RECEIVED` bell notification without the comment. Schema change: migration `add_customer_reviews` (`Review` with CHECK constraints, `REVIEW_RECEIVED`, partial unique index for one review email per order via the `partialIndexes` preview feature), approved by the owner. No new packages. Also, as a separate commit, every `break-words` class became `wrap-break-word`. Checks: lint, typecheck, test:unit (1018), build pass; integration passed in the review (39 files, one file at a time) and the 5 files that render the changed components were re-run after it. Merged to staging as `feat: add customer reviews (Feature 19b)` and `chore: use Tailwind's canonical wrap-break-word class`. Development was reseeded and has FF-1001 to FF-1004 (all reviewed) from verification.
