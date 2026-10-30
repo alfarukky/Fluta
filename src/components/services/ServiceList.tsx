@@ -79,14 +79,14 @@ export function ServiceTable({ services, busyIds, onEdit, onToggleActive }: Serv
                   type="button"
                   onClick={() => onEdit(service)}
                   className={cn(
-                    "type-label rounded-sm text-left break-words outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50",
+                    "type-label rounded-sm text-left wrap-break-word outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50",
                     service.isActive ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
                   {service.name}
                 </button>
               </TableCell>
-              <TableCell className="whitespace-normal break-words">
+              <TableCell className="whitespace-normal wrap-break-word">
                 {service.category ?? <span className="text-muted-foreground">—</span>}
               </TableCell>
               <TableCell>{PRICING_TYPE_LABELS[service.pricingType]}</TableCell>
@@ -123,10 +123,10 @@ export function ServiceCards({ services, busyIds, onEdit, onToggleActive }: Serv
         <li key={service.id} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-card">
           <div className="flex items-start justify-between gap-component">
             <div className="flex min-w-0 flex-col gap-0.5">
-              <p className={cn("type-label break-words", service.isActive ? "text-foreground" : "text-muted-foreground")}>
+              <p className={cn("type-label wrap-break-word", service.isActive ? "text-foreground" : "text-muted-foreground")}>
                 {service.name}
               </p>
-              <p className="type-caption break-words text-muted-foreground">
+              <p className="type-caption wrap-break-word text-muted-foreground">
                 {[service.category, PRICING_TYPE_LABELS[service.pricingType]].filter(Boolean).join(" · ")}
               </p>
             </div>

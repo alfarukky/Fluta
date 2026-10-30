@@ -22,8 +22,8 @@ export function Receipt({ receipt }: { receipt: ReceiptData }) {
             <Image src={store.logoUrl} alt="" fill sizes="56px" unoptimized className="object-contain" />
           </span>
         )}
-        <h1 className="type-h3 break-words">{store.name}</h1>
-        {store.address && <p className="type-body-sm break-words">{store.address}</p>}
+        <h1 className="type-h3 wrap-break-word">{store.name}</h1>
+        {store.address && <p className="type-body-sm wrap-break-word">{store.address}</p>}
         {store.phone && <p className="type-body-sm">{store.phone}</p>}
       </header>
 
@@ -34,7 +34,7 @@ export function Receipt({ receipt }: { receipt: ReceiptData }) {
       <div className="type-body-sm flex flex-col gap-0.5">
         <p className="receipt-row">{receipt.orderNumber}</p>
         <p className="receipt-row">{receipt.date}</p>
-        <p className="receipt-row break-words">{receipt.customer}</p>
+        <p className="receipt-row wrap-break-word">{receipt.customer}</p>
         <p className="receipt-row">{receipt.phone}</p>
       </div>
 
@@ -51,7 +51,7 @@ export function Receipt({ receipt }: { receipt: ReceiptData }) {
             <span className="whitespace-nowrap text-right tabular-nums">{receipt.total.amount}</span>
           </div>
         )}
-        {receipt.priceNote && <p className="receipt-row type-body-sm break-words">{receipt.priceNote}</p>}
+        {receipt.priceNote && <p className="receipt-row type-body-sm wrap-break-word">{receipt.priceNote}</p>}
       </section>
 
       <section aria-label={RECEIPT_TEXT.payments} className="flex flex-col gap-2">
@@ -71,7 +71,7 @@ export function Receipt({ receipt }: { receipt: ReceiptData }) {
 function Row({ row }: { row: ReceiptRow }) {
   return (
     <li className="receipt-row type-body-sm grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3">
-      <span className="min-w-0 break-words">
+      <span className="min-w-0 wrap-break-word">
         {row.label}
         {row.detail && <span className="block text-muted-foreground">{row.detail}</span>}
       </span>

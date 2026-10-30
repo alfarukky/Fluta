@@ -44,7 +44,7 @@ export default async function InvitationPage({ params }: PageProps<"/invite/[tok
     >
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 rounded-xl border border-border bg-card p-card">
         <dt className="type-body-sm text-muted-foreground">Store</dt>
-        <dd className="type-label break-words text-foreground">{storeName}</dd>
+        <dd className="type-label wrap-break-word text-foreground">{storeName}</dd>
         <dt className="type-body-sm text-muted-foreground">Role</dt>
         <dd className="type-label text-foreground">{ROLE_LABELS[invitation.role]}</dd>
         <dt className="type-body-sm text-muted-foreground">Email</dt>

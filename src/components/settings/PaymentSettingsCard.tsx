@@ -61,7 +61,7 @@ export function PaymentSettingsCard({ available, banks, storeName, initialAccoun
         ) : account && !changing ? (
           <>
             <div className="flex flex-col gap-1 rounded-lg border border-border p-3">
-              <p className="type-body text-foreground break-words">
+              <p className="type-body text-foreground wrap-break-word">
                 {account.bankName} · {account.accountName} · <span className="whitespace-nowrap">•••• {account.last4}</span>
               </p>
               <p className="type-caption text-muted-foreground">Connected {account.connectedOn}</p>

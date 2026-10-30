@@ -167,7 +167,7 @@ export function BankConnectionForm({ mode, banks, defaultBusinessName = "", onDo
             <CircleCheckIcon className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
             <div className="flex min-w-0 flex-col gap-0.5">
               <p className="type-body text-foreground">
-                Account name: <span className="font-semibold break-words">{resolved.accountName}</span>
+                Account name: <span className="font-semibold wrap-break-word">{resolved.accountName}</span>
               </p>
               <p className="type-body-sm text-muted-foreground">
                 {resolved.bankName}. Is this your account?

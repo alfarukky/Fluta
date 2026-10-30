@@ -102,13 +102,13 @@ function OrderTable({ rows }: { rows: OrderListRow[] }) {
                 >
                   {row.displayNumber}
                 </Link>
-                <span className="type-body-sm break-words text-foreground">{row.customerName}</span>
+                <span className="type-body-sm wrap-break-word text-foreground">{row.customerName}</span>
                 <span className="type-caption text-muted-foreground">{row.created}</span>
               </div>
             </TableCell>
             <TableCell className="min-w-40 align-top whitespace-normal">
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="type-body-sm break-words text-foreground">{row.services || "—"}</span>
+                <span className="type-body-sm wrap-break-word text-foreground">{row.services || "—"}</span>
                 <span className="type-caption text-muted-foreground">{FULFILMENT_TYPE_LABELS[row.fulfilmentType]}</span>
                 {row.pickup && <span className="type-caption text-muted-foreground">Pickup {row.pickup}</span>}
                 {row.isOutOfArea && (
@@ -145,14 +145,14 @@ function OrderCard({ row }: { row: OrderListRow }) {
           >
             {row.displayNumber}
           </Link>
-          <span className="type-body-sm break-words text-foreground">{row.customerName}</span>
+          <span className="type-body-sm wrap-break-word text-foreground">{row.customerName}</span>
           <span className="type-caption text-muted-foreground">{row.created}</span>
         </div>
         <span className="type-label shrink-0 text-right text-foreground">
           {row.total ?? <NoTotal row={row} />}
         </span>
       </div>
-      {row.services && <p className="type-body-sm break-words text-muted-foreground">{row.services}</p>}
+      {row.services && <p className="type-body-sm wrap-break-word text-muted-foreground">{row.services}</p>}
       {row.pickup && <p className="type-caption text-muted-foreground">Pickup {row.pickup}</p>}
       <div className="flex flex-wrap gap-2">
         <StageBadge stage={row.stage} />

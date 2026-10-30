@@ -40,7 +40,7 @@ export function BookingClosed({ store, availability, services }: BookingClosedPr
           <ul className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
             {services.map((service) => (
               <li key={service.id} className="flex items-start justify-between gap-component p-card">
-                <span className="type-label break-words text-card-foreground">{service.name}</span>
+                <span className="type-label wrap-break-word text-card-foreground">{service.name}</span>
                 <span className="type-body-sm shrink-0 text-muted-foreground">{formatServicePrice(service)}</span>
               </li>
             ))}

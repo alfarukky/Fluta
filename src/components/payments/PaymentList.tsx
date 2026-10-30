@@ -111,7 +111,7 @@ function PaymentTable({ rows }: { rows: PaymentListRow[] }) {
                 >
                   {row.displayNumber}
                 </Link>
-                <span className="type-body-sm break-words text-muted-foreground">{row.customerName}</span>
+                <span className="type-body-sm wrap-break-word text-muted-foreground">{row.customerName}</span>
               </div>
             </TableCell>
             <TableCell className="align-top whitespace-normal">
@@ -120,7 +120,7 @@ function PaymentTable({ rows }: { rows: PaymentListRow[] }) {
                 <span className="type-caption text-muted-foreground">{PAYMENT_SOURCE_LABELS[row.source]}</span>
               </div>
             </TableCell>
-            <TableCell className="type-body-sm align-top break-words whitespace-normal">{row.recordedBy}</TableCell>
+            <TableCell className="type-body-sm align-top wrap-break-word whitespace-normal">{row.recordedBy}</TableCell>
             <TableCell className="align-top whitespace-normal">
               <StatusBadge voided={row.voided} />
             </TableCell>
@@ -145,14 +145,14 @@ function PaymentCard({ row }: { row: PaymentListRow }) {
           >
             {row.displayNumber}
           </Link>
-          <span className="type-body-sm break-words text-foreground">{row.customerName}</span>
+          <span className="type-body-sm wrap-break-word text-foreground">{row.customerName}</span>
           <span className={cn("type-caption text-muted-foreground", row.voided && "line-through")}>{row.confirmed}</span>
         </div>
         <span className={cn("type-label shrink-0 text-right text-foreground", row.voided && "line-through")}>
           {row.amount}
         </span>
       </div>
-      <p className="type-body-sm break-words text-muted-foreground">
+      <p className="type-body-sm wrap-break-word text-muted-foreground">
         {PAYMENT_METHOD_LABELS[row.method]} · {PAYMENT_SOURCE_LABELS[row.source]} · {row.recordedBy}
       </p>
       <div>

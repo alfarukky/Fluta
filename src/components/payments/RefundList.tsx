@@ -112,11 +112,11 @@ function RefundTable({ rows }: { rows: RefundListRow[] }) {
                 >
                   {row.displayNumber}
                 </Link>
-                <span className="type-body-sm break-words text-muted-foreground">{row.customerName}</span>
+                <span className="type-body-sm wrap-break-word text-muted-foreground">{row.customerName}</span>
               </div>
             </TableCell>
             <TableCell className="type-body-sm align-top whitespace-normal">{PAYMENT_METHOD_LABELS[row.method]}</TableCell>
-            <TableCell className="type-body-sm align-top break-words whitespace-normal">{row.recordedBy}</TableCell>
+            <TableCell className="type-body-sm align-top wrap-break-word whitespace-normal">{row.recordedBy}</TableCell>
             <TableCell className="align-top whitespace-normal">
               <StatusBadge row={row} />
             </TableCell>
@@ -141,14 +141,14 @@ function RefundCard({ row }: { row: RefundListRow }) {
           >
             {row.displayNumber}
           </Link>
-          <span className="type-body-sm break-words text-foreground">{row.customerName}</span>
+          <span className="type-body-sm wrap-break-word text-foreground">{row.customerName}</span>
           <span className={cn("type-caption text-muted-foreground", row.voided && "line-through")}>{row.paid}</span>
         </div>
         <span className={cn("type-label shrink-0 text-right text-foreground", row.voided && "line-through")}>
           {row.amount}
         </span>
       </div>
-      <p className="type-body-sm break-words text-muted-foreground">
+      <p className="type-body-sm wrap-break-word text-muted-foreground">
         {PAYMENT_METHOD_LABELS[row.method]} · {row.recordedBy}
       </p>
       <div>

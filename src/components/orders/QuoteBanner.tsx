@@ -48,7 +48,7 @@ export function QuoteBanner(props: QuoteBannerProps) {
         <div className="flex items-start gap-3">
           <CircleAlertIcon className="mt-0.5 size-5 shrink-0 text-error" aria-hidden />
           <div className="flex min-w-0 flex-col gap-1">
-            <h2 id="quote-banner-title" className="type-label break-words text-foreground">
+            <h2 id="quote-banner-title" className="type-label wrap-break-word text-foreground">
               Customer declined{revision.customerMessage ? `: ${revision.customerMessage}` : ""}
             </h2>
             <p className="type-body-sm text-muted-foreground">
@@ -86,7 +86,7 @@ export function QuoteBanner(props: QuoteBannerProps) {
         <Amount label="Difference" value={difference === null ? "—" : formatDifference(difference)} />
       </dl>
       {revision.reason && (
-        <p className="type-body-sm break-words text-foreground">
+        <p className="type-body-sm wrap-break-word text-foreground">
           <span className="text-muted-foreground">Reason: </span>
           {revision.reason}
         </p>

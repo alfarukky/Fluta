@@ -134,7 +134,7 @@ export function StaffCards({ rows, busyIds, onAction }: StaffListProps) {
           <li key={`${row.kind}-${row.id}`} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-card">
             <div className="flex items-start justify-between gap-component">
               <div className="flex min-w-0 flex-col gap-0.5">
-                <p className={row.name ? "type-label break-words text-foreground" : "type-label text-muted-foreground"}>
+                <p className={row.name ? "type-label wrap-break-word text-foreground" : "type-label text-muted-foreground"}>
                   {displayName(row)}
                 </p>
                 <p className="type-body-sm break-all text-muted-foreground">{row.email}</p>

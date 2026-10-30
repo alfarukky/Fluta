@@ -78,7 +78,7 @@ export function AreaTable({ areas, busyIds, onEdit, onToggleActive }: AreaListPr
                   type="button"
                   onClick={() => onEdit(area)}
                   className={cn(
-                    "type-label rounded-sm text-left break-words outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50",
+                    "type-label rounded-sm text-left wrap-break-word outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50",
                     area.isActive ? "text-foreground" : "text-muted-foreground",
                   )}
                 >
@@ -115,7 +115,7 @@ export function AreaCards({ areas, busyIds, onEdit, onToggleActive }: AreaListPr
         <li key={area.id} className="flex flex-col gap-3 rounded-xl border border-border bg-card p-card">
           <div className="flex items-start justify-between gap-component">
             <div className="flex min-w-0 flex-col gap-1">
-              <p className={cn("type-label break-words", area.isActive ? "text-foreground" : "text-muted-foreground")}>
+              <p className={cn("type-label wrap-break-word", area.isActive ? "text-foreground" : "text-muted-foreground")}>
                 {area.name}
               </p>
               <div className={cn("type-body-sm", area.isActive ? "text-foreground" : "text-muted-foreground")}>

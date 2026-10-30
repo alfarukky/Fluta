@@ -68,8 +68,8 @@ export function DeliveryCardItem({ card, linkToOrder }: DeliveryCardItemProps) {
           )}
           {pickup?.isOverdue && <Badge variant="error">Overdue</Badge>}
         </div>
-        <p className="type-h3 break-words text-foreground">{card.customerName}</p>
-        <p className="type-body-sm break-words text-foreground">{card.address ?? "No address given"}</p>
+        <p className="type-h3 wrap-break-word text-foreground">{card.customerName}</p>
+        <p className="type-body-sm wrap-break-word text-foreground">{card.address ?? "No address given"}</p>
         <div className="flex flex-wrap items-center gap-2">
           {card.areaName && <span className="type-body-sm text-muted-foreground">{card.areaName}</span>}
           {card.isOutOfArea && <OutOfAreaBadge />}

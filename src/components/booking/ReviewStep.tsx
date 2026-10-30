@@ -32,7 +32,7 @@ export function ReviewStep({ draft, options, review, onEdit, storeName, bookAndP
         <ul className="flex flex-col gap-2">
           {review.lines.map((line) => (
             <li key={line.serviceId} className="flex flex-col">
-              <span className="type-label break-words text-foreground">{line.name}</span>
+              <span className="type-label wrap-break-word text-foreground">{line.name}</span>
               <span className="type-body-sm text-muted-foreground">
                 {describeReviewLine(line, options.services.find((service) => service.id === line.serviceId))}
               </span>
@@ -42,7 +42,7 @@ export function ReviewStep({ draft, options, review, onEdit, storeName, bookAndP
         {note && (
           <div className="flex flex-col gap-0.5 border-t border-border pt-3">
             <span className="type-caption text-muted-foreground">Your note</span>
-            <p className="type-body-sm break-words whitespace-pre-line text-foreground">{note}</p>
+            <p className="type-body-sm wrap-break-word whitespace-pre-line text-foreground">{note}</p>
           </div>
         )}
       </ReviewSection>
@@ -103,7 +103,7 @@ function Detail({ term, children }: { term: string; children: ReactNode }) {
   return (
     <div className="flex flex-col xs:flex-row xs:gap-2">
       <dt className="shrink-0 text-muted-foreground xs:w-36">{term}</dt>
-      <dd className="break-words">{children}</dd>
+      <dd className="wrap-break-word">{children}</dd>
     </div>
   );
 }

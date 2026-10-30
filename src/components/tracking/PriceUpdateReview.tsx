@@ -54,7 +54,7 @@ export function PriceUpdateReview({ token, orderPath, review }: PriceUpdateRevie
         {review.reason && (
           <div className="flex flex-col gap-0.5">
             <span className="type-caption text-muted-foreground">From the store</span>
-            <p className="type-body-sm break-words whitespace-pre-line text-card-foreground">{review.reason}</p>
+            <p className="type-body-sm wrap-break-word whitespace-pre-line text-card-foreground">{review.reason}</p>
           </div>
         )}
       </section>

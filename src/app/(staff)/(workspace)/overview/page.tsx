@@ -51,7 +51,7 @@ export default async function OverviewPage() {
           </Badge>
         </DetailCard>
         <DetailCard label="Store name" hint="Shown to your customers">
-          <p className="type-h3 break-words text-foreground">{store.name}</p>
+          <p className="type-h3 wrap-break-word text-foreground">{store.name}</p>
         </DetailCard>
         <DetailCard label="Store slug" hint="Your store's address on Fluta">
           <p className="type-h3 break-all text-foreground">/{store.slug}</p>

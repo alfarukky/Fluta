@@ -126,7 +126,7 @@ export function ClosedDates({ closedDates: listed, today }: ClosedDatesProps) {
             <li key={closed.id} className="flex items-center justify-between gap-component p-3">
               <div className="flex min-w-0 flex-col gap-0.5">
                 <span className="type-label text-foreground">{formatCalendarDate(closed.date)}</span>
-                {closed.note && <span className="type-caption break-words text-muted-foreground">{closed.note}</span>}
+                {closed.note && <span className="type-caption wrap-break-word text-muted-foreground">{closed.note}</span>}
               </div>
               <Button
                 variant="subtle-destructive"

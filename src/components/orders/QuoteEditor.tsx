@@ -361,7 +361,7 @@ function QuoteLineRow({ idPrefix, line, lineTotal, error, priceError, onChange, 
       <div className="flex items-start justify-between gap-component">
         <div className="flex min-w-0 flex-col gap-1">
           <span className="flex flex-wrap items-center gap-2">
-            <span className="type-label break-words text-foreground">{line.name}</span>
+            <span className="type-label wrap-break-word text-foreground">{line.name}</span>
             {added && <Badge variant="info">Added</Badge>}
           </span>
           <span className="type-caption text-muted-foreground">

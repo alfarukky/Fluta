@@ -190,8 +190,8 @@ export function ItemList({ items }: { items: TrackingItem[] }) {
       {items.map((item) => (
         <li key={item.key} className="flex items-start justify-between gap-component py-2.5 first:pt-0 last:pb-0">
           <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="type-body-sm break-words text-card-foreground">{item.name}</span>
-            {item.detail && <span className="type-caption break-words text-muted-foreground">{item.detail}</span>}
+            <span className="type-body-sm wrap-break-word text-card-foreground">{item.name}</span>
+            {item.detail && <span className="type-caption wrap-break-word text-muted-foreground">{item.detail}</span>}
           </div>
           {item.amount && <span className="type-body-sm shrink-0 text-right text-card-foreground">{item.amount}</span>}
         </li>
@@ -222,7 +222,7 @@ function Detail({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <dt className="type-caption text-muted-foreground">{label}</dt>
-      <dd className="type-body-sm break-words text-card-foreground">{value}</dd>
+      <dd className="type-body-sm wrap-break-word text-card-foreground">{value}</dd>
     </div>
   );
 }

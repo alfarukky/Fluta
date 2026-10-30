@@ -92,7 +92,7 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
         </Button>
         <div className="flex min-w-0 flex-col gap-1">
           <h1 className="type-h1 text-foreground">Order {displayNumber}</h1>
-          <p className="type-body break-words text-foreground">{order.customer.name}</p>
+          <p className="type-body wrap-break-word text-foreground">{order.customer.name}</p>
           <p className="type-body-sm text-muted-foreground">
             Created {formatDateTime(order.createdAt, timeZone)} · {ORDER_CHANNEL_LABELS[order.channel]}
           </p>
@@ -358,7 +358,7 @@ function MessagesSection({ order, canSendAgain, timeZone }: { order: Order; canS
               <li key={message.id} className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="flex min-w-0 flex-col gap-0.5">
-                    <span className="type-body-sm break-words text-foreground">{label}</span>
+                    <span className="type-body-sm wrap-break-word text-foreground">{label}</span>
                     <span className="type-caption text-muted-foreground">
                       {formatDateTime(message.sentAt ?? message.createdAt, timeZone)}
                     </span>
@@ -448,7 +448,7 @@ function formatPickup(date: Date | null, start: string | null, end: string | nul
 function CustomerNoteSection({ note }: { note: string }) {
   return (
     <Section title="Customer's note" badge={<Badge variant="info">From booking</Badge>}>
-      <p className="type-body-sm break-words whitespace-pre-line text-foreground">{note}</p>
+      <p className="type-body-sm wrap-break-word whitespace-pre-line text-foreground">{note}</p>
       <p className="type-caption text-muted-foreground">Not priced. Add anything extra to the quote.</p>
     </Section>
   );
@@ -458,7 +458,7 @@ function InternalNoteSection({ note }: { note: string | null }) {
   return (
     <Section title="Internal note" badge={<Badge variant="neutral">Staff only</Badge>}>
       {note ? (
-        <p className="type-body-sm break-words whitespace-pre-line text-foreground">{note}</p>
+        <p className="type-body-sm wrap-break-word whitespace-pre-line text-foreground">{note}</p>
       ) : (
         <p className="type-body-sm text-muted-foreground">No note.</p>
       )}
@@ -477,14 +477,14 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
             <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-success/10 px-3 py-2.5">
               <BanknoteIcon className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="type-label break-words text-foreground">
+                <span className="type-label wrap-break-word text-foreground">
                   {entry.moment === "RECORDED"
                     ? describePaymentRecorded(entry.payment, staffName(entry.staffUserId))
                     : describePaymentVoided(entry.payment, staffName(entry.staffUserId))}
                 </span>
                 <span className="type-caption text-muted-foreground">{formatDateTime(entry.at, timeZone)}</span>
                 {entry.moment === "VOIDED" && entry.payment.voidReason && (
-                  <span className="type-body-sm break-words text-foreground">Reason: {entry.payment.voidReason}</span>
+                  <span className="type-body-sm wrap-break-word text-foreground">Reason: {entry.payment.voidReason}</span>
                 )}
               </div>
             </li>
@@ -492,14 +492,14 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
             <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-info/10 px-3 py-2.5">
               <BanknoteArrowUpIcon className="mt-0.5 size-4 shrink-0 text-info" aria-hidden />
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="type-label break-words text-foreground">
+                <span className="type-label wrap-break-word text-foreground">
                   {entry.moment === "RECORDED"
                     ? describeRefundRecorded(entry.refund, staffName(entry.staffUserId))
                     : describeRefundVoided(entry.refund, staffName(entry.staffUserId))}
                 </span>
                 <span className="type-caption text-muted-foreground">{formatDateTime(entry.at, timeZone)}</span>
                 {entry.moment === "VOIDED" && entry.refund.voidReason && (
-                  <span className="type-body-sm break-words text-foreground">Reason: {entry.refund.voidReason}</span>
+                  <span className="type-body-sm wrap-break-word text-foreground">Reason: {entry.refund.voidReason}</span>
                 )}
               </div>
             </li>
@@ -509,18 +509,18 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
               <span className="type-caption text-muted-foreground">
                 {formatDateTime(entry.at, timeZone)} · {getActorLabel(entry.event.actorType, staffName(entry.event.actorUserId))}
               </span>
-              {entry.event.note && <span className="type-body-sm break-words text-foreground">{entry.event.note}</span>}
+              {entry.event.note && <span className="type-body-sm wrap-break-word text-foreground">{entry.event.note}</span>}
             </li>
           ) : entry.kind === "pickupReset" ? (
             <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-warning/10 px-3 py-2.5">
               <CalendarClockIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="type-label break-words text-foreground">Pickup time back to the customer&apos;s request</span>
+                <span className="type-label wrap-break-word text-foreground">Pickup time back to the customer&apos;s request</span>
                 <span className="type-caption text-muted-foreground">
                   {formatDateTime(entry.at, timeZone)} · {getActorLabel("STAFF", staffName(entry.reset.actorUserId))}
                 </span>
                 {entry.reset.date && (
-                  <span className="type-body-sm break-words text-foreground">
+                  <span className="type-body-sm wrap-break-word text-foreground">
                     Cleared: {formatPickup(fromDateKey(entry.reset.date), entry.reset.windowStart, entry.reset.windowEnd)}
                     {entry.reset.isOutsideSchedule && " (outside normal schedule)"}
                   </span>
@@ -531,7 +531,7 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
             <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-warning/10 px-3 py-2.5">
               <CalendarClockIcon className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="type-label break-words text-foreground">
+                <span className="type-label wrap-break-word text-foreground">
                   Pickup time suggested: {formatCalendarDate(entry.suggestion.date)} ·{" "}
                   {formatPickupWindow({ start: entry.suggestion.windowStart, end: entry.suggestion.windowEnd })}
                 </span>
@@ -544,7 +544,7 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
                   </Badge>
                 )}
                 {entry.suggestion.note && (
-                  <span className="type-body-sm break-words text-foreground">Note: {entry.suggestion.note}</span>
+                  <span className="type-body-sm wrap-break-word text-foreground">Note: {entry.suggestion.note}</span>
                 )}
               </div>
             </li>
@@ -553,7 +553,7 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
             <li key={entry.key} className="my-1 flex gap-2.5 rounded-md bg-info/10 px-3 py-2.5">
               <RevisionIcon moment={entry.moment} />
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="type-label break-words text-foreground">
+                <span className="type-label wrap-break-word text-foreground">
                   {describeRevisionMoment(entry, staffName(entry.staffUserId))}
                 </span>
                 <span className="type-caption text-muted-foreground">
@@ -561,7 +561,7 @@ function TimelineSection({ detail, timeZone }: { detail: OrderDetailData; timeZo
                   {entry.moment === "ISSUED" && ` · ${getActorLabel("STAFF", staffName(entry.staffUserId))}`}
                 </span>
                 {entry.moment === "ISSUED" && entry.reason && (
-                  <span className="type-body-sm break-words text-foreground">Reason: {entry.reason}</span>
+                  <span className="type-body-sm wrap-break-word text-foreground">Reason: {entry.reason}</span>
                 )}
               </div>
             </li>
@@ -724,11 +724,11 @@ function PaymentRow({ payment, staffName, timeZone, voidable, balanceKobo }: Pay
     <li className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0">
       <div className={cn("flex items-start justify-between gap-component", voided && "line-through")}>
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="type-body-sm break-words text-foreground">
+          <span className="type-body-sm wrap-break-word text-foreground">
             {PAYMENT_METHOD_LABELS[payment.method]} · {PAYMENT_SOURCE_LABELS[payment.source]}
             {payment.replacesPaymentId && " · Correction"}
           </span>
-          <span className="type-caption break-words text-muted-foreground">
+          <span className="type-caption wrap-break-word text-muted-foreground">
             {[status, formatDateTime(payment.confirmedAt ?? payment.createdAt, timeZone), recordedBy, reference]
               .filter(Boolean)
               .join(" · ")}
@@ -744,12 +744,12 @@ function PaymentRow({ payment, staffName, timeZone, voidable, balanceKobo }: Pay
           </p>
         </div>
       )}
-      {payment.note && <p className="type-caption break-words text-muted-foreground">Note: {payment.note}</p>}
+      {payment.note && <p className="type-caption wrap-break-word text-muted-foreground">Note: {payment.note}</p>}
       {payment.source === "ONLINE" && payment.status === "CONFIRMED" && (payment.flutaFeeAmount ?? 0) > 0 && (
         <p className="type-caption text-muted-foreground">{FLUTA_FEE_NOT_REFUNDED}.</p>
       )}
       {voided && (
-        <p className="type-caption break-words text-muted-foreground">
+        <p className="type-caption wrap-break-word text-muted-foreground">
           Voided by {getActorLabel("STAFF", staffName(payment.voidedByUserId))}
           {payment.voidedAt && `, ${formatDateTime(payment.voidedAt, timeZone)}`}
           {payment.voidReason && `. Reason: ${payment.voidReason}`}
@@ -794,17 +794,17 @@ function RefundRow({ refund, staffName, timeZone, voidable, balanceKobo }: Refun
     <li className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0">
       <div className={cn("flex items-start justify-between gap-component", voided && "line-through")}>
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="type-body-sm break-words text-foreground">
+          <span className="type-body-sm wrap-break-word text-foreground">
             Refund · {PAYMENT_METHOD_LABELS[refund.method]}
             {refund.replacesRefundId && " · Correction"}
           </span>
-          <span className="type-caption break-words text-muted-foreground">{detail.filter(Boolean).join(" · ")}</span>
+          <span className="type-caption wrap-break-word text-muted-foreground">{detail.filter(Boolean).join(" · ")}</span>
         </div>
         <span className="type-body-sm shrink-0 text-right text-foreground">{formatNaira(-refund.amount)}</span>
       </div>
-      <p className="type-caption break-words text-muted-foreground">Note: {refund.note}</p>
+      <p className="type-caption wrap-break-word text-muted-foreground">Note: {refund.note}</p>
       {voided && (
-        <p className="type-caption break-words text-muted-foreground">
+        <p className="type-caption wrap-break-word text-muted-foreground">
           Voided by {getActorLabel("STAFF", staffName(refund.voidedByUserId))}
           {refund.voidedAt && `, ${formatDateTime(refund.voidedAt, timeZone)}`}
           {refund.voidReason && `. Reason: ${refund.voidReason}`}
@@ -849,7 +849,7 @@ function Detail({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
       <span className="type-caption text-muted-foreground">{label}</span>
-      <span className="type-body-sm break-words text-foreground">{value}</span>
+      <span className="type-body-sm wrap-break-word text-foreground">{value}</span>
     </div>
   );
 }
@@ -865,8 +865,8 @@ function LineRow({ label, detail, amount, voided = false }: LineRowProps) {
   return (
     <li className={cn("flex items-start justify-between gap-component py-2.5 first:pt-0 last:pb-0", voided && "line-through")}>
       <div className="flex min-w-0 flex-col gap-0.5">
-        <span className="type-body-sm break-words text-foreground">{label}</span>
-        {detail && <span className="type-caption break-words text-muted-foreground">{detail}</span>}
+        <span className="type-body-sm wrap-break-word text-foreground">{label}</span>
+        {detail && <span className="type-caption wrap-break-word text-muted-foreground">{detail}</span>}
       </div>
       <span className="type-body-sm shrink-0 text-right text-foreground">{amount}</span>
     </li>

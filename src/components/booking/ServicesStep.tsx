@@ -63,7 +63,7 @@ export function ServicesStep({ services, lines, note, errors, onChange, onNoteCh
                 <li key={service.id} className="flex flex-col gap-component rounded-xl border border-border bg-card p-card">
                   <div className="flex items-start justify-between gap-component">
                     <div className="flex min-w-0 flex-col gap-0.5">
-                      <span className="type-label break-words text-card-foreground">{service.name}</span>
+                      <span className="type-label wrap-break-word text-card-foreground">{service.name}</span>
                       <span className="type-body-sm text-muted-foreground">{formatServicePrice(service)}</span>
                     </div>
                     {line ? (

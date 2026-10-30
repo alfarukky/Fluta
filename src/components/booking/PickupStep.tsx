@@ -64,7 +64,7 @@ export function PickupStep({ options, draft, errors, onChange }: PickupStepProps
             <Label key={area.id} htmlFor={`area-${area.id}`} className={CHOICE_CLASS}>
               <RadioGroupItem id={`area-${area.id}`} value={area.id} />
               <span className="flex min-w-0 flex-1 flex-col gap-0.5 xs:flex-row xs:items-baseline xs:justify-between xs:gap-component">
-                <span className="type-label break-words text-card-foreground">{area.name}</span>
+                <span className="type-label wrap-break-word text-card-foreground">{area.name}</span>
                 <span className="type-body-sm font-normal text-muted-foreground">
                   Pickup & delivery: {formatAreaChargeForCustomer(area)}
                 </span>
@@ -75,7 +75,7 @@ export function PickupStep({ options, draft, errors, onChange }: PickupStepProps
             <Label htmlFor="area-unlisted" className={CHOICE_CLASS}>
               <RadioGroupItem id="area-unlisted" value={UNLISTED_AREA_ID} />
               <span className="flex min-w-0 flex-1 flex-col gap-0.5 xs:flex-row xs:items-baseline xs:justify-between xs:gap-component">
-                <span className="type-label break-words text-card-foreground">My area isn&apos;t listed</span>
+                <span className="type-label wrap-break-word text-card-foreground">My area isn&apos;t listed</span>
                 <span className="type-body-sm font-normal text-muted-foreground">
                   Pickup & delivery: {formatAreaChargeForCustomer({ chargeType: "FIXED", fixedCharge: options.defaultFee })}
                 </span>
