@@ -32,14 +32,17 @@ export async function openNotificationBell(member: BellMember): Promise<Notifica
   const opened = await openNotifications(member.storeId, member.membershipId, getVisibleAudiences(member.role));
   if (!opened) return null;
   const unreadAfter = getUnreadAfter(opened.previouslySeenAt, opened.seenAt);
-  return opened.items.map((item) => ({
-    id: item.id,
-    text: describeNotification(item.type, item.order.customer.name),
-    orderNumber: formatOrderNumber(item.order.store, item.order.orderNumber),
-    time: formatDateTime(item.createdAt, member.timeZone),
-    href: getOrderPath(item.orderId),
-    isNew: item.createdAt > unreadAfter,
-  }));
+  return opened.items.map((item) => {
+    const orderNumber = formatOrderNumber(item.order.store, item.order.orderNumber);
+    return {
+      id: item.id,
+      text: describeNotification(item.type, item.order.customer.name, { orderNumber, rating: item.order.review?.rating ?? null }),
+      orderNumber,
+      time: formatDateTime(item.createdAt, member.timeZone),
+      href: getOrderPath(item.orderId),
+      isNew: item.createdAt > unreadAfter,
+    };
+  });
 }
 
 // The scheduled job: deletes notifications older than 30 days. Returns how many.

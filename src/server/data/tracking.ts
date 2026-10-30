@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { Prisma } from "@/generated/prisma/client";
-import { LINK_TEMPLATES } from "@/lib/messages";
+import { LINK_MESSAGE_TEMPLATES } from "@/lib/messages";
 
 import { getPrisma } from "./client";
 import { ORDER_AUDIT_TARGET } from "./quotes";
@@ -98,6 +98,9 @@ const TRACKED_ORDER_SELECT = {
   payments: { select: { amount: true, status: true, voidedAt: true, source: true, createdAt: true, paystackReference: true } },
   refunds: { select: { amount: true, voidedAt: true } },
   statusEvents: { select: { id: true, fromStage: true, toStage: true, createdAt: true } },
+  // Feature 19b: only whether there is a review, and its stars for the
+  // thank-you card. Never its comment.
+  review: { select: { rating: true } },
 } as const satisfies Prisma.OrderSelect;
 
 export type TrackedOrderRecord = Prisma.OrderGetPayload<{ select: typeof TRACKED_ORDER_SELECT }>;
@@ -215,8 +218,9 @@ export async function storeNewTrackingToken(
   }
 }
 
-// The order's unsent SMS and email still holding an older link become
-// REPLACED, with their body cleared. Final: never sent or claimed again.
+// The order's unsent SMS and email still holding an older link (the two link
+// messages and the review reminder) become REPLACED, with their body cleared.
+// Final: never sent or claimed again.
 export async function replaceUnsentLinkMessages(
   tx: Prisma.TransactionClient,
   storeId: string,
@@ -227,7 +231,7 @@ export async function replaceUnsentLinkMessages(
       storeId,
       ...("id" in order ? { orderId: order.id } : { order: { clientRequestId: order.clientRequestId } }),
       channel: { in: ["SMS", "EMAIL"] },
-      template: { in: [...LINK_TEMPLATES] },
+      template: { in: [...LINK_MESSAGE_TEMPLATES] },
       status: { in: ["QUEUED", "SENDING", "FAILED"] },
       body: { not: null },
     },

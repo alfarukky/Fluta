@@ -559,6 +559,8 @@ export async function findOrderDetail(storeId: string, orderId: string) {
         select: { id: true, channel: true, template: true, status: true, attempts: true, createdAt: true, sentAt: true },
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       },
+      // Feature 19b: the customer's review, if they left one.
+      review: { select: { rating: true, comment: true, createdAt: true } },
     },
   });
 }

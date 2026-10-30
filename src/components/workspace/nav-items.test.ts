@@ -10,6 +10,7 @@ describe("getNavItems", () => {
       "Deliveries",
       "Customers",
       "Payments",
+      "Reviews",
       "Services",
       "Fulfilment",
       "Reports",
@@ -24,6 +25,7 @@ describe("getNavItems", () => {
       "Deliveries",
       "Customers",
       "Payments",
+      "Reviews",
     ]);
   });
 

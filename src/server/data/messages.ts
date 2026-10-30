@@ -251,6 +251,7 @@ export async function recordWhatsAppOpened(
 export interface ClaimedMessage {
   id: string;
   storeId: string;
+  orderId: string;
   channel: MessageChannel;
   template: string;
   recipient: string;
@@ -295,6 +296,7 @@ export async function claimMessage(storeId: string, id: string, now: Date): Prom
     select: {
       id: true,
       storeId: true,
+      orderId: true,
       channel: true,
       template: true,
       recipient: true,
@@ -310,6 +312,7 @@ export async function claimMessage(storeId: string, id: string, now: Date): Prom
   return {
     id: message.id,
     storeId: message.storeId,
+    orderId: message.orderId,
     channel: message.channel,
     template: message.template,
     recipient: message.recipient,
@@ -335,6 +338,15 @@ export async function markMessageFailed(storeId: string, id: string, error: stri
   await getPrisma().messageEvent.updateMany({
     where: { storeId, id, status: "SENDING" },
     data: { status: "FAILED", lastError: error, ...(final && { body: null }) },
+  });
+}
+
+// A claimed review reminder that the last check found no longer needed
+// (Feature 19b): never sent, and final, like a replaced message. Its body goes.
+export async function markMessageNotNeeded(storeId: string, id: string): Promise<void> {
+  await getPrisma().messageEvent.updateMany({
+    where: { storeId, id, status: "SENDING" },
+    data: { status: "REPLACED", lastError: "No longer needed", body: null },
   });
 }
 

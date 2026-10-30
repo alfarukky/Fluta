@@ -1,6 +1,7 @@
 import type { CustomerTimelineState } from "@/lib/tracking";
 
 import type { PublicStore } from "./booking";
+import type { TrackingReview } from "./reviews";
 
 // What the tracking page (/o/{token}) shows, built on the server in plain
 // words. Every amount and date is already formatted, and nothing here is
@@ -90,6 +91,9 @@ export interface TrackingView {
   pickupSuggestion: PickupSuggestionReview | null;
   // Only when the order can be paid online now (canPayOnline).
   payNow: PayNowOffer | null;
+  // Feature 19b: the review form while the customer can still review (a
+  // completed order, within 7 days), or the thank-you card once they have.
+  review: TrackingReview | null;
 }
 
 export type TrackingPage =

@@ -1,7 +1,7 @@
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { isCronAuthorized } from "@/server/auth/cron";
-import { runMessageJob } from "@/server/services/notifications";
+import { queueReviewReminders, runMessageJob } from "@/server/services/notifications";
 import { reconcilePendingPayments, type ReconcileResult } from "@/server/services/online-payments";
 import { clearOldNotifications } from "@/server/services/staff-notifications";
 
@@ -10,7 +10,8 @@ import { clearOldNotifications } from "@/server/services/staff-notifications";
 // to 3 attempts each), clears booking IP hashes older than 24 hours, and
 // clears shared locations from orders closed more than 30 days ago, and
 // checks online payments still pending with Paystack (plan 7.1), and deletes
-// staff notifications older than 30 days.
+// staff notifications older than 30 days. First it queues the review
+// reminders now due (Feature 19b), so this same run sends them.
 // Anything else gets a bare 401 before any work is done.
 
 export async function GET(request: Request): Promise<Response> {
@@ -27,13 +28,27 @@ async function run(request: Request): Promise<Response> {
   }
   try {
     const now = new Date();
+    const reviewReminders = await queueRemindersSafely(now);
     const result = await runMessageJob(now);
     const payments = await reconcileSafely(now);
     const notificationsDeleted = await clearNotificationsSafely(now);
-    return Response.json({ ok: true, ...result, payments, notificationsDeleted }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json(
+      { ok: true, ...result, reviewReminders, payments, notificationsDeleted },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     logger.error("[cron] the message job failed:", error instanceof Error ? error.name : "unknown error");
     return Response.json({ ok: false }, { status: 500, headers: { "Cache-Control": "no-store" } });
+  }
+}
+
+// A problem queuing review reminders never stops the messages already due.
+async function queueRemindersSafely(now: Date): Promise<number | null> {
+  try {
+    return await queueReviewReminders(now);
+  } catch (error) {
+    logger.error("[cron] queuing review reminders failed:", error instanceof Error ? error.name : "unknown error");
+    return null;
   }
 }
 

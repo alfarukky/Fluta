@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { FulfilmentType, MessageStatus, OrderStage } from "@/generated/prisma/enums";
-import { MAX_MESSAGE_ATTEMPTS, MESSAGE_TEMPLATES, type CustomerMessageTemplate } from "@/lib/messages";
+import { MAX_MESSAGE_ATTEMPTS, MESSAGE_TEMPLATES, type CustomerMessageTemplate, type EmailMessageTemplate } from "@/lib/messages";
 import { isNigerianNumber } from "@/lib/phone";
 import { getLocalDateKey, startOfLocalDay } from "@/lib/time";
 
@@ -73,6 +73,9 @@ function greeting(name: string | null): string {
   return name ? `Hi ${name}` : "Hi there";
 }
 
+// An email's wording: the same, for the four messages or the review reminder.
+export type EmailWording = Omit<MessageWording, "template"> & { template: EmailMessageTemplate };
+
 // The SMS: the store's name first, a greeting, what happened, and either
 // the link with a safety line or the store's phone. Plain characters only
 // (no emoji), so each part is a standard SMS.
@@ -132,7 +135,7 @@ export interface EmailContent {
 
 // The email copy: warmer and roomier than the SMS, with the same facts. Any
 // characters are fine here (the layout escapes them), but no emoji.
-export function composeEmail(input: MessageWording): EmailContent {
+export function composeEmail(input: EmailWording): EmailContent {
   const { storeName: store, orderNumber: order } = input;
   const hi = `${greeting(getGreetingName(input.customerName))},`;
   const thanks = `Thank you for choosing ${store}.`;
@@ -186,6 +189,14 @@ export function composeEmail(input: MessageWording): EmailContent {
         paragraphs: [hi, `Your order ${order} is on its way to you.`, `${thanks} See you soon!`],
         button: null,
         smallPrint: smallPrint(call),
+      };
+    case MESSAGE_TEMPLATES.reviewRequest:
+      // Feature 19b: sent once, about 3 hours after the order is completed.
+      return {
+        subject: `${store}: thank you for your order ${order}`,
+        paragraphs: [hi, `Thank you for your order ${order}. How did we do?`, "Leave a quick rating with the button below. It only takes a moment."],
+        button: link("Leave a rating"),
+        smallPrint: smallPrint(safety, call),
       };
   }
 }

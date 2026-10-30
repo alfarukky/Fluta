@@ -64,4 +64,14 @@ describe("describeNotification", () => {
     expect(describeNotification("PAYMENT_RECEIVED", "Chidi Okeke")).toBe("Online payment received from Chidi Okeke");
     expect(describeNotification("PAYMENT_NEEDS_REVIEW", "Chidi Okeke")).toBe("An online payment from Chidi Okeke needs review");
   });
+
+  it("shows a review's order and stars, never its comment", () => {
+    expect(describeNotification("REVIEW_RECEIVED", "Musa", { orderNumber: "FF-1024", rating: 5 })).toBe(
+      "Musa rated FF-1024 ★★★★★ (5 out of 5)",
+    );
+    expect(describeNotification("REVIEW_RECEIVED", "Musa", { orderNumber: "FF-1024", rating: 2 })).toBe(
+      "Musa rated FF-1024 ★★☆☆☆ (2 out of 5)",
+    );
+    expect(describeNotification("REVIEW_RECEIVED", "Musa", { orderNumber: "FF-1024", rating: null })).toBe("Musa rated FF-1024");
+  });
 });

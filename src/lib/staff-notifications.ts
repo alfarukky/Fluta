@@ -1,5 +1,7 @@
 import type { NotificationAudience, NotificationType, StoreRole } from "@/generated/prisma/enums";
 
+import { describeRating, formatStars } from "./reviews";
+
 // The staff bell (Feature 17b). Rules shared by the server and the bell.
 
 // Notifications older than this are never unread or listed, and the
@@ -48,9 +50,16 @@ export function describeUnread(count: number): string {
   return `Notifications, ${count > 9 ? "more than 9" : count} unread`;
 }
 
+// What a review notification also shows: the order number and the stars.
+// Never the comment.
+export interface ReviewNotificationDetails {
+  orderNumber: string;
+  rating: number | null;
+}
+
 // The short line for one notification. Built when shown: only the customer's
 // name, never a phone number or address.
-export function describeNotification(type: NotificationType, customerName: string): string {
+export function describeNotification(type: NotificationType, customerName: string, review?: ReviewNotificationDetails): string {
   switch (type) {
     case "ONLINE_BOOKING":
       return `New online booking from ${customerName}`;
@@ -64,5 +73,11 @@ export function describeNotification(type: NotificationType, customerName: strin
       return `Online payment received from ${customerName}`;
     case "PAYMENT_NEEDS_REVIEW":
       return `An online payment from ${customerName} needs review`;
+    case "REVIEW_RECEIVED": {
+      // "Musa rated FF-1024 ★★★★★ (5 out of 5)"
+      const order = review?.orderNumber ? ` ${review.orderNumber}` : " their order";
+      const rating = review?.rating ?? null;
+      return rating === null ? `${customerName} rated${order}` : `${customerName} rated${order} ${formatStars(rating)} (${describeRating(rating)})`;
+    }
   }
 }

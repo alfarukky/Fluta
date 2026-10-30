@@ -9,6 +9,7 @@ import type { TrackingItem, TrackingTimelineStep, TrackingView } from "@/types/t
 
 import { ConfirmingPayment } from "./ConfirmingPayment";
 import { PayNowCard } from "./PayNowCard";
+import { ReviewCard } from "./ReviewCard";
 
 interface TrackingOrderProps {
   view: TrackingView;
@@ -31,10 +32,12 @@ export function TrackingOrder({ view, basePath, token, confirmingReference = nul
         <h2 id="order-heading" className="type-h1 text-foreground">
           {view.stageLabel}
         </h2>
-        {view.closed && <p className="type-body-sm text-muted-foreground">This page is view only.</p>}
+        {view.closed && view.review?.kind !== "form" && <p className="type-body-sm text-muted-foreground">This page is view only.</p>}
       </section>
 
       {!view.closed && <ActionCard view={view} basePath={basePath} />}
+
+      {view.review && <ReviewCard token={token} review={view.review} />}
 
       {confirmingReference ? (
         <ConfirmingPayment token={token} reference={confirmingReference} orderPath={basePath} />

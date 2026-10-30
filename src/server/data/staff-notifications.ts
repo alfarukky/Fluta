@@ -17,7 +17,7 @@ export interface StaffNotificationEvent {
   type: NotificationType;
   // The record the event created or changed: the order (new booking), the
   // quote revision (approved or declined), the status event (pickup
-  // accepted), or the payment (received, needs review).
+  // accepted), the payment (received, needs review), or the review.
   sourceId: string;
 }
 
@@ -50,7 +50,8 @@ export interface OpenedNotification {
   type: NotificationType;
   orderId: string;
   createdAt: Date;
-  order: { orderNumber: number; customer: { name: string }; store: { orderPrefix: string } };
+  // The order's review, for a review notification's stars (never its comment).
+  order: { orderNumber: number; customer: { name: string }; store: { orderPrefix: string }; review: { rating: number } | null };
 }
 
 export interface OpenedNotifications {
@@ -93,7 +94,14 @@ export async function openNotifications(
               type: true,
               orderId: true,
               createdAt: true,
-              order: { select: { orderNumber: true, customer: { select: { name: true } }, store: { select: { orderPrefix: true } } } },
+              order: {
+                select: {
+                  orderNumber: true,
+                  customer: { select: { name: true } },
+                  store: { select: { orderPrefix: true } },
+                  review: { select: { rating: true } },
+                },
+              },
             },
             orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             take: NOTIFICATION_LIST_SIZE,

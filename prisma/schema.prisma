@@ -1,7 +1,9 @@
 // Prisma 7: the connection URL lives in prisma7.config.ts, not here.
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  // Partial unique indexes: one review email per order (MessageEvent).
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -133,6 +135,7 @@ enum NotificationType {
   PICKUP_ACCEPTED // source: the status event for the move to Pickup scheduled
   PAYMENT_RECEIVED // source: the payment
   PAYMENT_NEEDS_REVIEW // source: the payment
+  REVIEW_RECEIVED // source: the review
 }
 
 enum NotificationAudience {
@@ -311,6 +314,7 @@ model Store {
   messageEvents MessageEvent[]
   auditEvents   AuditEvent[]
   notifications Notification[]
+  reviews       Review[]
   subscription  Subscription?
 }
 
@@ -439,6 +443,7 @@ model Order {
   statusEvents   StatusEvent[]
   messageEvents  MessageEvent[]
   notifications  Notification[]
+  review         Review?
 
   @@unique([storeId, orderNumber])
   @@unique([storeId, clientRequestId])
@@ -616,8 +621,31 @@ model MessageEvent {
   store Store @relation(fields: [storeId], references: [id])
   order Order @relation(fields: [storeId, orderId], references: [storeId, id])
 
+  // Feature 19b: one review reminder per order, ever (reopening and completing
+  // again never sends a second, and a repeated job run can't queue one).
+  @@unique([orderId], where: { template: "REVIEW_REQUEST" }, map: "MessageEvent_orderId_review_request_key")
   @@index([orderId])
   @@index([status, createdAt]) // retry job scans QUEUED / FAILED
+}
+
+// Feature 19b: a customer's rating of a completed order, left through the
+// order's private link. Private to the store, one per order, final once saved
+// (never edited or deleted). The customer's name is read from the order, never
+// copied here. CHECKs: rating 1 to 5, comment 1 to 300 characters (empty is NULL).
+model Review {
+  id        String   @id @default(cuid())
+  storeId   String
+  orderId   String   @unique
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+
+  store Store @relation(fields: [storeId], references: [id])
+  // Through [storeId, orderId]: the database refuses an order from another store.
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id])
+
+  @@unique([storeId, orderId]) // the one-to-one link to its order
+  @@index([storeId, createdAt])
 }
 
 model AuditEvent {

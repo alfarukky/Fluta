@@ -12,6 +12,7 @@ import {
 import { PoweredByFluta } from "@/components/brand/PoweredByFluta";
 import { ConfirmingPayment } from "@/components/tracking/ConfirmingPayment";
 import { PayNowCard } from "@/components/tracking/PayNowCard";
+import { ReviewCard } from "@/components/tracking/ReviewCard";
 import { getPaymentWarning } from "@/lib/online-payment";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -411,6 +412,17 @@ function OnlinePaymentPreview() {
   );
 }
 
+// The review card after a completed order, and its thank-you state. Preview
+// only: Submit never calls the server.
+function ReviewPreview() {
+  return (
+    <div className="grid items-start gap-grid md:grid-cols-2">
+      <ReviewCard token="" review={{ kind: "form", storeName: "FreshFold Laundry" }} preview />
+      <ReviewCard token="" review={{ kind: "thanks", rating: 4 }} preview />
+    </div>
+  );
+}
+
 export function CompositionsSection() {
   return (
     <ShowcaseSection
@@ -440,6 +452,9 @@ export function CompositionsSection() {
         </div>
         <ShowcaseGroup title="Online payment (tracking page)">
           <OnlinePaymentPreview />
+        </ShowcaseGroup>
+        <ShowcaseGroup title="Customer review (tracking page)">
+          <ReviewPreview />
         </ShowcaseGroup>
       </div>
     </ShowcaseSection>

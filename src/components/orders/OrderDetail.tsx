@@ -12,11 +12,18 @@ import {
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { RatingStars } from "@/components/reviews/RatingStars";
 import { OpenInMapsButton } from "@/components/shared/OpenInMapsButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { describeMessageStatus, getMessageTemplateLabel, isFinallyFailed, MESSAGE_CHANNEL_LABELS } from "@/lib/messages";
+import {
+  describeMessageStatus,
+  getMessageTemplateLabel,
+  isCustomerMessageTemplate,
+  isFinallyFailed,
+  MESSAGE_CHANNEL_LABELS,
+} from "@/lib/messages";
 import type { Coordinates } from "@/lib/location";
 import { formatNaira } from "@/lib/money";
 import { isMismatchCode } from "@/lib/online-payment";
@@ -42,6 +49,7 @@ import {
 import { formatPickupWindow } from "@/lib/pickup-schedule";
 import { fromStoredQuantity } from "@/lib/quantity";
 import { describeRevisionMoment } from "@/lib/quotes";
+import { describeRating } from "@/lib/reviews";
 import { ADJUSTMENT_KIND_LABELS } from "@/schemas/orders";
 import { formatCalendarDate, formatDateTime, fromDateKey, toDateKey } from "@/lib/time";
 import type { OrderDetail as OrderDetailData } from "@/server/services/orders";
@@ -172,6 +180,8 @@ export function OrderDetail({ detail, canChangeStage, timeZone, pickupOptions }:
           options={pickupOptions}
         />
       )}
+
+      {order.review && <ReviewSection review={order.review} timeZone={timeZone} />}
 
       <div className="grid grid-cols-1 items-start gap-grid lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <div className="flex min-w-0 flex-col gap-grid">
@@ -365,7 +375,8 @@ function MessagesSection({ order, canSendAgain, timeZone }: { order: Order; canS
                   </div>
                   <Badge variant={status.tone}>{status.label}</Badge>
                 </div>
-                {canSendAgain && message.channel !== "WHATSAPP_MANUAL" && isFinallyFailed(message) && (
+                {/* Never for the review reminder: it is sent once only. */}
+                {canSendAgain && isCustomerMessageTemplate(message.template) && isFinallyFailed(message) && (
                   <div>
                     <SendAgainButton orderId={order.id} messageId={message.id} label={label} />
                   </div>
@@ -440,6 +451,24 @@ function formatPickup(date: Date | null, start: string | null, end: string | nul
   if (!date) return "—";
   const day = formatCalendarDate(toDateKey(date));
   return start && end ? `${day} · ${formatPickupWindow({ start, end })}` : day;
+}
+
+// The customer's review (Feature 19b): private to the store. The comment is
+// plain text, shown as typed (React escapes it).
+function ReviewSection({ review, timeZone }: { review: NonNullable<Order["review"]>; timeZone: string }) {
+  return (
+    <Section title="Customer review">
+      <div className="flex flex-col gap-1">
+        <RatingStars rating={review.rating} label={describeRating(review.rating)} />
+        <p className="type-caption text-muted-foreground">{formatDateTime(review.createdAt, timeZone)}</p>
+      </div>
+      {review.comment ? (
+        <p className="type-body-sm wrap-break-word whitespace-pre-line text-foreground">{review.comment}</p>
+      ) : (
+        <p className="type-body-sm text-muted-foreground">No comment.</p>
+      )}
+    </Section>
+  );
 }
 
 // What the customer wrote under "Anything else?" when booking online. Plain

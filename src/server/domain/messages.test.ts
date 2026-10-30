@@ -172,6 +172,19 @@ describe("composeEmail", () => {
     }
   });
 
+  it("writes the review reminder with the store's name first and a rating link", () => {
+    const email = composeEmail({ ...BASE, template: "REVIEW_REQUEST" });
+    expect(email.subject).toBe("FreshFold Laundry: thank you for your order FF-1024");
+    expect(email.paragraphs).toEqual([
+      "Hi Aisha,",
+      "Thank you for your order FF-1024. How did we do?",
+      "Leave a quick rating with the button below. It only takes a moment.",
+    ]);
+    expect(email.button).toEqual({ label: "Leave a rating", url: LINK });
+    expect(email.smallPrint[0]).toBe("Real links from FreshFold Laundry always start with fluta.app.");
+    expect(emailText(email)).toContain(`Leave a rating: ${LINK}`);
+  });
+
   it("keeps the customer's own spelling and uses no emoji", () => {
     const email = composeEmail(wording("LINK_CREATED", { customerName: "Zoë Adé" }));
     expect(email.paragraphs[0]).toBe("Hi Zoë,");

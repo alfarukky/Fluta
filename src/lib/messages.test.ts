@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeMessageStatus, isFinallyFailed, isLinkTemplate } from "./messages";
+import { describeMessageStatus, getMessageTemplateLabel, isCustomerMessageTemplate, isFinallyFailed, isLinkTemplate } from "./messages";
 
 describe("describeMessageStatus", () => {
   it("follows the channel for sent and finally failed messages", () => {
@@ -17,6 +17,15 @@ describe("describeMessageStatus", () => {
   it("shows replaced and opened messages in plain words", () => {
     expect(describeMessageStatus({ channel: "SMS", status: "REPLACED", attempts: 0 }).label).toBe("Replaced by a newer message");
     expect(describeMessageStatus({ channel: "WHATSAPP_MANUAL", status: "OPENED", attempts: 0 }).label).toBe("WhatsApp opened");
+  });
+
+  it("shows a review reminder that ended unsent as no longer needed", () => {
+    expect(describeMessageStatus({ channel: "EMAIL", status: "REPLACED", attempts: 1, template: "REVIEW_REQUEST" }).label).toBe(
+      "No longer needed",
+    );
+    expect(getMessageTemplateLabel("REVIEW_REQUEST")).toBe("Review request");
+    expect(isCustomerMessageTemplate("REVIEW_REQUEST")).toBe(false);
+    expect(isCustomerMessageTemplate("READY")).toBe(true);
   });
 });
 

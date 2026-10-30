@@ -6,7 +6,14 @@ import { z } from "zod";
 import type { OrderStage } from "@/generated/prisma/client";
 import { getServerEnv } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { isLinkTemplate, isFinallyFailed, MESSAGE_TEMPLATES, type CustomerMessageTemplate } from "@/lib/messages";
+import {
+  isCustomerMessageTemplate,
+  isFinallyFailed,
+  isLinkTemplate,
+  MESSAGE_TEMPLATES,
+  type CustomerMessageTemplate,
+  type EmailMessageTemplate,
+} from "@/lib/messages";
 import { formatOrderNumber } from "@/lib/orders";
 import { formatPhone, isNigerianNumber } from "@/lib/phone";
 import { generateToken, hashToken } from "@/lib/tokens";
@@ -19,6 +26,7 @@ import {
   findDueMessages,
   findOrderMessage,
   markMessageFailed,
+  markMessageNotNeeded,
   markMessageSent,
   queueMessagesForOrder,
   recordWhatsAppOpened,
@@ -28,6 +36,8 @@ import {
   type NewMessage,
   type QueuedMessages,
 } from "@/server/data/messages";
+import { isUniqueViolation } from "@/server/data/errors";
+import { findReminderOrder, findReviewReminderCandidates } from "@/server/data/reviews";
 import { findLinkOrder } from "@/server/data/tracking";
 import { findStoreCommunicationSettings } from "@/server/data/stores";
 import {
@@ -40,6 +50,7 @@ import {
   getStageMessageTemplate,
   getWhatsAppUrl,
 } from "@/server/domain/messages";
+import { isReviewReminderDue, isReviewReminderStillNeeded } from "@/server/domain/reviews";
 import { getMailer } from "@/server/integrations/email";
 import { getSmsProvider } from "@/server/integrations/sms";
 import { TermiiError } from "@/server/integrations/termii";
@@ -112,6 +123,34 @@ export function customerMessages(options: CustomerMessageOptions): MessageReques
   };
 }
 
+// Feature 19b: the review reminder, by email only, with a fresh link (its
+// hash is stored only if the email is queued). Only when the customer has an
+// email and the store's email copies are on.
+export function reviewReminderMessages(token: string): MessageRequest {
+  return {
+    countBookingSms: false,
+    createdByUserId: null,
+    plan: (context) => {
+      const destinations = chooseDestinations({
+        customerPhone: context.customer.phone,
+        customerEmail: context.customer.email,
+        smsEnabled: false,
+        emailCopiesEnabled: context.store.emailCopiesEnabled,
+        smsWithinCap: false,
+      }).filter((destination) => destination.channel === "EMAIL");
+      const link = getTrackingUrl(token);
+      const messages = destinations.map(
+        (destination): NewMessage => ({
+          ...destination,
+          template: MESSAGE_TEMPLATES.reviewRequest,
+          body: renderBody("EMAIL", MESSAGE_TEMPLATES.reviewRequest, context, link),
+        }),
+      );
+      return { messages, newTokenHash: messages.length > 0 ? hashToken(token) : null, capAlert: false };
+    },
+  };
+}
+
 // A stage move's message: Ready or On its way, moving forward only.
 export function stageMessages(from: OrderStage, to: OrderStage, actorUserId: string): MessageRequest | null {
   const template = getStageMessageTemplate(from, to);
@@ -126,9 +165,12 @@ const emailBodySchema = z.object({
   smallPrint: z.array(z.string()),
 });
 
+// The review reminder is email only, so only the four messages have an SMS.
+function renderBody(channel: "SMS", template: CustomerMessageTemplate, context: MessageContext, link: string | null): string;
+function renderBody(channel: NewMessage["channel"], template: EmailMessageTemplate, context: MessageContext, link: string | null): string;
 function renderBody(
   channel: NewMessage["channel"],
-  template: CustomerMessageTemplate,
+  template: EmailMessageTemplate,
   context: MessageContext,
   link: string | null,
 ): string {
@@ -142,7 +184,9 @@ function renderBody(
     linkDomain: getLinkDomain(),
     storePhone: context.store.phone ? formatPhone(context.store.phone) : null,
   };
-  return channel === "SMS" ? composeMessageText(wording) : JSON.stringify(composeEmail(wording));
+  if (channel === "EMAIL") return JSON.stringify(composeEmail(wording));
+  if (!isCustomerMessageTemplate(template)) throw new Error(`The ${template} message is sent by email only.`);
+  return composeMessageText({ ...wording, template });
 }
 
 // "fluta.app": where real tracking links point, for the safety line.
@@ -170,7 +214,8 @@ async function deliverQueued(queued: QueuedMessages): Promise<void> {
   if (queued.capAlert) await sendCapAlert(queued.capAlert);
 }
 
-export type SendOutcome = "SENT" | "FAILED" | "NOT_CLAIMED";
+// NOT_NEEDED: a review reminder the last check stopped (Feature 19b).
+export type SendOutcome = "SENT" | "FAILED" | "NOT_CLAIMED" | "NOT_NEEDED";
 
 // Claims the message (using up an attempt), sends it, and records what
 // happened. Never throws.
@@ -185,6 +230,10 @@ export async function sendMessage(storeId: string, id: string, now: Date = new D
   if (!message) return "NOT_CLAIMED";
 
   try {
+    if (message.template === MESSAGE_TEMPLATES.reviewRequest && !(await isReminderStillNeeded(message, now))) {
+      await markMessageNotNeeded(storeId, id);
+      return "NOT_NEEDED";
+    }
     const providerMessageId = await deliver(message);
     await markMessageSent(storeId, id, providerMessageId, new Date());
     return "SENT";
@@ -198,6 +247,14 @@ export async function sendMessage(storeId: string, id: string, now: Date = new D
     }
     return "FAILED";
   }
+}
+
+// The last check before each attempt at a review reminder, the first or a
+// retry: not sent once the customer has reviewed, the order was reopened or
+// cancelled, or the review window has ended.
+async function isReminderStillNeeded(message: ClaimedMessage, now: Date): Promise<boolean> {
+  const order = await findReminderOrder(message.storeId, message.orderId);
+  return order !== null && isReviewReminderStillNeeded(order, now);
 }
 
 async function deliver(message: ClaimedMessage): Promise<string | null> {
@@ -273,6 +330,35 @@ export async function runMessageJob(now: Date): Promise<MessageJobResult> {
   return { sent, failed, stuck, ipHashesCleared, locationsCleared };
 }
 
+// ───────────── The review reminder (Feature 19b) ─────────────
+
+const REMINDER_BATCH_SIZE = 100;
+
+// Run by the scheduled job before it sends: queues one review reminder for
+// each order now due one (isReviewReminderDue), each with a fresh link. The
+// job then sends them in the same run. The database allows one reminder per
+// order, ever, so a repeated or overlapping run never queues a second.
+// Returns how many were queued.
+export async function queueReviewReminders(now: Date): Promise<number> {
+  let queued = 0;
+  for (const order of await findReviewReminderCandidates(now, REMINDER_BATCH_SIZE)) {
+    const due = isReviewReminderDue(
+      { stage: order.stage, completedAt: order.completedAt, storeStatus: order.store.status, timeZone: order.store.timeZone, hasReview: false },
+      now,
+    );
+    if (!due) continue;
+    try {
+      const result = await queueMessagesForOrder(order.storeId, order.id, reviewReminderMessages(generateToken()), now);
+      queued += result?.ids.length ?? 0;
+    } catch (error) {
+      // Another run queued it first.
+      if (isUniqueViolation(error)) continue;
+      logger.error(`[messages] queuing the review reminder for order ${order.id} failed:`, describeError(error));
+    }
+  }
+  return queued;
+}
+
 // ───────────── Staff actions on the order page ─────────────
 
 export interface MessageActor {
@@ -332,7 +418,9 @@ export async function resendMessage(
   if (original.channel === "WHATSAPP_MANUAL" || !isFinallyFailed(original)) {
     return { ok: false, message: "Only a message that wasn't sent can be sent again." };
   }
-  const template = original.template as CustomerMessageTemplate;
+  // The review reminder is sent once only (Feature 19b).
+  if (!isCustomerMessageTemplate(original.template)) return { ok: false, message: "This message can't be sent again." };
+  const template = original.template;
   const link = isLinkTemplate(template);
   if (link) {
     const refusal = await getLinkRefusal(actor.storeId, orderId, now);

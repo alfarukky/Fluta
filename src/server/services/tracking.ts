@@ -21,6 +21,7 @@ import { getBalance, type Balance } from "@/server/domain/balance";
 import { canPayOnline, hasRecentPendingAttempt } from "@/server/domain/online-payment";
 import { getPaystackClient } from "@/server/integrations/paystack";
 import { canTransition, getStageOrderState, toContext } from "@/server/domain/order-stages";
+import { isWithinReviewWindow } from "@/server/domain/reviews";
 import type { QuoteSnapshot } from "@/server/domain/orders";
 import type {
   PayNowOffer,
@@ -32,6 +33,7 @@ import type {
   TrackingTimelineStep,
   TrackingView,
 } from "@/types/tracking";
+import type { TrackingReview } from "@/types/reviews";
 
 import { toPublicStore } from "./booking";
 import { decideQuoteRevision } from "./quotes";
@@ -134,7 +136,17 @@ function buildView(
           }
         : null,
     payNow: buildPayNow(order, now),
+    review: buildReview(order, now),
   } satisfies TrackingView;
+}
+
+// A review, once left, is final: the thank-you card shows its stars whatever
+// happened to the order since. Otherwise the form, only while the order is
+// completed and within 7 days of completion (the page is only built for a
+// store that isn't Deactivated).
+function buildReview(order: TrackedOrderRecord, now: Date): TrackingReview | null {
+  if (order.review) return { kind: "thanks", rating: order.review.rating };
+  return isWithinReviewWindow(order, now) ? { kind: "form", storeName: order.store.name } : null;
 }
 
 // Pay now, when the order can be paid online now: never at a store that

@@ -11,12 +11,30 @@ export const MESSAGE_TEMPLATES = {
   // Manual WhatsApp, recorded as opened only.
   whatsappLink: "WHATSAPP_LINK",
   whatsappMessage: "WHATSAPP_MESSAGE",
+  // Feature 19b: the one review reminder, by email only, never sent again.
+  reviewRequest: "REVIEW_REQUEST",
 } as const;
 
 export type MessageTemplate = (typeof MESSAGE_TEMPLATES)[keyof typeof MESSAGE_TEMPLATES];
 
 // The four automatic messages, sent by SMS and email.
 export type CustomerMessageTemplate = Extract<MessageTemplate, "LINK_CREATED" | "QUOTE_NEEDS_APPROVAL" | "READY" | "OUT_FOR_DELIVERY">;
+
+const CUSTOMER_MESSAGE_TEMPLATES: readonly string[] = [
+  MESSAGE_TEMPLATES.orderLink,
+  MESSAGE_TEMPLATES.priceUpdate,
+  MESSAGE_TEMPLATES.ready,
+  MESSAGE_TEMPLATES.onItsWay,
+];
+
+// One of the four automatic messages (the only ones staff can Send again).
+export function isCustomerMessageTemplate(template: string): template is CustomerMessageTemplate {
+  return CUSTOMER_MESSAGE_TEMPLATES.includes(template);
+}
+
+// The review reminder: an email only.
+export type ReviewMessageTemplate = typeof MESSAGE_TEMPLATES.reviewRequest;
+export type EmailMessageTemplate = CustomerMessageTemplate | ReviewMessageTemplate;
 
 // Messages that carry a tracking link (and ask the customer to act).
 export const LINK_TEMPLATES: readonly CustomerMessageTemplate[] = [MESSAGE_TEMPLATES.orderLink, MESSAGE_TEMPLATES.priceUpdate];
@@ -25,6 +43,10 @@ export function isLinkTemplate(template: string): boolean {
   return (LINK_TEMPLATES as readonly string[]).includes(template);
 }
 
+// Every message whose body holds a tracking link: the two link messages and
+// the review reminder. A newer link replaces the unsent ones.
+export const LINK_MESSAGE_TEMPLATES: readonly string[] = [...LINK_TEMPLATES, MESSAGE_TEMPLATES.reviewRequest];
+
 const TEMPLATE_LABELS: Record<MessageTemplate, string> = {
   LINK_CREATED: "Order link",
   QUOTE_NEEDS_APPROVAL: "Price update",
@@ -32,6 +54,7 @@ const TEMPLATE_LABELS: Record<MessageTemplate, string> = {
   OUT_FOR_DELIVERY: "On its way",
   WHATSAPP_LINK: "Link by WhatsApp",
   WHATSAPP_MESSAGE: "WhatsApp message",
+  REVIEW_REQUEST: "Review request",
 };
 
 export function getMessageTemplateLabel(template: string): string {
@@ -51,6 +74,8 @@ export interface MessageState {
   channel: MessageChannel;
   status: MessageStatus;
   attempts: number;
+  // Only to tell a review reminder that was no longer needed apart.
+  template?: string;
 }
 
 // Out of tries: shown as "SMS not sent" / "Email not sent" with Send again.
@@ -78,6 +103,11 @@ export function describeMessageStatus(message: MessageState): { label: string; t
     case "OPENED":
       return { label: "WhatsApp opened", tone: "info" };
     case "REPLACED":
-      return { label: "Replaced by a newer message", tone: "neutral" };
+      // A review reminder ends REPLACED when it is no longer needed: the
+      // customer reviewed, the order was reopened or cancelled, the window
+      // ended, or a newer link was sent.
+      return message.template === MESSAGE_TEMPLATES.reviewRequest
+        ? { label: "No longer needed", tone: "neutral" }
+        : { label: "Replaced by a newer message", tone: "neutral" };
   }
 }
