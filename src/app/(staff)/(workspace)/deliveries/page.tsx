@@ -1,23 +1,29 @@
 import type { Metadata } from "next";
 
 import { AccessDenied } from "@/components/auth/AccessDenied";
+import { ComingUpSection } from "@/components/deliveries/ComingUpSection";
 import { DeliveryCardItem } from "@/components/deliveries/DeliveryCardItem";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { getNavItem } from "@/components/workspace/nav-items";
 import { PageHeader } from "@/components/workspace/PageHeader";
 import { requireStoreMember } from "@/server/auth/session";
-import { getDeliveries } from "@/server/services/deliveries";
+import { getComingUp, getDeliveries } from "@/server/services/deliveries";
 import type { DeliveryCard } from "@/types/deliveries";
 
 export const metadata: Metadata = { title: "Deliveries · Fluta" };
 
-// Today's pickups and deliveries. The only workspace page riders may open
+// Today's pickups and deliveries, then "Coming up" (the next 7 days, for
+// planning only) at the bottom. The only workspace page riders may open
 // ({ allowRider: true }); owners and staff use it too.
 export default async function DeliveriesPage() {
   const member = await requireStoreMember({ allowRider: true });
   if (!member.allowed) return <AccessDenied reason={member.reason} />;
 
-  const { pickups, onTheWay, readyToDeliver } = await getDeliveries(member.store, new Date());
+  const now = new Date();
+  const [{ pickups, onTheWay, readyToDeliver }, comingUp] = await Promise.all([
+    getDeliveries(member.store, now),
+    getComingUp(member.store, now),
+  ]);
   const linkToOrder = member.membership.role !== "RIDER";
   const empty = pickups.length === 0 && onTheWay.length === 0 && readyToDeliver.length === 0;
 
@@ -38,6 +44,8 @@ export default async function DeliveriesPage() {
           <DeliverySection title="Ready to deliver" cards={readyToDeliver} linkToOrder={linkToOrder} />
         </>
       )}
+
+      <ComingUpSection comingUp={comingUp} />
     </main>
   );
 }

@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { getLocalDateKey } from "@/lib/time";
 
-import { buildDeliverySections, type DeliveryOrder } from "./deliveries";
+import {
+  buildComingUp,
+  buildDeliverySections,
+  comingUpWording,
+  getComingUpRange,
+  type ComingUpInput,
+  type ComingUpPickupRecord,
+  type DeliveryOrder,
+} from "./deliveries";
 
 const STORE = { orderPrefix: "FF" };
 const TODAY = "2026-10-16";
@@ -123,5 +131,103 @@ describe("today in the store's time zone", () => {
     const lagos = buildDeliverySections([pickup], getLocalDateKey(now, "Africa/Lagos"), STORE);
     expect(lagos.pickups.map((card) => [card.orderId, card.isOverdue])).toEqual([[pickup.id, false]]);
     expect(buildDeliverySections([pickup], getLocalDateKey(now, "UTC"), STORE).pickups).toEqual([]);
+  });
+});
+
+describe("Coming up", () => {
+  // TODAY is Fri 16 Oct 2026.
+  function pickup(date: string, window: [string, string] | null = ["10:00", "12:00"], area: string | null = "Wuse"): ComingUpPickupRecord {
+    return {
+      scheduledPickupDate: new Date(`${date}T00:00:00Z`),
+      scheduledWindowStart: window?.[0] ?? null,
+      scheduledWindowEnd: window?.[1] ?? null,
+      serviceAreaName: area,
+    };
+  }
+  const input = (overrides: Partial<ComingUpInput> = {}): ComingUpInput => ({
+    pickups: [],
+    waitingCount: 0,
+    cleaningCount: 0,
+    ...overrides,
+  });
+
+  it("covers tomorrow through the 7th day, in calendar days", () => {
+    expect(getComingUpRange(TODAY)).toEqual({ firstDayKey: "2026-10-17", lastDayKey: "2026-10-23" });
+    expect(getComingUpRange("2026-12-28")).toEqual({ firstDayKey: "2026-12-29", lastDayKey: "2027-01-04" });
+  });
+
+  it("groups confirmed pickups by day, labels tomorrow, leaves out empty days, and sorts by window start", () => {
+    const comingUp = buildComingUp(
+      input({
+        pickups: [
+          pickup("2026-10-19", ["14:00", "16:00"], "Garki"),
+          pickup("2026-10-17", ["14:00", "16:00"], "Maitama"),
+          pickup("2026-10-17", ["08:00", "10:00"], "Wuse"),
+          pickup("2026-10-17", ["10:00", "12:00"], null),
+        ],
+      }),
+      TODAY,
+    );
+    expect(comingUp.days).toEqual([
+      {
+        date: "2026-10-17",
+        heading: "Tomorrow, Sat 17 Oct · 3 pickups",
+        pickups: ["8:00 AM – 10:00 AM · Wuse", "10:00 AM – 12:00 PM · Outside our service areas", "2:00 PM – 4:00 PM · Maitama"],
+      },
+      { date: "2026-10-19", heading: "Mon 19 Oct · 1 pickup", pickups: ["2:00 PM – 4:00 PM · Garki"] },
+    ]);
+    expect(comingUp.empty).toBe(false);
+  });
+
+  it("shows only the area when a pickup has no window", () => {
+    expect(buildComingUp(input({ pickups: [pickup("2026-10-18", null)] }), TODAY).days[0].pickups).toEqual(["Wuse"]);
+  });
+
+  it("never includes today, and stops after the 7th day", () => {
+    const comingUp = buildComingUp(
+      input({
+        pickups: [
+          pickup("2026-10-15"),
+          pickup(TODAY),
+          pickup("2026-10-17"),
+          pickup("2026-10-23"),
+          pickup("2026-10-24"),
+          { ...pickup("2026-10-18"), scheduledPickupDate: null },
+        ],
+      }),
+      TODAY,
+    );
+    expect(comingUp.days.map((day) => day.date)).toEqual(["2026-10-17", "2026-10-23"]);
+  });
+
+  it("works out the days in the store's time zone", () => {
+    // 23:30 on Fri 16 Oct in Lagos is already Saturday in UTC+2 and later zones.
+    const now = new Date("2026-10-16T22:30:00Z");
+    const lagosToday = getLocalDateKey(now, "Africa/Lagos");
+    expect(lagosToday).toBe(TODAY);
+    const comingUp = buildComingUp(input({ pickups: [pickup(TODAY), pickup("2026-10-17"), pickup("2026-10-24")] }), lagosToday);
+    expect(comingUp.days.map((day) => day.heading)).toEqual(["Tomorrow, Sat 17 Oct · 1 pickup"]);
+  });
+
+  it("words the waiting and being-cleaned counts, singular and plural", () => {
+    expect(buildComingUp(input({ waitingCount: 1, cleaningCount: 1 }), TODAY)).toMatchObject({
+      waiting: "1 more pickup is waiting for the store to confirm a time.",
+      cleaning: "1 order is being cleaned and will need delivery.",
+    });
+    expect(buildComingUp(input({ waitingCount: 2, cleaningCount: 4 }), TODAY)).toMatchObject({
+      waiting: "2 more pickups are waiting for the store to confirm a time.",
+      cleaning: "4 orders are being cleaned and will need delivery.",
+    });
+    expect(comingUpWording.pickupCount(1)).toBe("1 pickup");
+    expect(comingUpWording.pickupCount(3)).toBe("3 pickups");
+  });
+
+  it("is empty only when there are no pickups and both counts are zero", () => {
+    expect(buildComingUp(input(), TODAY)).toEqual({ days: [], waiting: null, cleaning: null, empty: true });
+    expect(buildComingUp(input({ pickups: [pickup("2026-10-17")] }), TODAY).empty).toBe(false);
+    expect(buildComingUp(input({ waitingCount: 1 }), TODAY)).toMatchObject({ days: [], cleaning: null, empty: false });
+    expect(buildComingUp(input({ cleaningCount: 1 }), TODAY)).toMatchObject({ days: [], waiting: null, empty: false });
+    // Pickups only outside the 7 days don't count.
+    expect(buildComingUp(input({ pickups: [pickup(TODAY), pickup("2026-10-24")] }), TODAY).empty).toBe(true);
   });
 });

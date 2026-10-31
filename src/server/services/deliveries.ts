@@ -2,11 +2,11 @@ import "server-only";
 
 import type { StoreRole } from "@/generated/prisma/client";
 import { getLocalDateKey } from "@/lib/time";
-import { findDeliveryOrders } from "@/server/data/deliveries";
+import { findComingUp, findDeliveryOrders } from "@/server/data/deliveries";
 import { changeOrderStage } from "@/server/data/order-stages";
-import { buildDeliverySections } from "@/server/domain/deliveries";
+import { buildComingUp, buildDeliverySections, getComingUpRange } from "@/server/domain/deliveries";
 import { canTransition, getStageOrderState, RIDER_MOVES, toContext } from "@/server/domain/order-stages";
-import type { DeliveryMove, DeliverySections } from "@/types/deliveries";
+import type { ComingUp, DeliveryMove, DeliverySections } from "@/types/deliveries";
 
 import { sendAfterCommit, stageMessages } from "./notifications";
 import { ORDER_CHANGED_MESSAGE, ORDER_NOT_FOUND_MESSAGE } from "./order-stages";
@@ -15,13 +15,22 @@ import { ORDER_CHANGED_MESSAGE, ORDER_NOT_FOUND_MESSAGE } from "./order-stages";
 // moves. The store, user, and role always come from the caller's membership
 // (src/actions/deliveries.ts).
 
-// The only data function behind the view: the cards and nothing else.
+// The data functions behind the view: today's cards (here) and "Coming up"
+// (below), and nothing else.
 export async function getDeliveries(
   store: { id: string; orderPrefix: string; timeZone: string },
   now: Date,
 ): Promise<DeliverySections> {
   const todayKey = getLocalDateKey(now, store.timeZone);
   return buildDeliverySections(await findDeliveryOrders(store.id, todayKey), todayKey, store);
+}
+
+// The "Coming up" section at the bottom of the view: the next 7 days, for
+// planning only, the same for riders, staff, and owners.
+export async function getComingUp(store: { id: string; timeZone: string }, now: Date): Promise<ComingUp> {
+  const todayKey = getLocalDateKey(now, store.timeZone);
+  const { firstDayKey, lastDayKey } = getComingUpRange(todayKey);
+  return buildComingUp(await findComingUp(store.id, firstDayKey, lastDayKey), todayKey);
 }
 
 // Each button's move. Typed against canTransition's rider allowlist, so a move

@@ -37,3 +37,18 @@ export interface DeliverySections {
 
 // The three moves the Deliveries view offers, one per button.
 export type DeliveryMove = "PICK_UP" | "SEND_OUT" | "DELIVER";
+
+// "Coming up": the next 7 days, for planning only. Plain text lines, with no
+// IDs, customers, addresses, order numbers, links, or money.
+export interface ComingUpDay {
+  date: string; // "YYYY-MM-DD"
+  heading: string; // "Tomorrow, Fri 31 Oct · 3 pickups"
+  pickups: string[]; // "10:00 AM – 12:00 PM · Wuse", by window start
+}
+
+export interface ComingUp {
+  days: ComingUpDay[];
+  waiting: string | null; // "2 more pickups are waiting for the store to confirm a time."
+  cleaning: string | null; // "4 orders are being cleaned and will need delivery."
+  empty: boolean; // nothing at all to say: "Nothing coming up in the next 7 days"
+}

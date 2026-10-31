@@ -44,3 +44,63 @@ export async function findDeliveryOrders(storeId: string, todayKey: string): Pro
     orderBy: { orderNumber: "asc" },
   });
 }
+
+// ───────────── "Coming up": the next 7 days, for planning only ─────────────
+//
+// Exactly what the section shows, and nothing else: no IDs, customers,
+// addresses, order numbers, or money. Dates are "YYYY-MM-DD" keys in the
+// store's time zone, both ends included.
+
+const COMING_UP_PICKUP_SELECT = {
+  scheduledPickupDate: true,
+  scheduledWindowStart: true,
+  scheduledWindowEnd: true,
+  serviceAreaName: true,
+} as const satisfies Prisma.OrderSelect;
+
+export interface ComingUpRecord {
+  pickups: Prisma.OrderGetPayload<{ select: typeof COMING_UP_PICKUP_SELECT }>[];
+  waitingCount: number;
+  cleaningCount: number;
+}
+
+export async function findComingUp(storeId: string, firstDayKey: string, lastDayKey: string): Promise<ComingUpRecord> {
+  const prisma = getPrisma();
+  const days = { gte: fromDateKey(firstDayKey), lte: fromDateKey(lastDayKey) };
+  const pickupOrders = { storeId, fulfilmentType: "PICKUP_DELIVERY" } as const satisfies Prisma.OrderWhereInput;
+
+  const [pickups, waitingCount, cleaningCount] = await Promise.all([
+    // Confirmed pickups on those days.
+    prisma.order.findMany({
+      where: { ...pickupOrders, stage: "PICKUP_SCHEDULED", pickupWindowStatus: "CONFIRMED", scheduledPickupDate: days },
+      select: COMING_UP_PICKUP_SELECT,
+      orderBy: [{ scheduledPickupDate: "asc" }, { scheduledWindowStart: "asc" }, { orderNumber: "asc" }],
+    }),
+    // Booked, with a time on those days the store hasn't confirmed yet: the
+    // customer's request, or the store's suggestion (kept in the scheduled
+    // fields until accepted).
+    prisma.order.count({
+      where: {
+        ...pickupOrders,
+        stage: "BOOKED",
+        OR: [
+          { pickupWindowStatus: "REQUESTED", requestedPickupDate: days },
+          { pickupWindowStatus: "PROPOSED_BY_STORE", scheduledPickupDate: days },
+        ],
+      },
+    }),
+    // Picked up and not Ready yet. A quote sent from Booked (the pickup
+    // charge) comes before pickup, so it isn't counted.
+    prisma.order.count({
+      where: {
+        ...pickupOrders,
+        OR: [
+          { stage: { in: ["PICKED_UP", "RECEIVED_BY_STORE", "IN_PROGRESS"] } },
+          { stage: "QUOTE_AWAITING_APPROVAL", OR: [{ stageBeforeQuote: null }, { stageBeforeQuote: { not: "BOOKED" } }] },
+        ],
+      },
+    }),
+  ]);
+
+  return { pickups, waitingCount, cleaningCount };
+}

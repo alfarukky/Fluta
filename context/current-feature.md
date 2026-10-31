@@ -1,40 +1,72 @@
-# Current Feature
+# Current Feature: Rider "Coming up" (Feature 19c)
 
 ## Status
 
-Not Started
+In Progress
 
 ## Spec
 
-<!-- The spec file for this feature -->
+- `context/features/19c-rider-coming-up-spec.md`
+- Implements from `context/project-overview.md`: §7 Fulfilment, service areas, and scheduling (confirmed and requested pickup times, read ahead 7 days), §2 Staff accounts and roles (the Deliveries view, same for owners, staff and riders), UI / UX Key screens (Deliveries view)
 
 ## Goals
 
-<!-- The spec's requirements -->
+- A read-only "Coming up" section at the bottom of the Deliveries view (Feature 14b), below today's work; nothing else in the view changes
+- **Confirmed pickups for the next 7 days**, starting tomorrow, grouped by calendar day in the store's time zone (today and day 8 never included); days with no pickups left out
+  - Day heading with count: "Tomorrow, Fri 31 Oct · 3 pickups", then "Sat 1 Nov · 1 pickup", …
+  - One line per pickup: 12-hour time window and area name (the order's own area copy, or "Outside our service areas"), e.g. "10:00 AM – 12:00 PM · Wuse"; sorted by window start within each day
+  - Only pickup orders at Pickup scheduled with a confirmed time
+- **Waiting for confirmation:** one line counting pickup orders at Booked whose time is still requested or suggested by the store, dated within the 7 days; no details
+- **Deliveries coming soon:** one line counting pickup orders at Picked up, Received by store, Quote awaiting approval, or In progress (Ready and later not counted); no dates
+- Singular/plural wording:
+  - "1 pickup" / "3 pickups"
+  - "1 more pickup is waiting for the store to confirm a time." / "2 more pickups are waiting for the store to confirm a time."
+  - "1 order is being cleaned and will need delivery." / "4 orders are being cleaned and will need delivery."
+- Empty state "Nothing coming up in the next 7 days" only when all three are zero; otherwise show only the lines that have something to say
+- Never shows customer name, phone, address, order numbers or links, prices/totals/payments, or any buttons or moves
+- Plain lines of text (no cards, badges, maps), one column on phones, same for riders, staff and owners
+- Data function next to Feature 14b's Deliveries data function, selecting only what it needs and returning exactly: per confirmed pickup its date, window start and end, and area copy; the waiting count; the being-cleaned count (no IDs or anything else)
+- "Pickup orders" means the pickup and delivery fulfilment type; drop-off orders never appear
+- Same access as the Deliveries view (owners, staff, riders), store taken from the membership, every query filtered by it
 
 ## Not in this feature
 
-<!-- Out of scope -->
+- Customer details, order links, or moves for future days
+- Assigning pickups to particular riders
+- Delivery dates or times
+- Days beyond the next 7
 
 ## Done when
 
-<!-- The spec's Done when items -->
+- Unit tests: grouping by day in the store's time zone, only confirmed pickups listed, the waiting-for-confirmation count, the deliveries-coming-soon count, the singular and plural wording, and the empty state shown only when all three are zero
+- Boundary tests in the store's time zone: a pickup dated today is not in "Coming up", tomorrow's is, and one dated day 8 is not
+- Integration tests:
+  - the data function returns exactly the listed fields, never IDs, names, phones, addresses, order numbers, or money
+  - an order that moved past Pickup scheduled (for example Picked up) no longer appears as a confirmed pickup, and a Booked order with a confirmed time can't exist in the waiting count
+  - drop-off orders and cancelled orders never appear, and today's pickups stay in the normal Pickups section, not in "Coming up"
+  - a FreshFold rider sees only FreshFold's upcoming work
+- `npm run lint`, `npm run typecheck`, `npm run test:unit`, `npm run test:integration`, and `npm run build` all pass
 
 ## Verify with
 
-<!-- How to verify the feature -->
+- **Playwright MCP**, at ~360px and desktop, light and dark: as a rider, with confirmed pickups booked for tomorrow and later in the week, one unconfirmed pickup, and orders in progress, check the section reads clearly and shows no customer details
+- **Next.js DevTools:** no runtime or build errors on `/deliveries`
 
 ## References
 
-<!-- Related context files -->
+- @context/features/14b-deliveries-and-rider-role-spec.md (the Deliveries view, its data function, and rider rules)
+- @context/features/14-guest-tracking-and-approvals-spec.md (confirmed and requested pickup times)
 
 ## Schema changes
 
-<!-- Migrations, or None -->
+None
 
 ## Notes
 
-<!-- Anything to remember while working -->
+- New queries go in `src/server/data/` beside the Deliveries data function and must keep the same store scoping (store from the membership); adding scoped queries follows the existing pattern, but any change to existing store-scoping is an Ask First item
+- Access reuses the Deliveries page's `requireStoreMember({ allowRider: true })`; no change to auth or membership checks
+- Read-only: no order-stage rules or `canTransition` changes, no money code
+- Isolation test required for the new store-owned query (FreshFold rider vs CleanWave)
 
 ## History
 
@@ -218,3 +250,7 @@ Not Started
 - 2026-10-30: Reviewed Feature 19b. All goals and Done when items met, no scope creep. Changes made during review: the order page's review section moved above the "Customer's note" comment it had split from its function; at the owner's request every `break-words` class (76, in 24 files) became Tailwind 4's canonical `wrap-break-word` (same CSS: `overflow-wrap: break-word`). Checks run fresh: lint, typecheck, test:unit (1017) and build pass; integration (39 files, 565 tests) pass, run one file at a time with `--maxWorkers=2` because the full parallel run timed out against Neon. A seed-test failure came from a tracking test store left half-cleaned by a stopped run (an order cancelled without its status event); the three leftover test stores were removed from the test branch and the seed test passes. Development was reseeded (the seed password no longer matched), then FF-1001 to FF-1003 created and completed through the app. Browser (local Playwright script, password read from `.env.local`): customer at 360px light and 1440px dark (4 stars, two chips, comment kept when the stars change, chips change for 4/3/2, thank-you card, reload shows no form), staff at 1440px light and 360px dark (bell lines without the comment, review on the order page, Reviews page 4.7 from 3 reviews, star filter), no horizontal scroll, no console errors. Rider not checked in the browser (no rider in development; covered by `rider-access` and nav-items tests). Next.js DevTools: no errors on `/o/[token]`, `/reviews`, `/orders/[id]`. Neon (development, read-only): one review per order, store matches the order's, comments trimmed, 3 review notifications, both unique indexes and both CHECK constraints present. No reminder email in development (the job isn't run there; covered by `review-reminders` tests). Verdict: ready to complete.
 - 2026-10-30: After review, at the owner's request: the Reviews page's average stars are filled to the exact average (Google's method) instead of rounded to whole stars, so 4.5 shows four and a half stars, not five. `getStarFillTenths` in `src/lib/reviews.ts` (unit tested for 4.5, 4.7, 3.1, 5 and 1); `RatingStars` overlays a filled star clipped to one of eleven fixed width classes (averages have one decimal place, so tenths are exact; no inline style). Single reviews still fill whole stars. Checked in the live Playwright MCP browser in light and dark; the review walkthrough was also repeated there (customer at 360px light, staff bell, order page and Reviews page with the star filter at desktop light and 360px dark).
 - 2026-10-30: Completed Feature 19b — Customer Reviews (spec: `context/features/19b-customer-reviews-spec.md`). Customers rate a completed order 1–5 stars with an optional comment (≤300 characters, trimmed, empty stored as NULL) from `/o/{token}` for exactly 7 × 24 hours after completion; one review per order, final, enforced by a row lock on the order plus the unique `orderId` (simultaneous submits get the thank-you card with the saved stars). Suggestion chips follow the stars (wording only in `src/lib/reviews.ts`). One `REVIEW_REQUEST` email per order, about 3 h after completion and only 8 AM–8 PM store time, queued by the 5-minute job before it sends, with a fresh link; a last check before each attempt marks it "No longer needed" (status REPLACED) once the order is reviewed, reopened, cancelled or past 7 days; it is never offered for Send again. Reviews page `/reviews` (owners and staff; riders refused): 30-day and all-time averages with stars filled to the exact average, star filter, Load more 25 at a time; the order page shows its review; `REVIEW_RECEIVED` bell notification without the comment. Schema change: migration `add_customer_reviews` (`Review` with CHECK constraints, `REVIEW_RECEIVED`, partial unique index for one review email per order via the `partialIndexes` preview feature), approved by the owner. No new packages. Also, as a separate commit, every `break-words` class became `wrap-break-word`. Checks: lint, typecheck, test:unit (1018), build pass; integration passed in the review (39 files, one file at a time) and the 5 files that render the changed components were re-run after it. Merged to staging as `feat: add customer reviews (Feature 19b)` and `chore: use Tailwind's canonical wrap-break-word class`. Development was reseeded and has FF-1001 to FF-1004 (all reviewed) from verification.
+- 2026-10-30: Started Feature 19c — Rider "Coming up" on `feat/rider-coming-up` (owner approved the new store-scoped read-only queries in `src/server/data/`)
+- 2026-10-30: Implemented: `findComingUp` (`src/server/data/deliveries.ts`, three store-scoped queries returning only pickup date, window and area copy plus two counts), pure `buildComingUp` / `getComingUpRange` / `comingUpWording` (`src/server/domain/deliveries.ts`), `getComingUp` (`src/server/services/deliveries.ts`), `formatShortDay` (`src/lib/time.ts`), `ComingUpSection` at the bottom of `/deliveries`. Decision: a pickup order at Quote awaiting approval sent from Booked (the pickup charge, before pickup) is not counted as being cleaned. Tests: domain, time and component unit tests; `src/server/services/deliveries.integration.test.ts` (6 tests, a throwaway store per test). lint, typecheck, test:unit (1028), build pass.
+- 2026-10-30: Full integration suite passes (40 files, 571 tests, `--maxWorkers=2`). Browser verification (Playwright, Next.js DevTools) not done yet: development has no rider or upcoming pickups.
+- 2026-10-31: Verified in the browser (Playwright MCP, development). Set up through the app as FreshFold's owner: areas Wuse and Garki (₦1,500), rider "Tayo Balogun" invited as `delivered@resend.dev` (Resend's test address) and joined from the invite link, five phone orders (Sun 1 Nov outside normal schedule 9–11 AM Wuse, Mon 2 Nov Garki and Wuse, Thu 5 Nov Garki, and one for today), one online booking requesting Tue 3 Nov (left unconfirmed). As the rider: marked today's pickup picked up, then Coming up showed "Tomorrow, Sun 1 Nov · 1 pickup", "Mon 2 Nov · 2 pickups" (sorted by window), "Thu 5 Nov · 1 pickup", "1 more pickup is waiting…", "1 order is being cleaned…". At 360px and 1440px, light and dark: no customer names, phones, addresses, order numbers, prices, links or buttons in the section, no horizontal scroll. Next.js DevTools: no errors. Only console error: a `flushSync` warning from the existing date picker on New order (not this feature). Note: the throwaway rider password appeared in the chat through a Playwright tool echo (development-only account). Development now has these orders, both areas and the rider.

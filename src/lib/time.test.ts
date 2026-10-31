@@ -8,6 +8,7 @@ import {
   describeTimeZone,
   formatCalendarDate,
   formatLongDate,
+  formatShortDay,
   formatTwelveHour,
   fromTwelveHour,
   getGreeting,
@@ -119,6 +120,13 @@ describe("parseDateKey", () => {
 describe("formatCalendarDate", () => {
   it("shows the date itself, whatever the runtime's time zone", () => {
     expect(formatCalendarDate("2026-10-09")).toBe("Fri, 9 Oct 2026");
+  });
+});
+
+describe("formatShortDay", () => {
+  it("shows weekday, day, and month, with no year", () => {
+    expect(formatShortDay("2026-10-31")).toBe("Sat 31 Oct");
+    expect(formatShortDay("2026-11-01")).toBe("Sun 1 Nov");
   });
 });
 

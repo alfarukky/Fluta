@@ -112,6 +112,16 @@ export function formatCalendarDate(key: string): string {
   return `${part("weekday")}, ${part("day")} ${part("month")} ${part("year")}`;
 }
 
+// "Fri 31 Oct" for a "YYYY-MM-DD" calendar date: no year, for dates close
+// to today. Built from parts so Node.js and browsers agree.
+export function formatShortDay(key: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).formatToParts(
+    fromDateKey(key),
+  );
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("weekday")} ${part("day")} ${part("month")}`;
+}
+
 // "West Africa Standard Time (Africa/Lagos)": the zone's name and its ID.
 export function describeTimeZone(timeZone: string, now: Date): string {
   const zone = resolveTimeZone(timeZone);
