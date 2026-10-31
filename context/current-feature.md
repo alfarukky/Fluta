@@ -1,72 +1,40 @@
-# Current Feature: Rider "Coming up" (Feature 19c)
+# Current Feature
 
 ## Status
 
-In Progress
+Not Started
 
 ## Spec
 
-- `context/features/19c-rider-coming-up-spec.md`
-- Implements from `context/project-overview.md`: §7 Fulfilment, service areas, and scheduling (confirmed and requested pickup times, read ahead 7 days), §2 Staff accounts and roles (the Deliveries view, same for owners, staff and riders), UI / UX Key screens (Deliveries view)
+<!-- The spec file for this feature -->
 
 ## Goals
 
-- A read-only "Coming up" section at the bottom of the Deliveries view (Feature 14b), below today's work; nothing else in the view changes
-- **Confirmed pickups for the next 7 days**, starting tomorrow, grouped by calendar day in the store's time zone (today and day 8 never included); days with no pickups left out
-  - Day heading with count: "Tomorrow, Fri 31 Oct · 3 pickups", then "Sat 1 Nov · 1 pickup", …
-  - One line per pickup: 12-hour time window and area name (the order's own area copy, or "Outside our service areas"), e.g. "10:00 AM – 12:00 PM · Wuse"; sorted by window start within each day
-  - Only pickup orders at Pickup scheduled with a confirmed time
-- **Waiting for confirmation:** one line counting pickup orders at Booked whose time is still requested or suggested by the store, dated within the 7 days; no details
-- **Deliveries coming soon:** one line counting pickup orders at Picked up, Received by store, Quote awaiting approval, or In progress (Ready and later not counted); no dates
-- Singular/plural wording:
-  - "1 pickup" / "3 pickups"
-  - "1 more pickup is waiting for the store to confirm a time." / "2 more pickups are waiting for the store to confirm a time."
-  - "1 order is being cleaned and will need delivery." / "4 orders are being cleaned and will need delivery."
-- Empty state "Nothing coming up in the next 7 days" only when all three are zero; otherwise show only the lines that have something to say
-- Never shows customer name, phone, address, order numbers or links, prices/totals/payments, or any buttons or moves
-- Plain lines of text (no cards, badges, maps), one column on phones, same for riders, staff and owners
-- Data function next to Feature 14b's Deliveries data function, selecting only what it needs and returning exactly: per confirmed pickup its date, window start and end, and area copy; the waiting count; the being-cleaned count (no IDs or anything else)
-- "Pickup orders" means the pickup and delivery fulfilment type; drop-off orders never appear
-- Same access as the Deliveries view (owners, staff, riders), store taken from the membership, every query filtered by it
+<!-- The spec's requirements -->
 
 ## Not in this feature
 
-- Customer details, order links, or moves for future days
-- Assigning pickups to particular riders
-- Delivery dates or times
-- Days beyond the next 7
+<!-- Out of scope -->
 
 ## Done when
 
-- Unit tests: grouping by day in the store's time zone, only confirmed pickups listed, the waiting-for-confirmation count, the deliveries-coming-soon count, the singular and plural wording, and the empty state shown only when all three are zero
-- Boundary tests in the store's time zone: a pickup dated today is not in "Coming up", tomorrow's is, and one dated day 8 is not
-- Integration tests:
-  - the data function returns exactly the listed fields, never IDs, names, phones, addresses, order numbers, or money
-  - an order that moved past Pickup scheduled (for example Picked up) no longer appears as a confirmed pickup, and a Booked order with a confirmed time can't exist in the waiting count
-  - drop-off orders and cancelled orders never appear, and today's pickups stay in the normal Pickups section, not in "Coming up"
-  - a FreshFold rider sees only FreshFold's upcoming work
-- `npm run lint`, `npm run typecheck`, `npm run test:unit`, `npm run test:integration`, and `npm run build` all pass
+<!-- The spec's Done when items -->
 
 ## Verify with
 
-- **Playwright MCP**, at ~360px and desktop, light and dark: as a rider, with confirmed pickups booked for tomorrow and later in the week, one unconfirmed pickup, and orders in progress, check the section reads clearly and shows no customer details
-- **Next.js DevTools:** no runtime or build errors on `/deliveries`
+<!-- How to verify the feature -->
 
 ## References
 
-- @context/features/14b-deliveries-and-rider-role-spec.md (the Deliveries view, its data function, and rider rules)
-- @context/features/14-guest-tracking-and-approvals-spec.md (confirmed and requested pickup times)
+<!-- Related context files -->
 
 ## Schema changes
 
-None
+<!-- Migrations, or None -->
 
 ## Notes
 
-- New queries go in `src/server/data/` beside the Deliveries data function and must keep the same store scoping (store from the membership); adding scoped queries follows the existing pattern, but any change to existing store-scoping is an Ask First item
-- Access reuses the Deliveries page's `requireStoreMember({ allowRider: true })`; no change to auth or membership checks
-- Read-only: no order-stage rules or `canTransition` changes, no money code
-- Isolation test required for the new store-owned query (FreshFold rider vs CleanWave)
+<!-- Anything to remember while working -->
 
 ## History
 
@@ -254,3 +222,4 @@ None
 - 2026-10-30: Implemented: `findComingUp` (`src/server/data/deliveries.ts`, three store-scoped queries returning only pickup date, window and area copy plus two counts), pure `buildComingUp` / `getComingUpRange` / `comingUpWording` (`src/server/domain/deliveries.ts`), `getComingUp` (`src/server/services/deliveries.ts`), `formatShortDay` (`src/lib/time.ts`), `ComingUpSection` at the bottom of `/deliveries`. Decision: a pickup order at Quote awaiting approval sent from Booked (the pickup charge, before pickup) is not counted as being cleaned. Tests: domain, time and component unit tests; `src/server/services/deliveries.integration.test.ts` (6 tests, a throwaway store per test). lint, typecheck, test:unit (1028), build pass.
 - 2026-10-30: Full integration suite passes (40 files, 571 tests, `--maxWorkers=2`). Browser verification (Playwright, Next.js DevTools) not done yet: development has no rider or upcoming pickups.
 - 2026-10-31: Verified in the browser (Playwright MCP, development). Set up through the app as FreshFold's owner: areas Wuse and Garki (₦1,500), rider "Tayo Balogun" invited as `delivered@resend.dev` (Resend's test address) and joined from the invite link, five phone orders (Sun 1 Nov outside normal schedule 9–11 AM Wuse, Mon 2 Nov Garki and Wuse, Thu 5 Nov Garki, and one for today), one online booking requesting Tue 3 Nov (left unconfirmed). As the rider: marked today's pickup picked up, then Coming up showed "Tomorrow, Sun 1 Nov · 1 pickup", "Mon 2 Nov · 2 pickups" (sorted by window), "Thu 5 Nov · 1 pickup", "1 more pickup is waiting…", "1 order is being cleaned…". At 360px and 1440px, light and dark: no customer names, phones, addresses, order numbers, prices, links or buttons in the section, no horizontal scroll. Next.js DevTools: no errors. Only console error: a `flushSync` warning from the existing date picker on New order (not this feature). Note: the throwaway rider password appeared in the chat through a Playwright tool echo (development-only account). Development now has these orders, both areas and the rider.
+- 2026-10-31: Completed Feature 19c — Rider "Coming up" (spec: `context/features/19c-rider-coming-up-spec.md`). A read-only "Coming up" section at the bottom of `/deliveries`, the same for riders, staff and owners: confirmed pickups for tomorrow to day 7 in the store's time zone, grouped by day ("Tomorrow, Sun 1 Nov · 1 pickup") and sorted by window start, each line only the 12-hour window and the area copy (or "Outside our service areas"); one line counting Booked pickups whose requested or store-suggested date is in the 7 days; one line counting pickup orders at Picked up, Received by store, Quote awaiting approval or In progress; "Nothing coming up in the next 7 days" only when all three are empty. `findComingUp` (three store-scoped queries, owner-approved) returns only date, window, area copy and the two counts; `buildComingUp` is pure, with the wording in `comingUpWording`; new `formatShortDay` in `src/lib/time.ts`. Decision: a quote sent from Booked (the pickup charge, before pickup) is not counted as being cleaned. No schema changes, no new packages. Final gate: lint, typecheck, test:unit (1028), build pass; integration 40 files, 571 tests (`payment-settings` hit Neon timeouts in the full run and passed on its own rerun). Verified with Playwright MCP as a rider at 360px and desktop, light and dark, and Next.js DevTools (no errors). Merged to staging as `feat: add "Coming up" to the Deliveries view (Feature 19c)`. Development has areas Wuse and Garki, rider `delivered@resend.dev`, and the verification orders.
